@@ -46,7 +46,9 @@ function Login({ onError }: { onError: (message: string) => void }) {
       if (registering) await createUserWithEmailAndPassword(auth, email, password);
       else await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
-      onError(error instanceof Error ? error.message.replace("Firebase: ", "") : "Unable to authenticate.");
+      const firebaseError = error as { code?: string; message?: string };
+      const code = firebaseError.code?.replace("auth/", "");
+      onError(code ? `${code}: ${firebaseError.message ?? "Unable to authenticate."}` : "Unable to authenticate.");
     } finally { setBusy(false); }
   }
 
