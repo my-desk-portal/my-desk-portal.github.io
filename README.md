@@ -50,3 +50,20 @@ NEXT_PUBLIC_FIREBASE_APP_ID
 ```
 
 Copy the values from the local `.env` file. After saving the variables, redeploy with `npx vercel --prod`. Make sure the `ps-taguibo` Firestore rules and index are deployed before testing the hosted site.
+
+## Host directly with GitHub Pages
+
+This repository includes `.github/workflows/deploy-pages.yml`. In GitHub, add these repository secrets under **Settings > Secrets and variables > Actions**:
+
+```text
+NEXT_PUBLIC_FIREBASE_API_KEY
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+NEXT_PUBLIC_FIREBASE_PROJECT_ID
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+NEXT_PUBLIC_FIREBASE_APP_ID
+```
+
+Enable **Settings > Pages > Source: GitHub Actions**. Pushes to `master` then publish the app at:
+
+`https://jerosales00.github.io/permit-slip-portal/`

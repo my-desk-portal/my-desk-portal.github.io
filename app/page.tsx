@@ -21,10 +21,11 @@ import {
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 
-type Unit = "AMIA" | "AGRISTAT";
+type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type Permit = { id: string; permitNo: string; date: string; name: string; unit: Unit; purpose: string; createdAt?: unknown };
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
+const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${date}T00:00:00`));
@@ -132,9 +133,9 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
         {downloadError && <small className="download-error">{downloadError}</small>}
         </div><article ref={permitRef} className="permit-paper permit-document">
             <header className="permit-header">
-                <img src="/bagong-pilipinas-logo.webp" alt="Bagong Pilipinas" />
+                <img src={publicAsset("/bagong-pilipinas-logo.webp")} alt="Bagong Pilipinas" />
                 <div className="permit-heading"><h1>PERMIT SLIP</h1></div>
-                <img src="/da-caraga-logo.jpg" alt="Department of Agriculture Caraga Region" />
+                <img src={publicAsset("/da-caraga-logo.jpg")} alt="Department of Agriculture Caraga Region" />
                 </header><div className="permit-rule" /><section className="permit-identification">
                     <div><b>PS No.</b><span>{permit.permitNo}</span></div>
                     <div><b>Date</b><span>{formatDate(permit.date)}</span></div></section>
