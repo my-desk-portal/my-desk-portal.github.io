@@ -151,7 +151,7 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
                         <tr><td /><td /></tr>
                         <tr><td /><td /></tr>
                     </tbody>
-                    </table><section className="permit-times"><span className="permit-certifying-label"><b>GUARD SIGNATURE</b></span><div><b>TIME OUT</b><span>:</span><i /><span>:</span><i /></div><div><b>TIME IN</b><span>:</span><i /><span>:</span><i /></div></section><footer className="permit-approval"><span>Approved:</span><strong>GERLIE B. ANTIPASO</strong><em>DRRM / AMIA / AGRISTAT Head / Agriculturist II</em></footer></article></div>;
+                    </table><section className="permit-times"><span className="permit-certifying-label"><b>GUARD SIGNATURE</b></span><div className="permit-signature-space" aria-hidden="true" /><div><b>TIME OUT</b><span>:</span><i /><span>:</span><i /></div><div><b>TIME IN</b><span>:</span><i /><span>:</span><i /></div></section><footer className="permit-approval"><span>Approved:</span><strong>GERLIE B. ANTIPASO</strong><em>DRRM / AMIA / AGRISTAT Head / Agriculturist II</em></footer></article></div>;
 }
 
 export default function Home() {
