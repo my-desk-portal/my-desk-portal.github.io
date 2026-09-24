@@ -220,7 +220,21 @@ export default function Home() {
 
   useEffect(() => { if (!auth) { setLoading(false); return; } return onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setLoading(false); }); }, []);
   useEffect(() => { if (!user || !db) return; getDocs(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc"))).then((snapshot) => setPermits(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Permit)))).catch(() => setError("Could not load permits. If this is your first setup, deploy the Firestore index or refresh.")); }, [user]);
-  useEffect(() => { if (!user || !db) return; getDocs(query(collection(db, "specialOrders"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc"))).then((snapshot) => setSpecialOrders(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as SpecialOrder)))).catch(() => setError("Could not load special orders. Deploy the Firestore index or refresh.")); }, [user]);
+  useEffect(() => {
+    if (!user || !db) return;
+    getDocs(query(collection(db, "specialOrders"), where("ownerId", "==", user.uid))).then((snapshot) => {
+      const orders = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as SpecialOrder));
+      orders.sort((left, right) => {
+        const leftTime = (left.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+        const rightTime = (right.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+        return rightTime - leftTime;
+      });
+      setSpecialOrders(orders);
+    }).catch((error) => {
+      const code = (error as { code?: string }).code;
+      setError(code ? `Could not load special orders (${code}).` : "Could not load special orders. Refresh and try again.");
+    });
+  }, [user]);
 
   if (loading) return <div className="loading-screen">Loading Permit Desk...</div>;
   if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><div className="brand-mark">PD</div><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
