@@ -66,4 +66,4 @@ NEXT_PUBLIC_FIREBASE_APP_ID
 
 Enable **Settings > Pages > Source: GitHub Actions**. Pushes to `master` then publish the app at:
 
-`https://jerosales00.github.io/permit-slip-portal/`
+`https://permit-slip-portal.github.io/`
