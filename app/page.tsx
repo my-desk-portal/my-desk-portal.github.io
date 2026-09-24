@@ -10,6 +10,7 @@ import {
   type User,
 } from "firebase/auth";
 import {
+  addDoc,
   collection,
   doc,
   getDocs,
@@ -23,6 +24,7 @@ import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type Permit = { id: string; permitNo: string; date: string; name: string; unit: Unit; purpose: string; createdAt?: unknown };
+type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; venue: string; participants: string[]; createdAt?: unknown };
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
@@ -154,20 +156,75 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
                     </table><section className="permit-times"><span className="permit-certifying-label"><b>GUARD SIGNATURE</b></span><div className="permit-signature-space" aria-hidden="true" /><div><b>TIME OUT</b><span>:</span><i /><span>:</span><i /></div><div><b>TIME IN</b><span>:</span><i /><span>:</span><i /></div></section><footer className="permit-approval"><span>Approved:</span><strong>GERLIE B. ANTIPASO</strong><em>DRRM / AMIA / AGRISTAT Head / Agriculturist II</em></footer></article></div>;
 }
 
+function SpecialOrderForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (order: SpecialOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
+  const [subject, setSubject] = useState("");
+  const [activityTitle, setActivityTitle] = useState("");
+  const [organizer, setOrganizer] = useState("");
+  const [dateFrom, setDateFrom] = useState(new Date().toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState("");
+  const [venue, setVenue] = useState("");
+  const [participants, setParticipants] = useState([""]);
+  const [busy, setBusy] = useState(false);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!db) return;
+    setBusy(true); onError("");
+    try {
+      const participantList = participants.map((person) => person.trim()).filter(Boolean);
+      const reference = await addDoc(collection(db, "specialOrders"), { subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, venue: venue.trim(), participants: participantList, ownerId: user.uid, createdAt: serverTimestamp() });
+      onSaved({ id: reference.id, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, venue: venue.trim(), participants: participantList });
+    } catch (error) { onError(error instanceof Error ? error.message : "Unable to save special order."); }
+    finally { setBusy(false); }
+  }
+
+  return <section className="content-section form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated participants.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Participant</span>{participants.map((participant, index) => <div className="participant-input" key={index}><input aria-label={`Designated participant ${index + 1}`} value={participant} onChange={(event) => setParticipants(participants.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required={index === 0} placeholder={`Participant ${index + 1}`} />{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove participant ${index + 1}`} onClick={() => setParticipants(participants.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button add-participant" onClick={() => setParticipants([...participants, ""])}>+ Add participant</button></div><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save special order"}</button></div></form></section>;
+}
+
+function SpecialOrderList({ orders, onNew, onPrint }: { orders: SpecialOrder[]; onNew: () => void; onPrint: (order: SpecialOrder) => void }) {
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>+ New order</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button" onClick={onNew}>Create a special order</button></div> : <div className="permit-table"><div className="table-head"><span>Subject</span><span>Activity</span><span>Date</span><span>Participants</span><span></span></div>{orders.map((order) => <div className="table-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span>{order.participants.length}</span><button className="row-action" onClick={() => onPrint(order)}>View / print</button></div>)}</div>}</section>;
+}
+
+function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose: () => void }) {
+  const orderRef = useRef<HTMLElement>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
+
+  async function downloadOrder() {
+    if (!orderRef.current) return;
+    setDownloading(true); setDownloadError("");
+    try {
+      const canvas = await html2canvas(orderRef.current, { backgroundColor: "#fff", logging: false, scale: 2, useCORS: true });
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.95));
+      if (!blob) throw new Error("Unable to create JPG download.");
+      const url = URL.createObjectURL(blob); const link = document.createElement("a");
+      link.download = `special-order-${order.dateFrom}.jpg`; link.href = url; link.style.display = "none"; document.body.appendChild(link); link.click();
+      window.setTimeout(() => { URL.revokeObjectURL(url); link.remove(); }, 1000);
+    } catch (error) { setDownloadError(error instanceof Error ? error.message : "Unable to download the special order."); }
+    finally { setDownloading(false); }
+  }
+
+  return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button className="ghost-button" onClick={onClose}>Close</button><button className="ghost-button" onClick={() => window.print()}>Print A4</button><button className="primary-button" disabled={downloading} onClick={downloadOrder}>{downloading ? "Preparing JPG..." : "Download this Photo"}</button>{downloadError && <small className="download-error">{downloadError}</small>}</div><article ref={orderRef} className="special-order-paper"><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><h1>SPECIAL ORDER</h1><div className="special-order-fields"><p><b>Subject:</b><span>{order.subject}</span></p><p><b>Title of the Activity:</b><span>{order.activityTitle}</span></p><p><b>Organizer or Host:</b><span>{order.organizer}</span></p><p><b>Date:</b><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` to ${formatDate(order.dateTo)}`}</span></p><p><b>Venue:</b><span>{order.venue}</span></p><p className="participant-field"><b>Designated Participant:</b><span>{order.participants.map((participant) => <span key={participant}>{participant}</span>)}</span></p></div></div></article></div>;
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [permits, setPermits] = useState<Permit[]>([]);
+  const [specialOrders, setSpecialOrders] = useState<SpecialOrder[]>([]);
   const [view, setView] = useState<"list" | "new">("list");
+  const [section, setSection] = useState<"permits" | "special-orders">("permits");
   const [preview, setPreview] = useState<Permit | null>(null);
+  const [specialOrderPreview, setSpecialOrderPreview] = useState<SpecialOrder | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { if (!auth) { setLoading(false); return; } return onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setLoading(false); }); }, []);
   useEffect(() => { if (!user || !db) return; getDocs(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc"))).then((snapshot) => setPermits(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Permit)))).catch(() => setError("Could not load permits. If this is your first setup, deploy the Firestore index or refresh.")); }, [user]);
+  useEffect(() => { if (!user || !db) return; getDocs(query(collection(db, "specialOrders"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc"))).then((snapshot) => setSpecialOrders(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as SpecialOrder)))).catch(() => setError("Could not load special orders. Deploy the Firestore index or refresh.")); }, [user]);
 
   if (loading) return <div className="loading-screen">Loading Permit Desk...</div>;
   if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><div className="brand-mark">PD</div><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
   if (!user) return <Login onError={setError} />;
 
-  return <div className="app-shell"><header className="topbar"><div className="brand"><div className="brand-mark">PD</div><span>Permit Desk</span></div><div className="user-menu"><span>{user.email}</span><button className="text-button" onClick={() => auth && signOut(auth)}>Log out</button></div></header><main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you.</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}</div>;
+  return <div className="app-shell"><header className="topbar"><div className="brand"><div className="brand-mark">PD</div><span>Permit Desk</span></div><nav className="main-nav"><button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit slips</button><button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button></nav><div className="user-menu"><span>{user.email}</span><button className="text-button" onClick={() => auth && signOut(auth)}>Log out</button></div></header><main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you.</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }
