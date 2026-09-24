@@ -38,6 +38,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
   const [registering, setRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: React.FormEvent) {
@@ -57,7 +58,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
 
   return <main className="auth-shell">
     <section className="auth-intro"><div className="brand-mark">PD</div><p className="eyebrow">Permit administration</p><h1>Keep every<br /><em>movement</em> accounted for.</h1><p className="intro-copy">A clear, dependable desk for creating and retrieving official permit slips.</p><div className="intro-note"><span>01</span><p>Authenticated access for your unit</p></div></section>
-    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><div className="brand-mark">PD</div><span>Permit Desk</span></div><p className="eyebrow">{registering ? "New account" : "Welcome back"}</p><h2>{registering ? "Create your account" : "Sign in to Permit Desk"}</h2><p className="muted">{registering ? "Start managing your permit slips." : "Enter your details to continue."}</p><form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label><label>Password<input type="password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /></label><button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button></form><button className="text-button" onClick={() => setRegistering(!registering)}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button></div></section>
+    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><div className="brand-mark">PD</div><span>Permit Desk</span></div><p className="eyebrow">{registering ? "New account" : "Welcome back"}</p><h2>{registering ? "Create your account" : "Sign in to Permit Desk"}</h2><p className="muted">{registering ? "Start managing your permit slips." : "Enter your details to continue."}</p><form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label><label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label><button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button></form><button className="text-button" onClick={() => setRegistering(!registering)}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button></div></section>
   </main>;
 }
 
@@ -95,7 +96,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
 }
 
 function PermitList({ permits, onNew, onPrint }: { permits: Permit[]; onNew: () => void; onPrint: (permit: Permit) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>+ New permit</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.permitNo}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View / print</button></div>)}</div>}</section>;
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>+ New permit</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.permitNo}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View</button></div>)}</div>}</section>;
 }
 
 function chunkNames(names: string[], size: number) {
@@ -193,30 +194,6 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
     }));
   }
 
-  async function downloadPermit() {
-    if (!sheetsRef.current) return;
-    setDownloading(true);
-    setDownloadError("");
-    try {
-      await waitForImages(sheetsRef.current);
-      const canvas = await html2canvas(sheetsRef.current, { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.95));
-      if (!blob) throw new Error("Unable to create JPG download.");
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.download = `permit-${permit.permitNo}.jpg`;
-      link.href = url;
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      window.setTimeout(() => { URL.revokeObjectURL(url); link.remove(); }, 1000);
-    } catch (error) {
-      setDownloadError(error instanceof Error ? error.message : "Unable to download the permit JPG.");
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   async function downloadPdf() {
     if (!sheetsRef.current) return;
     setDownloading(true);
@@ -242,8 +219,7 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
     <div className="preview-toolbar">
       <span>Permit preview</span>
       <button className="ghost-button" onClick={onClose}>Close</button>
-      <button className="ghost-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>
-      <button className="primary-button" disabled={downloading} onClick={downloadPermit}>{downloading ? "Preparing JPG..." : "Download this Photo"}</button>
+      <button className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>
       {downloadError && <small className="download-error">{downloadError}</small>}
     </div>
     <div ref={sheetsRef} className="permit-sheets">
@@ -280,27 +256,13 @@ function SpecialOrderForm({ user, onSaved, onCancel, onError }: { user: User; on
 }
 
 function SpecialOrderList({ orders, onNew, onPrint }: { orders: SpecialOrder[]; onNew: () => void; onPrint: (order: SpecialOrder) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>+ New order</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button" onClick={onNew}>Create a special order</button></div> : <div className="permit-table"><div className="table-head"><span>Subject</span><span>Activity</span><span>Date</span><span>Participants</span><span></span></div>{orders.map((order) => <div className="table-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span>{order.participants.length}</span><button className="row-action" onClick={() => onPrint(order)}>View / print</button></div>)}</div>}</section>;
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>+ New order</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button" onClick={onNew}>Create a special order</button></div> : <div className="permit-table"><div className="table-head"><span>Subject</span><span>Activity</span><span>Date</span><span>Participants</span><span></span></div>{orders.map((order) => <div className="table-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span>{order.participants.length}</span><button className="row-action" onClick={() => onPrint(order)}>View</button></div>)}</div>}</section>;
 }
 
 function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose: () => void }) {
   const orderRef = useRef<HTMLElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
-
-  async function downloadOrder() {
-    if (!orderRef.current) return;
-    setDownloading(true); setDownloadError("");
-    try {
-      const canvas = await html2canvas(orderRef.current, { backgroundColor: "#fff", logging: false, scale: 2, useCORS: true });
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.95));
-      if (!blob) throw new Error("Unable to create JPG download.");
-      const url = URL.createObjectURL(blob); const link = document.createElement("a");
-      link.download = `special-order-${order.dateFrom}.jpg`; link.href = url; link.style.display = "none"; document.body.appendChild(link); link.click();
-      window.setTimeout(() => { URL.revokeObjectURL(url); link.remove(); }, 1000);
-    } catch (error) { setDownloadError(error instanceof Error ? error.message : "Unable to download the special order."); }
-    finally { setDownloading(false); }
-  }
 
   async function downloadPdf() {
     if (!orderRef.current) return;
@@ -314,7 +276,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     finally { setDownloading(false); }
   }
 
-  return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button className="ghost-button" onClick={onClose}>Close</button><button className="ghost-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button className="primary-button" disabled={downloading} onClick={downloadOrder}>{downloading ? "Preparing JPG..." : "Download this Photo"}</button>{downloadError && <small className="download-error">{downloadError}</small>}</div><article ref={orderRef} className="special-order-paper"><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><header className="special-order-heading"><h1>SPECIAL ORDER</h1><p>No. <span /></p><p>Series of {new Date().getFullYear()}</p></header><div className="special-order-flow"><section className="special-order-subject"><p><b>SUBJECT :</b><span>{order.subject}</span></p></section><p className="special-order-intro">In view of the unavailability of the undersigned and/or the absence of specified participants on the received communications, the following personnel is/are hereby designated to attend and represent this Office in the activity detailed below:</p><div className="special-order-body"><section className="special-order-details"><p><b>Title of the Activity :</b><span>{order.activityTitle}</span></p><p><b>Organizer/ Host :</b><span>{order.organizer}</span></p><p><b>Date :</b><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` to ${formatDate(order.dateTo)}`}</span></p><p><b>Venue :</b><span>{order.venue}</span></p></section><section className="special-order-participants"><div className="special-order-spacer" aria-hidden="true" /><h2>Designated Participant:</h2><ol>{order.participants.map((participant) => <li key={participant}>{participant}</li>)}</ol></section><section className="special-order-obligations"><div className="special-order-spacer" aria-hidden="true" /><p>The above-named personnel shall actively participate in the said activity and are expected to:</p><ul><li>Represent the office professionally;</li><li>Take note of important discussions, agreements, and action items;</li><li>Submit a brief written report and/or feedback within ____ days after the activity.</li></ul></section><p className="special-order-expenses">Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.</p><p className="special-order-done">Done this ____ day of ____________, {new Date().getFullYear()}</p><footer className="special-order-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><span>Regional Executive Director</span></footer></div></div></div></article></div>;
+  return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button className="ghost-button" onClick={onClose}>Close</button><button className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>{downloadError && <small className="download-error">{downloadError}</small>}</div><article ref={orderRef} className="special-order-paper"><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><header className="special-order-heading"><h1>SPECIAL ORDER</h1><p>No. <span /></p><p>Series of {new Date().getFullYear()}</p></header><div className="special-order-flow"><section className="special-order-subject"><p><b>SUBJECT :</b><span>{order.subject}</span></p></section><p className="special-order-intro">In view of the unavailability of the undersigned and/or the absence of specified participants on the received communications, the following personnel is/are hereby designated to attend and represent this Office in the activity detailed below:</p><div className="special-order-body"><section className="special-order-details"><p><b>Title of the Activity :</b><span>{order.activityTitle}</span></p><p><b>Organizer/ Host :</b><span>{order.organizer}</span></p><p><b>Date :</b><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` to ${formatDate(order.dateTo)}`}</span></p><p><b>Venue :</b><span>{order.venue}</span></p></section><section className="special-order-participants"><div className="special-order-spacer" aria-hidden="true" /><h2>Designated Participant:</h2><ol>{order.participants.map((participant) => <li key={participant}>{participant}</li>)}</ol></section><section className="special-order-obligations"><div className="special-order-spacer" aria-hidden="true" /><p>The above-named personnel shall actively participate in the said activity and are expected to:</p><ul><li>Represent the office professionally;</li><li>Take note of important discussions, agreements, and action items;</li><li>Submit a brief written report and/or feedback within ____ days after the activity.</li></ul></section><p className="special-order-expenses">Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.</p><p className="special-order-done">Done this ____ day of ____________, {new Date().getFullYear()}</p><footer className="special-order-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><span>Regional Executive Director</span></footer></div></div></div></article></div>;
 }
 
 export default function Home() {
