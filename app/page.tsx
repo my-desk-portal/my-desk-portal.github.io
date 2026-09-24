@@ -128,32 +128,87 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
     }
   }
 
-  return <div 
-  className="preview-backdrop">
+  return <div className="preview-backdrop">
     <div className="preview-toolbar">
-        <span>Permit preview</span>
-        <button className="ghost-button" onClick={onClose}>Close</button>
-        <button className="primary-button" disabled={downloading} onClick={downloadPermit}>{downloading ? "Preparing JPG..." : "Download this Photo"}</button>
-        {downloadError && <small className="download-error">{downloadError}</small>}
-        </div><article ref={permitRef} className="permit-paper permit-document">
-            <header className="permit-header">
-                <img src={publicAsset("/bagong-pilipinas-logo.webp")} alt="Bagong Pilipinas" />
-                <div className="permit-heading"><h1>PERMIT SLIP</h1></div>
-                <img src={publicAsset("/da-caraga-logo.jpg")} alt="Department of Agriculture Caraga Region" />
-                </header><div className="permit-rule" /><section className="permit-identification">
-                    <div><b>PS No.</b><span>{permit.permitNo}</span></div>
-                    <div><b>Date</b><span>{formatDate(permit.date)}</span></div></section>
-                    <section className="permit-body"><h2>PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h2><p className="permit-line permit-name-line">{permit.name}</p><h2>Purpose:</h2><p className="permit-line permit-purpose-line">{permit.purpose}</p></section>
-                    <table className="permit-log"><thead><tr><th>VISITED PLACES</th><th>CERTIFYING OFFICER</th></tr></thead>
-                    <tbody>
-                        <tr><td /><td /></tr>
-                        <tr><td /><td /></tr>
-                        <tr><td /><td /></tr>
-                        <tr><td /><td /></tr>
-                        <tr><td /><td /></tr>
-                        <tr><td /><td /></tr>
-                    </tbody>
-                    </table><section className="permit-times"><span className="permit-certifying-label"><b>GUARD SIGNATURE</b></span><div className="permit-signature-space" aria-hidden="true" /><div><b>TIME OUT</b><span>:</span><i /><span>:</span><i /></div><div><b>TIME IN</b><span>:</span><i /><span>:</span><i /></div></section><footer className="permit-approval"><span>Approved:</span><strong>GERLIE B. ANTIPASO</strong><em>DRRM / AMIA / AGRISTAT Head / Agriculturist II</em></footer></article></div>;
+      <span>Permit preview</span>
+      <button className="ghost-button" onClick={onClose}>Close</button>
+      <button className="primary-button" disabled={downloading} onClick={downloadPermit}>{downloading ? "Preparing JPG..." : "Download this Photo"}</button>
+      {downloadError && <small className="download-error">{downloadError}</small>}
+    </div>
+    <article ref={permitRef} className="permit-paper permit-document">
+      <header className="permit-header">
+        <div className="permit-logos">
+          <img src={publicAsset("/bagong-pilipinas-logo.webp")} alt="Bagong Pilipinas" className="permit-logo-left" />
+          <div className="permit-seal-wrap">
+            <img src={publicAsset("/da-caraga-logo.jpg")} alt="Department of Agriculture Caraga Region" className="permit-logo-right" />
+          </div>
+        </div>
+        <h1 className="permit-heading">PERMIT SLIP</h1>
+      </header>
+
+      <section className="permit-metadata">
+        <div className="permit-meta-row">
+          <span className="permit-label">PS No.</span>
+          <span className="permit-colon">:</span>
+          <span className="permit-input-line">{permit.permitNo}</span>
+        </div>
+        <div className="permit-meta-row">
+          <span className="permit-label">Date</span>
+          <span className="permit-colon">:</span>
+          <span className="permit-input-line">{formatDate(permit.date)}</span>
+        </div>
+      </section>
+
+      <h2 className="permit-banner">PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h2>
+      <div className="permit-blank-line permit-blank-line-lg" />
+
+      <section className="permit-purpose-block">
+        <h3>PURPOSE:</h3>
+        <div className="permit-blank-line" />
+        <div className="permit-blank-line" />
+      </section>
+
+      <table className="permit-grid">
+        <thead>
+          <tr>
+            <th>VISITED PLACES</th>
+            <th>CERTIFYING OFFICER</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td /><td /></tr>
+          <tr><td /><td /></tr>
+          <tr><td /><td /></tr>
+        </tbody>
+      </table>
+
+      <div className="permit-signature-row">
+        <div className="permit-time-block">
+          <div className="permit-time-row">
+            <span className="permit-time-label">TIME OUT</span>
+            <span className="permit-colon">:</span>
+            <span className="permit-time-line" />
+            <span className="permit-colon">:</span>
+            <span className="permit-time-line" />
+          </div>
+          <div className="permit-time-row">
+            <span className="permit-time-label">TIME IN</span>
+            <span className="permit-colon">:</span>
+            <span className="permit-time-line" />
+            <span className="permit-colon">:</span>
+            <span className="permit-time-line" />
+          </div>
+        </div>
+        <div className="permit-guard-signature">GUARD'S SIGNATURE</div>
+      </div>
+
+      <div className="permit-approval">
+        <div className="permit-approved-label">Approved:</div>
+        <div className="permit-approved-name">GERLIE B. ANTIPASO</div>
+        <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>
+      </div>
+    </article>
+  </div>;
 }
 
 function SpecialOrderForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (order: SpecialOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
@@ -205,12 +260,6 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
   }
 
   function printA4() {
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
-    if (!printWindow) {
-      setDownloadError("Please allow pop-ups to print the document.");
-      return;
-    }
-
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -284,13 +333,21 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
       </html>
     `;
 
-    printWindow.document.open();
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    printWindow.focus();
+    const blob = new Blob([printContent], { type: "text/html" });
+    const printUrl = URL.createObjectURL(blob);
+    const printWindow = window.open(printUrl, "_blank", "width=1200,height=900");
+
+    if (!printWindow) {
+      setDownloadError("Please allow pop-ups to print the document.");
+      URL.revokeObjectURL(printUrl);
+      return;
+    }
+
     setTimeout(() => {
+      printWindow.focus();
       printWindow.print();
-    }, 250);
+      setTimeout(() => URL.revokeObjectURL(printUrl), 1000);
+    }, 300);
   }
 
   return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button className="ghost-button" onClick={onClose}>Close</button><button className="ghost-button" onClick={printA4}>Print A4</button><button className="primary-button" disabled={downloading} onClick={downloadOrder}>{downloading ? "Preparing JPG..." : "Download this Photo"}</button>{downloadError && <small className="download-error">{downloadError}</small>}</div><article ref={orderRef} className="special-order-paper"><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><header className="special-order-heading"><h1>SPECIAL ORDER</h1><p>No. <span /></p><p>Series of {new Date().getFullYear()}</p></header><section className="special-order-subject"><p><b>SUBJECT :</b><span>{order.subject}</span></p></section><p className="special-order-intro">In view of the unavailability of the undersigned and/or the absence of specified participants on the received communications, the following personnel is/are hereby designated to attend and represent this Office in the activity detailed below:</p><section className="special-order-details"><p><b>Title of the Activity :</b><span>{order.activityTitle}</span></p><p><b>Organizer/ Host :</b><span>{order.organizer}</span></p><p><b>Date</b><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` to ${formatDate(order.dateTo)}`}</span></p><p><b>Venue</b><span>{order.venue}</span></p></section><section className="special-order-participants"><h2>Designated Participant:</h2><ol>{order.participants.map((participant) => <li key={participant}>{participant}</li>)}</ol></section><section className="special-order-obligations"><p>The above-named personnel shall actively participate in the said activity and are expected to:</p><ul><li>Represent the office professionally;</li><li>Take note of important discussions, agreements, and action items;</li><li>Submit a brief written report and/or feedback within ____ days after the activity.</li></ul></section><p className="special-order-expenses">Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.</p><p className="special-order-done">Done this ____ day of ____________, {new Date().getFullYear()}</p><footer className="special-order-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><span>Regional Executive Director</span></footer></div></article></div>;
