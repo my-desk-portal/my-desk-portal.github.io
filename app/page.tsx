@@ -24,7 +24,7 @@ import {
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
-type Permit = { id: string; permitNo: string; date: string; name: string; unit: Unit; purpose: string; createdAt?: unknown };
+type Permit = { id: string; permitNo: string; date: string; names: string[]; unit: Unit; purpose: string; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; venue: string; participants: string[]; createdAt?: unknown };
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
@@ -63,7 +63,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
 
 function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (permit: Permit) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [name, setName] = useState("");
+  const [names, setNames] = useState([""]);
   const [unit, setUnit] = useState<Unit>("AMIA");
   const [purpose, setPurpose] = useState("");
   const [busy, setBusy] = useState(false);
@@ -74,13 +74,14 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     const firestore = db;
     setBusy(true); onError("");
     try {
+      const nameList = names.map((person) => person.trim()).filter(Boolean);
       const year = new Date(`${date}T00:00:00`).getFullYear();
       const permit = await runTransaction(firestore, async (transaction) => {
         const counterRef = doc(firestore, "permitCounters", `${unit}-${year}`);
         const counterSnapshot = await transaction.get(counterRef);
         const nextNumber = (counterSnapshot.exists() ? counterSnapshot.data().lastNumber : 0) + 1;
         const permitRef = doc(collection(firestore, "permits"));
-        const record = { permitNo: `${unit}-${year}-${String(nextNumber).padStart(4, "0")}`, date, name: name.trim(), unit, purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
+        const record = { permitNo: `${unit}-${year}-${String(nextNumber).padStart(4, "0")}`, date, names: nameList, unit, purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
         transaction.set(counterRef, { lastNumber: nextNumber, unit, year });
         transaction.set(permitRef, record);
         return { id: permitRef.id, ...record } as Permit;
@@ -90,28 +91,115 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><label>Full name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Enter the requestor's name" required /></label><label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit)}>{units.map((option) => <option key={option}>{option}</option>)}</select></label><label className="wide-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={5} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save permit slip"}</button></div></form></section>;
+  return <section className="content-section form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Full name</span>{names.map((person, index) => <div className="participant-input" key={index}><input aria-label={`Person ${index + 1}`} value={person} onChange={(event) => setNames(names.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required={index === 0} placeholder={`Person ${index + 1}`} />{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove person ${index + 1}`} onClick={() => setNames(names.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button add-participant" onClick={() => setNames([...names, ""])}>+ Add name</button></div><label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit)}>{units.map((option) => <option key={option}>{option}</option>)}</select></label><label className="wide-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={5} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save permit slip"}</button></div></form></section>;
 }
 
 function PermitList({ permits, onNew, onPrint }: { permits: Permit[]; onNew: () => void; onPrint: (permit: Permit) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>+ New permit</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.permitNo}</strong><span>{formatDate(permit.date)}</span><span>{permit.name}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View / print</button></div>)}</div>}</section>;
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>+ New permit</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.permitNo}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View / print</button></div>)}</div>}</section>;
+}
+
+function chunkNames(names: string[], size: number) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < names.length; index += size) chunks.push(names.slice(index, index + size));
+  return chunks;
+}
+
+function PermitCard({ permit, name }: { permit: Permit; name: string }) {
+  return <article className="permit-document">
+    <header className="permit-header">
+      <div className="permit-logos">
+        <img src={publicAsset("/bagong-pilipinas-logo.webp")} alt="Bagong Pilipinas" className="permit-logo-left" />
+        <div className="permit-seal-wrap">
+          <img src={publicAsset("/da-caraga-logo.jpg")} alt="Department of Agriculture Caraga Region" className="permit-logo-right" />
+        </div>
+      </div>
+      <h1 className="permit-heading">PERMIT SLIP</h1>
+    </header>
+
+    <section className="permit-metadata">
+      <div className="permit-meta-row">
+        <span className="permit-label">PS No.</span>
+        <span className="permit-colon">:</span>
+        <span className="permit-input-line">{permit.permitNo}</span>
+      </div>
+      <div className="permit-meta-row">
+        <span className="permit-label">Date</span>
+        <span className="permit-colon">:</span>
+        <span className="permit-input-line">{formatDate(permit.date)}</span>
+      </div>
+    </section>
+
+    <h2 className="permit-banner">PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h2>
+    <p className="permit-blank-line permit-blank-line-lg permit-name-line">{name}</p>
+
+    <section className="permit-purpose-block">
+      <h3>PURPOSE:</h3>
+      <p className="permit-blank-line permit-filled-line">{permit.purpose}</p>
+      <div className="permit-blank-line" />
+    </section>
+
+    <table className="permit-grid">
+      <thead>
+        <tr>
+          <th>VISITED PLACES</th>
+          <th>CERTIFYING OFFICER</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td /><td /></tr>
+        <tr><td /><td /></tr>
+        <tr><td /><td /></tr>
+      </tbody>
+    </table>
+
+    <div className="permit-signature-row">
+      <div className="permit-guard-signature">GUARD'S SIGNATURE</div>
+      <div className="permit-time-block">
+        <div className="permit-time-row">
+          <span className="permit-time-label">TIME OUT</span>
+          <span className="permit-colon">:</span>
+          <span className="permit-time-line" />
+          <span className="permit-colon">:</span>
+          <span className="permit-time-line" />
+        </div>
+        <div className="permit-time-row">
+          <span className="permit-time-label">TIME IN</span>
+          <span className="permit-colon">:</span>
+          <span className="permit-time-line" />
+          <span className="permit-colon">:</span>
+          <span className="permit-time-line" />
+        </div>
+      </div>
+    </div>
+
+    <div className="permit-approval">
+      <div className="permit-approved-label">Approved:</div>
+      <div className="permit-approved-name">GERLIE B. ANTIPASO</div>
+      <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>
+    </div>
+  </article>;
 }
 
 function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void }) {
-  const permitRef = useRef<HTMLElement>(null);
+  const sheetsRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
+  const sheets = chunkNames(permit.names, 4);
+
+  async function waitForImages(container: HTMLElement) {
+    await Promise.all(Array.from(container.querySelectorAll("img")).map(async (image) => {
+      if (!image.complete) await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("A permit logo could not be loaded.")); });
+      if (image.decode) await image.decode();
+    }));
+  }
 
   async function downloadPermit() {
-    if (!permitRef.current) return;
+    if (!sheetsRef.current) return;
     setDownloading(true);
     setDownloadError("");
     try {
-      await Promise.all(Array.from(permitRef.current.querySelectorAll("img")).map(async (image) => {
-        if (!image.complete) await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("A permit logo could not be loaded.")); });
-        if (image.decode) await image.decode();
-      }));
-      const canvas = await html2canvas(permitRef.current, { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
+      await waitForImages(sheetsRef.current);
+      const canvas = await html2canvas(sheetsRef.current, { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.95));
       if (!blob) throw new Error("Unable to create JPG download.");
       const url = URL.createObjectURL(blob);
@@ -129,89 +217,40 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
     }
   }
 
+  async function downloadPdf() {
+    if (!sheetsRef.current) return;
+    setDownloading(true);
+    setDownloadError("");
+    try {
+      await waitForImages(sheetsRef.current);
+      const sheetElements = Array.from(sheetsRef.current.querySelectorAll<HTMLElement>(".permit-sheet"));
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      for (let index = 0; index < sheetElements.length; index += 1) {
+        const canvas = await html2canvas(sheetElements[index], { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
+        if (index > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, 210, 297);
+      }
+      pdf.save(`permit-${permit.permitNo}.pdf`);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "Unable to create the PDF.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return <div className="preview-backdrop">
     <div className="preview-toolbar">
       <span>Permit preview</span>
       <button className="ghost-button" onClick={onClose}>Close</button>
+      <button className="ghost-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>
       <button className="primary-button" disabled={downloading} onClick={downloadPermit}>{downloading ? "Preparing JPG..." : "Download this Photo"}</button>
       {downloadError && <small className="download-error">{downloadError}</small>}
     </div>
-    <article ref={permitRef} className="permit-paper permit-document">
-      <header className="permit-header">
-        <div className="permit-logos">
-          <img src={publicAsset("/bagong-pilipinas-logo.webp")} alt="Bagong Pilipinas" className="permit-logo-left" />
-          <div className="permit-seal-wrap">
-            <img src={publicAsset("/da-caraga-logo.jpg")} alt="Department of Agriculture Caraga Region" className="permit-logo-right" />
-          </div>
-        </div>
-        <h1 className="permit-heading">PERMIT SLIP</h1>
-      </header>
-
-      <section className="permit-metadata">
-        <div className="permit-meta-row">
-          <span className="permit-label">PS No.</span>
-          <span className="permit-colon">:</span>
-          <span className="permit-input-line">{permit.permitNo}</span>
-        </div>
-        <div className="permit-meta-row">
-          <span className="permit-label">Date</span>
-          <span className="permit-colon">:</span>
-          <span className="permit-input-line">{formatDate(permit.date)}</span>
-        </div>
-      </section>
-
-      <h2 className="permit-banner">PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h2>
-      <p className="permit-blank-line permit-blank-line-lg permit-name-line">{permit.name}</p>
-
-      <section className="permit-purpose-block">
-        <h3>PURPOSE:</h3>
-        <p className="permit-blank-line permit-filled-line">{permit.purpose}</p>
-        <div className="permit-blank-line" />
-      </section>
-
-      <table className="permit-grid">
-        <thead>
-          <tr>
-            <th>VISITED PLACES</th>
-            <th>CERTIFYING OFFICER</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td /><td /></tr>
-          <tr><td /><td /></tr>
-          <tr><td /><td /></tr>
-          <tr><td /><td /></tr>
-          <tr><td /><td /></tr>
-          <tr><td /><td /></tr>
-        </tbody>
-      </table>
-
-      <div className="permit-signature-row">
-        <div className="permit-guard-signature">GUARD'S SIGNATURE</div>
-        <div className="permit-time-block">
-          <div className="permit-time-row">
-            <span className="permit-time-label">TIME OUT</span>
-            <span className="permit-colon">:</span>
-            <span className="permit-time-line" />
-            <span className="permit-colon">:</span>
-            <span className="permit-time-line" />
-          </div>
-          <div className="permit-time-row">
-            <span className="permit-time-label">TIME IN</span>
-            <span className="permit-colon">:</span>
-            <span className="permit-time-line" />
-            <span className="permit-colon">:</span>
-            <span className="permit-time-line" />
-          </div>
-        </div>
-      </div>
-
-      <div className="permit-approval">
-        <div className="permit-approved-label">Approved:</div>
-        <div className="permit-approved-name">GERLIE B. ANTIPASO</div>
-        <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>
-      </div>
-    </article>
+    <div ref={sheetsRef} className="permit-sheets">
+      {sheets.map((sheetNames, sheetIndex) => <div className="permit-sheet" key={sheetIndex}>
+        {sheetNames.map((name, nameIndex) => <PermitCard permit={permit} name={name} key={nameIndex} />)}
+      </div>)}
+    </div>
   </div>;
 }
 
@@ -290,7 +329,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { if (!auth) { setLoading(false); return; } return onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setLoading(false); }); }, []);
-  useEffect(() => { if (!user || !db) return; getDocs(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc"))).then((snapshot) => setPermits(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Permit)))).catch(() => setError("Could not load permits. If this is your first setup, deploy the Firestore index or refresh.")); }, [user]);
+  useEffect(() => { if (!user || !db) return; getDocs(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc"))).then((snapshot) => setPermits(snapshot.docs.map((item) => {
+    const data = item.data() as Record<string, unknown>;
+    const names = Array.isArray(data.names) ? data.names as string[] : typeof data.name === "string" ? [data.name] : [];
+    return { id: item.id, ...data, names } as Permit;
+  }))).catch(() => setError("Could not load permits. If this is your first setup, deploy the Firestore index or refresh.")); }, [user]);
   useEffect(() => {
     if (!user || !db) return;
     getDocs(query(collection(db, "specialOrders"), where("ownerId", "==", user.uid))).then((snapshot) => {
