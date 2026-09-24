@@ -161,7 +161,7 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
       </section>
 
       <h2 className="permit-banner">PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h2>
-      <p className="permit-blank-line permit-blank-line-lg permit-filled-line">{permit.name}</p>
+      <p className="permit-blank-line permit-blank-line-lg permit-name-line">{permit.name}</p>
 
       <section className="permit-purpose-block">
         <h3>PURPOSE:</h3>
@@ -177,6 +177,9 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
           </tr>
         </thead>
         <tbody>
+          <tr><td /><td /></tr>
+          <tr><td /><td /></tr>
+          <tr><td /><td /></tr>
           <tr><td /><td /></tr>
           <tr><td /><td /></tr>
           <tr><td /><td /></tr>
