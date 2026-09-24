@@ -161,11 +161,11 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
       </section>
 
       <h2 className="permit-banner">PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h2>
-      <div className="permit-blank-line permit-blank-line-lg" />
+      <p className="permit-blank-line permit-blank-line-lg permit-filled-line">{permit.name}</p>
 
       <section className="permit-purpose-block">
         <h3>PURPOSE:</h3>
-        <div className="permit-blank-line" />
+        <p className="permit-blank-line permit-filled-line">{permit.purpose}</p>
         <div className="permit-blank-line" />
       </section>
 
@@ -184,6 +184,7 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
       </table>
 
       <div className="permit-signature-row">
+        <div className="permit-guard-signature">GUARD'S SIGNATURE</div>
         <div className="permit-time-block">
           <div className="permit-time-row">
             <span className="permit-time-label">TIME OUT</span>
@@ -200,7 +201,6 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
             <span className="permit-time-line" />
           </div>
         </div>
-        <div className="permit-guard-signature">GUARD'S SIGNATURE</div>
       </div>
 
       <div className="permit-approval">
