@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -259,100 +260,19 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     finally { setDownloading(false); }
   }
 
-  function printA4() {
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8" />
-          <title>Special Order</title>
-          <style>
-            @page { size: A4; margin: 0; }
-            * { box-sizing: border-box; }
-            html, body { margin: 0; background: #fff; }
-            body { display: flex; align-items: center; justify-content: center; font-family: Cambria, "Times New Roman", serif; color: #111; }
-            .sheet { position: relative; width: 210mm; height: 297mm; background: #fff; overflow: hidden; }
-            .sheet img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
-            .content { position: relative; z-index: 1; padding: 15mm 12mm 10mm; }
-            h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: 0.03em; }
-            .meta { margin: 0; font-size: 12px; }
-            .meta span { display: inline-block; width: 1.3in; border-bottom: 1px solid #111; }
-            .subject { margin-top: 20px; border-bottom: 1px solid #111; padding-bottom: 5px; display: grid; grid-template-columns: 31% 69%; gap: 10px; font-size: 12px; font-weight: 700; }
-            .intro { margin-top: 18px; font-size: 12px; line-height: 1.4; }
-            .details { margin-top: 20px; }
-            .details p { display: grid; grid-template-columns: 31% 69%; gap: 10px; padding: 6px 0; border-bottom: 1px solid #111; margin: 0; font-size: 12px; }
-            .details b { font-weight: 700; }
-            .details span { display: block; overflow-wrap: anywhere; }
-            .participants { margin-top: 18px; }
-            .participants .spacer { height: calc(12px * 1.15); }
-            .participants h2 { margin: 0 0 10px; font-size: 14px; font-weight: 700; }
-            .participants ol { margin: 0; padding-left: 20px; font-size: 12px; }
-            .obligations { margin-top: 20px; font-size: 12px; }
-            .obligations ul { margin: 8px 0 0 18px; padding: 0; }
-            .footer { margin-top: 18px; font-size: 11px; line-height: 1.5; }
-            @media print { body { margin: 0; } .sheet { page-break-inside: avoid; break-inside: avoid; } }
-          </style>
-        </head>
-        <body>
-          <div class="sheet">
-            <img src="${publicAsset("/Document-Header-Footer.jpg")}" alt="" />
-            <div class="content">
-              <header>
-                <h1>SPECIAL ORDER</h1>
-                <p class="meta">No. <span></span></p>
-                <p class="meta">Series of ${new Date().getFullYear()}</p>
-              </header>
-              <section class="subject">
-                <b>SUBJECT :</b>
-                <span>${order.subject}</span>
-              </section>
-              <p class="intro">In view of the unavailability of the undersigned and/or the absence of specified participants on the received communications, the following personnel is/are hereby designated to attend and represent this Office in the activity detailed below:</p>
-              <section class="details">
-                <p><b>Title of the Activity :</b><span>${order.activityTitle}</span></p>
-                <p><b>Organizer/ Host :</b><span>${order.organizer}</span></p>
-                <p><b>Date</b><span>${formatDate(order.dateFrom)}${order.dateTo !== order.dateFrom ? ` to ${formatDate(order.dateTo)}` : ""}</span></p>
-                <p><b>Venue</b><span>${order.venue}</span></p>
-              </section>
-              <section class="participants">
-                <div class="spacer"></div>
-                <h2>Designated Participant:</h2>
-                <ol>${order.participants.map((participant) => `<li>${participant}</li>`).join("")}</ol>
-              </section>
-              <section class="obligations">
-                <p>The above-named personnel shall actively participate in the said activity and are expected to:</p>
-                <ul>
-                  <li>Represent the office professionally;</li>
-                  <li>Take note of important discussions, agreements, and action items;</li>
-                  <li>Submit a brief report and/or feedback within <span>____</span> days after the activity.</li>
-                </ul>
-              </section>
-              <div class="footer">
-                Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.
-              </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-
-    const blob = new Blob([printContent], { type: "text/html" });
-    const printUrl = URL.createObjectURL(blob);
-    const printWindow = window.open(printUrl, "_blank", "width=1200,height=900");
-
-    if (!printWindow) {
-      setDownloadError("Please allow pop-ups to print the document.");
-      URL.revokeObjectURL(printUrl);
-      return;
-    }
-
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-      setTimeout(() => URL.revokeObjectURL(printUrl), 1000);
-    }, 300);
+  async function downloadPdf() {
+    if (!orderRef.current) return;
+    setDownloading(true); setDownloadError("");
+    try {
+      const canvas = await html2canvas(orderRef.current, { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, 210, 297);
+      pdf.save(`special-order-${order.dateFrom}.pdf`);
+    } catch (error) { setDownloadError(error instanceof Error ? error.message : "Unable to create the PDF."); }
+    finally { setDownloading(false); }
   }
 
-  return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button className="ghost-button" onClick={onClose}>Close</button><button className="ghost-button" onClick={printA4}>Print A4</button><button className="primary-button" disabled={downloading} onClick={downloadOrder}>{downloading ? "Preparing JPG..." : "Download this Photo"}</button>{downloadError && <small className="download-error">{downloadError}</small>}</div><article ref={orderRef} className="special-order-paper"><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><header className="special-order-heading"><h1>SPECIAL ORDER</h1><p>No. <span /></p><p>Series of {new Date().getFullYear()}</p></header><section className="special-order-subject"><p><b>SUBJECT :</b><span>{order.subject}</span></p></section><p className="special-order-intro">In view of the unavailability of the undersigned and/or the absence of specified participants on the received communications, the following personnel is/are hereby designated to attend and represent this Office in the activity detailed below:</p><section className="special-order-details"><p><b>Title of the Activity :</b><span>{order.activityTitle}</span></p><p><b>Organizer/ Host :</b><span>{order.organizer}</span></p><p><b>Date</b><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` to ${formatDate(order.dateTo)}`}</span></p><p><b>Venue</b><span>{order.venue}</span></p></section><section className="special-order-participants"><div className="special-order-spacer" aria-hidden="true" /><h2>Designated Participant:</h2><ol>{order.participants.map((participant) => <li key={participant}>{participant}</li>)}</ol></section><section className="special-order-obligations"><p>The above-named personnel shall actively participate in the said activity and are expected to:</p><ul><li>Represent the office professionally;</li><li>Take note of important discussions, agreements, and action items;</li><li>Submit a brief written report and/or feedback within ____ days after the activity.</li></ul></section><p className="special-order-expenses">Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.</p><p className="special-order-done">Done this ____ day of ____________, {new Date().getFullYear()}</p><footer className="special-order-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><span>Regional Executive Director</span></footer></div></article></div>;
+  return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button className="ghost-button" onClick={onClose}>Close</button><button className="ghost-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button className="primary-button" disabled={downloading} onClick={downloadOrder}>{downloading ? "Preparing JPG..." : "Download this Photo"}</button>{downloadError && <small className="download-error">{downloadError}</small>}</div><article ref={orderRef} className="special-order-paper"><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><header className="special-order-heading"><h1>SPECIAL ORDER</h1><p>No. <span /></p><p>Series of {new Date().getFullYear()}</p></header><section className="special-order-subject"><p><b>SUBJECT :</b><span>{order.subject}</span></p></section><p className="special-order-intro">In view of the unavailability of the undersigned and/or the absence of specified participants on the received communications, the following personnel is/are hereby designated to attend and represent this Office in the activity detailed below:</p><section className="special-order-details"><p><b>Title of the Activity :</b><span>{order.activityTitle}</span></p><p><b>Organizer/ Host :</b><span>{order.organizer}</span></p><p><b>Date</b><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` to ${formatDate(order.dateTo)}`}</span></p><p><b>Venue</b><span>{order.venue}</span></p></section><section className="special-order-participants"><div className="special-order-spacer" aria-hidden="true" /><h2>Designated Participant:</h2><ol>{order.participants.map((participant) => <li key={participant}>{participant}</li>)}</ol></section><section className="special-order-obligations"><p>The above-named personnel shall actively participate in the said activity and are expected to:</p><ul><li>Represent the office professionally;</li><li>Take note of important discussions, agreements, and action items;</li><li>Submit a brief written report and/or feedback within ____ days after the activity.</li></ul></section><p className="special-order-expenses">Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.</p><p className="special-order-done">Done this ____ day of ____________, {new Date().getFullYear()}</p><footer className="special-order-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><span>Regional Executive Director</span></footer></div></article></div>;
 }
 
 export default function Home() {
