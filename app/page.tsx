@@ -150,6 +150,9 @@ function PermitCard({ permit, name }: { permit: Permit; name: string }) {
         <tr><td /><td /></tr>
         <tr><td /><td /></tr>
         <tr><td /><td /></tr>
+        <tr><td /><td /></tr>
+        <tr><td /><td /></tr>
+        <tr><td /><td /></tr>
       </tbody>
     </table>
 
