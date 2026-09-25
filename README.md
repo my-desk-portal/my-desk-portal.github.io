@@ -1,4 +1,4 @@
-# Permit Desk
+# My Desk Portal
 
 A Next.js + Firebase permit-slip portal with email authentication, per-user permit records, automatic permit numbering, and A4 print output.
 
@@ -66,4 +66,4 @@ NEXT_PUBLIC_FIREBASE_APP_ID
 
 Enable **Settings > Pages > Source: GitHub Actions**. Pushes to `master` then publish the app at:
 
-`https://permit-slip-portal.github.io/`
+`https://my-desk-portal.github.io/`

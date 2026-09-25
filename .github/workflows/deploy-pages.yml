@@ -1,4 +1,4 @@
-name: Deploy Permit Desk to GitHub Pages
+name: Deploy My Desk Portal to GitHub Pages
 
 on:
   push:
