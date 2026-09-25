@@ -4,11 +4,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://my-desk-portal.github.io"),
   title: "My Desk",
-  description: "Permit slip registration and management",
+  description: "where your docs meet automation",
   icons: { icon: "/my%20desk%20logo.png" },
   openGraph: {
     title: "My Desk",
-    description: "Permit slip registration and management",
+    description: "where your docs meet automation",
     url: "/",
     siteName: "My Desk",
     images: [{ url: "/share-image.png", alt: "My Desk" }],
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "My Desk",
-    description: "Permit slip registration and management",
+    description: "where your docs meet automation",
     images: ["/share-image.png"],
   },
 };
