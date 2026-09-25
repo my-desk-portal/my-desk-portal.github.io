@@ -4,8 +4,8 @@
 .nta-batch-caption{font-weight:700;line-height:1.2;margin:0 0 .5cqi;overflow-wrap:anywhere}
 /* 12.1cqi is approximately 96px (one inch) on a full-size A4 page and scales down with mobile previews. */
 .nta-document-content{bottom:12.1cqi}.nta-batch-attendees{bottom:12.1cqi}
-.nta-batch-attendees .nta-fixed-copy{margin-top:2.5cqi}.nta-batch-attendees .nta-fixed-copy p:last-child{margin-bottom:0}.nta-batch-attendees .nta-signatory{margin-top:0}
-.nta-batch-overview.nta-roster-copy-page .nta-fixed-copy{margin-top:2.5cqi}.nta-roster-copy-page .nta-signatory{margin-top:0}.nta-batch-copy .nta-fixed-copy{margin-top:0}
+.nta-batch-attendees .nta-fixed-copy{margin-top:2.5cqi}.nta-batch-attendees .nta-fixed-copy p:last-child{margin-bottom:0}.nta-batch-attendees .nta-signatory{margin-top:10cqi}
+.nta-batch-overview.nta-roster-copy-page .nta-fixed-copy{margin-top:2.5cqi}.nta-roster-copy-page .nta-signatory{margin-top:10cqi}.nta-batch-copy .nta-fixed-copy{margin-top:0}
 .nta-roster-copy-hidden .nta-fixed-copy,.nta-roster-copy-hidden .nta-signatory{visibility:hidden}
 .nta-document-content.batch-overview,.nta-document-content.batch-attendees,.nta-document-content.batch-copy{overflow:hidden}
 .nta-document-content.individual-continuation{top:18%}
