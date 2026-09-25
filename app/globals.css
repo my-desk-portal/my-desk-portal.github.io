@@ -101,3 +101,62 @@
 }
 
 .logout-button{align-items:center;display:inline-flex;justify-content:center;padding:6px}.logout-button svg{height:18px;width:18px}
+
+@media(max-width:720px){.topbar{gap:8px;padding:16px 12px}.brand{gap:7px}.main-nav{gap:0;margin:0 3px 0 auto}.nav-button{font-size:10px;padding:8px 5px}.user-menu{gap:6px}}
+
+/* Keep A4 preview pages centered across Permit, Special Order, and NTA. */
+.preview-backdrop{align-content:start;display:grid;grid-template-columns:minmax(0,1fr);justify-items:center}
+.preview-toolbar{width:100%}
+.special-order-paper{justify-self:center;margin-inline:auto}
+.permit-sheets{justify-items:center;margin:0 auto;width:100%}
+
+/* Scale the four permit cards with the A4 preview sheet on narrow screens. */
+.permit-sheet{aspect-ratio:210/297;container-type:inline-size;height:auto;width:min(90vw,210mm)}
+.permit-document{font-size:1.512cqi;height:100%;padding:1.935cqi 2.177cqi;width:100%}
+.permit-header{gap:.968cqi;margin-bottom:.726cqi}
+.permit-logos{gap:.605cqi}
+.permit-logo-left{height:5.08cqi;width:5.322cqi}
+.permit-logo-right{height:4.838cqi;width:4.838cqi}
+.permit-heading{font-size:1.764cqi}
+.permit-metadata{gap:.378cqi;margin:1.089cqi 0}
+.permit-meta-row{gap:.63cqi;grid-template-columns:7.5cqi 1.26cqi 1fr}
+.permit-input-line{min-height:1.89cqi;padding-top:.252cqi}
+.permit-banner{font-size:2.268cqi;margin:.968cqi 0 .378cqi}
+.permit-blank-line{margin: .756cqi 0;min-height:1.89cqi}
+.permit-blank-line-lg{margin-top:1.008cqi}
+.permit-name-line{font-size:2.268cqi;padding-top:.252cqi}
+.permit-purpose-block h3{margin:1.089cqi 0 .378cqi}
+.permit-grid{margin-top:.968cqi}
+.permit-grid th,.permit-grid td{height:2.016cqi;padding:.252cqi .378cqi}
+.permit-signature-row{gap:.378cqi;margin-top:1.089cqi}
+.permit-time-block{gap:.378cqi}
+.permit-time-row{gap:.378cqi;grid-template-columns:7.984cqi .756cqi 1fr .756cqi 1fr}
+.permit-time-line{min-height:1.134cqi}
+.permit-guard-signature{margin-bottom:.378cqi}
+.permit-approval{margin-top:1.21cqi}
+.permit-approved-label{margin-bottom:.378cqi}
+.permit-approved-name{padding:.504cqi 0}
+.permit-approved-role{margin-top:.378cqi}
+@media(max-width:720px){.permit-sheets{padding:0}}
+@media print{.permit-sheet{aspect-ratio:auto;height:297mm;width:210mm}.permit-document{height:148.5mm;padding:.14in .16in;width:105mm}}
+
+/* Paginate Special Orders while keeping the same one-inch bottom margin as NTA. */
+.special-order-preview-pages{display:grid;gap:24px;justify-items:center;margin:0 auto;width:100%}
+.special-order-paper{aspect-ratio:210/297;container-type:inline-size;justify-self:center;margin-inline:auto;width:min(90vw,210mm)}
+.special-order-content{inset:0}
+.special-order-flow{bottom:12.1cqi}
+.special-order-flow-continued{top:13.4%}
+.special-order-closing{break-inside:avoid}
+.special-order-obligations{margin:2.32cqi 0 .63cqi}
+.special-order-obligation-list{margin:0;padding-left:1.8em}
+.special-order-obligation-list li{padding-left:.504cqi}
+.special-order-expenses{margin:1.26cqi 0}
+.special-order-done{margin:1.26cqi 0}
+.special-order-signatory{margin-top:9.28cqi}
+.special-order-closing-pulled .special-order-signatory{margin-top:4.64cqi}
+@media print{
+  .special-order-preview-pages{display:block;width:auto}
+  .special-order-paper{aspect-ratio:auto;break-after:page;margin:0 auto;page-break-after:always}
+  .special-order-paper:last-child{break-after:auto;page-break-after:auto}
+  .special-order-paper .special-order-content{inset:0!important;position:absolute!important}
+}

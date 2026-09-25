@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import {
@@ -22,6 +22,7 @@ import {
   where,
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
+import NtaModule from "./Nta";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; unit: Unit; purpose: string; createdAt?: unknown };
@@ -57,8 +58,8 @@ function Login({ onError }: { onError: (message: string) => void }) {
   }
 
   return <main className="auth-shell">
-    <section className="auth-intro"><div className="brand-mark">PD</div><p className="eyebrow">Permit administration</p><h1>Keep every<br /><em>movement</em> accounted for.</h1><p className="intro-copy">A clear, dependable desk for creating and retrieving official permit slips.</p><div className="intro-note"><span>01</span><p>Authenticated access for your unit</p></div></section>
-    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><div className="brand-mark">PD</div><span>Permit Desk</span></div><p className="eyebrow">{registering ? "New account" : "Welcome back"}</p><h2>{registering ? "Create your account" : "Sign in to Permit Desk"}</h2><p className="muted">{registering ? "Start managing your permit slips." : "Enter your details to continue."}</p><form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label><label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label><button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button></form><button className="text-button" onClick={() => setRegistering(!registering)}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button></div></section>
+    <section className="auth-intro"><div className="brand-mark">MD</div><p className="eyebrow">MD Administration</p><h1>Keep every<br /><em>movement</em> accounted for.</h1><p className="intro-copy">A clear, dependable desk for creating and retrieving official permit slips.</p><div className="intro-note"><span>01</span><p>Authenticated access for your unit</p></div></section>
+    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><div className="brand-mark">MD</div><span>My Desk</span></div><p className="eyebrow">{registering ? "New account" : "Welcome back"}</p><h2>{registering ? "Create your account" : "Sign in to My Desk"}</h2><p className="muted">{registering ? "Start managing your permit slips." : "Enter your details to continue."}</p><form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label><label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label><button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button></form><button className="text-button" onClick={() => setRegistering(!registering)}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button></div></section>
   </main>;
 }
 
@@ -265,23 +266,189 @@ function SpecialOrderList({ orders, onNew, onPrint }: { orders: SpecialOrder[]; 
 }
 
 function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose: () => void }) {
-  const orderRef = useRef<HTMLElement>(null);
+  const pagesRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
+  const [firstPageCount, setFirstPageCount] = useState(order.participants.length);
+  const [firstPageSaturated, setFirstPageSaturated] = useState(false);
+  const [continuationSettings, setContinuationSettings] = useState<{ capacity: number; saturated: boolean }[]>([]);
+  const [closingUnitsOnLastAttendeePage, setClosingUnitsOnLastAttendeePage] = useState(7);
+  const [closingPageSettings, setClosingPageSettings] = useState<{ capacity: number; saturated: boolean }[]>([]);
+  const [signatoryPulledBack, setSignatoryPulledBack] = useState(false);
+
+  const continuationPages: string[][] = [];
+  const remainingParticipants = order.participants.slice(firstPageCount);
+  let continuationOffset = 0;
+  while (continuationOffset < remainingParticipants.length) {
+    const pageIndex = continuationPages.length;
+    const capacity = Math.max(1, continuationSettings[pageIndex]?.capacity ?? 24);
+    continuationPages.push(remainingParticipants.slice(continuationOffset, continuationOffset + capacity));
+    continuationOffset += capacity;
+  }
+
+  const closingUnits = [
+    <p className="special-order-obligations special-order-closing-unit" data-special-order-closing-unit key="obligations">The above-named personnel shall actively participate in the said activity and are expected to:</p>,
+    <ul className="special-order-obligation-list special-order-closing-unit" data-special-order-closing-unit key="represent"><li>Represent the office professionally;</li></ul>,
+    <ul className="special-order-obligation-list special-order-closing-unit" data-special-order-closing-unit key="discussions"><li>Take note of important discussions, agreements, and action items;</li></ul>,
+    <ul className="special-order-obligation-list special-order-closing-unit" data-special-order-closing-unit key="report"><li>Submit a brief written report and/or feedback within ____ days after the activity.</li></ul>,
+    <p className="special-order-expenses special-order-closing-unit" data-special-order-closing-unit key="expenses">Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.</p>,
+    <p className="special-order-done special-order-closing-unit" data-special-order-closing-unit key="done">Done this ____ day of ____________, {new Date().getFullYear()}</p>,
+    <footer className="special-order-signatory special-order-closing-unit" data-special-order-closing-unit key="signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><span>Regional Executive Director</span></footer>,
+  ];
+  const closingContinuationPages: (typeof closingUnits)[] = [];
+  const remainingClosingUnits = closingUnits.slice(closingUnitsOnLastAttendeePage);
+  let closingOffset = 0;
+  while (closingOffset < remainingClosingUnits.length) {
+    const pageIndex = closingContinuationPages.length;
+    const capacity = Math.max(1, closingPageSettings[pageIndex]?.capacity ?? 7);
+    closingContinuationPages.push(remainingClosingUnits.slice(closingOffset, closingOffset + capacity));
+    closingOffset += capacity;
+  }
+  if (closingContinuationPages.length > 1) {
+    const lastPage = closingContinuationPages[closingContinuationPages.length - 1];
+    const previousPage = closingContinuationPages[closingContinuationPages.length - 2];
+    if (lastPage.length === 1 && lastPage[0] === closingUnits[closingUnits.length - 1] && previousPage.length > 0) {
+      const precedingUnit = previousPage.pop();
+      if (precedingUnit) lastPage.unshift(precedingUnit);
+      if (previousPage.length === 0) closingContinuationPages.splice(closingContinuationPages.length - 2, 1);
+    }
+  }
+  const renderClosingUnits = (units: typeof closingUnits) => units.length > 0
+    ? <div className={`special-order-closing${signatoryPulledBack && units.includes(closingUnits[closingUnits.length - 1]) ? " special-order-closing-pulled" : ""}`}>{units}</div>
+    : null;
+
+  useLayoutEffect(() => {
+    const pages = pagesRef.current;
+    if (!pages) return;
+
+    const pageLimit = (page: HTMLElement) => {
+      const rect = page.getBoundingClientRect();
+      return rect.bottom - rect.width * 0.121;
+    };
+
+    const firstPage = pages.querySelector<HTMLElement>(".special-order-paper");
+    if (!firstPage) return;
+
+    const firstRows = Array.from(firstPage.querySelectorAll<HTMLElement>(".special-order-first-participants li"));
+    const firstFitCount = firstRows.filter((row) => row.getBoundingClientRect().bottom <= pageLimit(firstPage)).length;
+    if (firstFitCount < firstRows.length) {
+      if (firstFitCount !== firstPageCount) setFirstPageCount(firstFitCount);
+      if (!firstPageSaturated) setFirstPageSaturated(true);
+      return;
+    }
+    if (firstPageCount < order.participants.length && !firstPageSaturated) {
+      setFirstPageCount(firstPageCount + 1);
+      return;
+    }
+
+    const continuationElements = Array.from(pages.querySelectorAll<HTMLElement>(".special-order-continuation-page"));
+    const nextSettings = [...continuationSettings];
+    for (let pageIndex = 0; pageIndex < continuationElements.length; pageIndex += 1) {
+      const page = continuationElements[pageIndex];
+      const rows = Array.from(page.querySelectorAll<HTMLElement>(".special-order-continuation-participants li"));
+      const fitCount = rows.filter((row) => row.getBoundingClientRect().bottom <= pageLimit(page)).length;
+      const current = nextSettings[pageIndex] ?? { capacity: 24, saturated: false };
+      if (fitCount < rows.length) {
+        const capacity = Math.max(1, fitCount);
+        if (capacity !== current.capacity || !current.saturated) {
+          nextSettings[pageIndex] = { capacity, saturated: true };
+          setContinuationSettings(nextSettings);
+          return;
+        }
+      } else if (pageIndex < continuationElements.length - 1 && rows.length === current.capacity && !current.saturated) {
+        nextSettings[pageIndex] = { capacity: current.capacity + 1, saturated: false };
+        setContinuationSettings(nextSettings);
+        return;
+      }
+    }
+
+    const lastAttendeePage = continuationElements[continuationElements.length - 1] ?? firstPage;
+    const visibleClosingUnits = Array.from(lastAttendeePage.querySelectorAll<HTMLElement>(".special-order-closing-unit"));
+    const closingFitCount = visibleClosingUnits.filter((unit) => unit.getBoundingClientRect().bottom <= pageLimit(lastAttendeePage)).length;
+    if (closingFitCount < visibleClosingUnits.length) {
+      const signatoryWouldBeTheOnlyOverflow = visibleClosingUnits[visibleClosingUnits.length - 1]?.classList.contains("special-order-signatory") && closingFitCount === visibleClosingUnits.length - 1;
+      if (signatoryWouldBeTheOnlyOverflow && !signatoryPulledBack && closingUnitsOnLastAttendeePage === closingUnits.length) {
+        setSignatoryPulledBack(true);
+        return;
+      }
+      if (signatoryWouldBeTheOnlyOverflow && signatoryPulledBack) {
+        setClosingUnitsOnLastAttendeePage(Math.max(0, visibleClosingUnits.length - 2));
+        setSignatoryPulledBack(false);
+        return;
+      }
+      if (closingFitCount !== closingUnitsOnLastAttendeePage) setClosingUnitsOnLastAttendeePage(closingFitCount);
+      if (signatoryPulledBack) setSignatoryPulledBack(false);
+      return;
+    }
+
+    const closingContinuationElements = Array.from(pages.querySelectorAll<HTMLElement>(".special-order-closing-page"));
+    const lastClosingPage = closingContinuationElements[closingContinuationElements.length - 1];
+    const lastClosingUnits = lastClosingPage ? Array.from(lastClosingPage.querySelectorAll<HTMLElement>(".special-order-closing-unit")) : [];
+    if (closingContinuationElements.length === 1 && lastClosingUnits.length === 1 && lastClosingUnits[0].classList.contains("special-order-signatory")) {
+      setClosingUnitsOnLastAttendeePage(closingUnits.length);
+      return;
+    }
+    const nextClosingSettings = [...closingPageSettings];
+    for (let pageIndex = 0; pageIndex < closingContinuationElements.length; pageIndex += 1) {
+      const page = closingContinuationElements[pageIndex];
+      const units = Array.from(page.querySelectorAll<HTMLElement>(".special-order-closing-unit"));
+      const fitCount = units.filter((unit) => unit.getBoundingClientRect().bottom <= pageLimit(page)).length;
+      const current = nextClosingSettings[pageIndex] ?? { capacity: 7, saturated: false };
+      if (fitCount < units.length) {
+        const capacity = Math.max(1, fitCount);
+        if (capacity !== current.capacity || !current.saturated) {
+          nextClosingSettings[pageIndex] = { capacity, saturated: true };
+          setClosingPageSettings(nextClosingSettings);
+          return;
+        }
+      } else if (pageIndex < closingContinuationElements.length - 1 && units.length === current.capacity && !current.saturated) {
+        nextClosingSettings[pageIndex] = { capacity: current.capacity + 1, saturated: false };
+        setClosingPageSettings(nextClosingSettings);
+        return;
+      }
+    }
+  }, [closingContinuationPages.length, closingPageSettings, closingUnitsOnLastAttendeePage, continuationPages.length, continuationSettings, firstPageCount, firstPageSaturated, order.participants, signatoryPulledBack]);
 
   async function downloadPdf() {
-    if (!orderRef.current) return;
+    if (!pagesRef.current) return;
     setDownloading(true); setDownloadError("");
     try {
-      const canvas = await html2canvas(orderRef.current, { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
+      await Promise.all(Array.from(pagesRef.current.querySelectorAll("img")).map(async (image) => {
+        if (!image.complete) await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("The Special Order letterhead could not be loaded.")); });
+        if (image.decode) await image.decode();
+      }));
+      const pageElements = Array.from(pagesRef.current.querySelectorAll<HTMLElement>(".special-order-paper"));
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, 210, 297);
+      for (let index = 0; index < pageElements.length; index += 1) {
+        const canvas = await html2canvas(pageElements[index], { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
+        if (index > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, 210, 297);
+      }
       pdf.save(`special-order-${order.dateFrom}.pdf`);
     } catch (error) { setDownloadError(error instanceof Error ? error.message : "Unable to create the PDF."); }
     finally { setDownloading(false); }
   }
 
-  return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button className="ghost-button" onClick={onClose}>Close</button><button className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>{downloadError && <small className="download-error">{downloadError}</small>}</div><article ref={orderRef} className="special-order-paper"><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><header className="special-order-heading"><h1>SPECIAL ORDER</h1><p>No. <span /></p><p>Series of {new Date().getFullYear()}</p></header><div className="special-order-flow"><section className="special-order-subject"><p><b>SUBJECT :</b><span>{order.subject}</span></p></section><p className="special-order-intro">In view of the unavailability of the undersigned and/or the absence of specified participants on the received communications, the following personnel is/are hereby designated to attend and represent this Office in the activity detailed below:</p><div className="special-order-body"><section className="special-order-details"><p><b>Title of the Activity :</b><span>{order.activityTitle}</span></p><p><b>Organizer/ Host :</b><span>{order.organizer}</span></p><p><b>Date :</b><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` to ${formatDate(order.dateTo)}`}</span></p><p><b>Venue :</b><span>{order.venue}</span></p></section><section className="special-order-participants"><div className="special-order-spacer" aria-hidden="true" /><h2>{order.participants.length === 1 ? "Designated Participant:" : "Designated Participants:"}</h2><ol>{order.participants.map((participant) => <li key={participant}>{participant}</li>)}</ol></section><section className="special-order-obligations"><div className="special-order-spacer" aria-hidden="true" /><p>The above-named personnel shall actively participate in the said activity and are expected to:</p><ul><li>Represent the office professionally;</li><li>Take note of important discussions, agreements, and action items;</li><li>Submit a brief written report and/or feedback within ____ days after the activity.</li></ul></section><p className="special-order-expenses">Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.</p><p className="special-order-done">Done this ____ day of ____________, {new Date().getFullYear()}</p><footer className="special-order-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><span>Regional Executive Director</span></footer></div></div></div></article></div>;
+  const pageParticipants = (participants: string[], continued: boolean, pageKey: string, className: string, includeClosing: boolean) => <>
+    <section className={`special-order-participants ${className}`}>
+      {!continued && <div className="special-order-spacer" aria-hidden="true" />}
+      <h2>{continued ? "Designated Participants (continued):" : order.participants.length === 1 ? "Designated Participant:" : "Designated Participants:"}</h2>
+      <ol>{participants.map((participant, index) => <li key={`${pageKey}-${index}`}>{participant}</li>)}</ol>
+    </section>
+    {includeClosing && renderClosingUnits(closingUnits.slice(0, closingUnitsOnLastAttendeePage))}
+  </>;
+
+  const firstPageHasAllParticipants = continuationPages.length === 0;
+  return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button className="ghost-button" onClick={onClose}>Close</button><button className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>{downloadError && <small className="download-error">{downloadError}</small>}</div>
+    <div ref={pagesRef} className="special-order-preview-pages">
+      <article className="special-order-paper"><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><header className="special-order-heading"><h1>SPECIAL ORDER</h1><p>No. <span /></p><p>Series of {new Date().getFullYear()}</p></header><div className="special-order-flow"><section className="special-order-subject"><p><b>SUBJECT :</b><span>{order.subject}</span></p></section><p className="special-order-intro">In view of the unavailability of the undersigned and/or the absence of specified participants on the received communications, the following personnel is/are hereby designated to attend and represent this Office in the activity detailed below:</p><div className="special-order-body"><section className="special-order-details"><p><b>Title of the Activity :</b><span>{order.activityTitle}</span></p><p><b>Organizer/ Host :</b><span>{order.organizer}</span></p><p><b>Date :</b><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` to ${formatDate(order.dateTo)}`}</span></p><p><b>Venue :</b><span>{order.venue}</span></p></section>{(firstPageCount > 0 || order.participants.length === 0) && pageParticipants(order.participants.slice(0, firstPageCount), false, "first", "special-order-first-participants", firstPageHasAllParticipants)}</div></div></div></article>
+      {continuationPages.map((participants, index) => {
+        const isLastPage = index === continuationPages.length - 1;
+        return <article className="special-order-paper special-order-continuation-page" key={`continuation-${index}`}><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><div className="special-order-flow special-order-flow-continued">{pageParticipants(participants, true, `continuation-${index}`, "special-order-continuation-participants", isLastPage)}</div></div></article>;
+      })}
+      {closingContinuationPages.map((units, index) => <article className="special-order-paper special-order-closing-page" key={`closing-${index}`}><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><div className="special-order-flow special-order-flow-continued">{renderClosingUnits(units)}</div></div></article>)}
+    </div>
+  </div>;
 }
 
 export default function Home() {
@@ -289,7 +456,7 @@ export default function Home() {
   const [permits, setPermits] = useState<Permit[]>([]);
   const [specialOrders, setSpecialOrders] = useState<SpecialOrder[]>([]);
   const [view, setView] = useState<"list" | "new">("list");
-  const [section, setSection] = useState<"permits" | "special-orders">("permits");
+  const [section, setSection] = useState<"permits" | "special-orders" | "nta">("permits");
   const [preview, setPreview] = useState<Permit | null>(null);
   const [specialOrderPreview, setSpecialOrderPreview] = useState<SpecialOrder | null>(null);
   const [error, setError] = useState("");
@@ -317,9 +484,9 @@ export default function Home() {
     });
   }, [user]);
 
-  if (loading) return <div className="loading-screen">Loading Permit Desk...</div>;
-  if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><div className="brand-mark">PD</div><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
+  if (loading) return <div className="loading-screen">Loading My Desk...</div>;
+  if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><div className="brand-mark">MD</div><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
   if (!user) return <Login onError={setError} />;
 
-  return <div className="app-shell"><header className="topbar"><div className="brand"><div className="brand-mark">PD</div><span>Permit Desk</span></div><nav className="main-nav"><button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button><button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button></nav><div className="user-menu"><span>{user.email}</span><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header><main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you.</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
+  return <div className="app-shell"><header className="topbar"><div className="brand"><div className="brand-mark">MD</div><span>My Desk</span></div><nav className="main-nav"><button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button><button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button><button className={section === "nta" ? "nav-button active" : "nav-button"} onClick={() => { setSection("nta"); setView("list"); }}>NTA</button></nav><div className="user-menu"><span>{user.email}</span><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header><main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you.</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "nta" ? <NtaModule user={user} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }

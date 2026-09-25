@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Permit Desk",
+  title: "My Desk",
   description: "Permit slip registration and management",
 };
 
