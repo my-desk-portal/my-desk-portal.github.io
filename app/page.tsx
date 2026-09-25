@@ -24,7 +24,7 @@ import {
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
-type Permit = { id: string; permitNo: string; date: string; names: string[]; unit: Unit; purpose: string; createdAt?: unknown };
+type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; unit: Unit; purpose: string; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; venue: string; participants: string[]; createdAt?: unknown };
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
@@ -80,10 +80,12 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
       const permit = await runTransaction(firestore, async (transaction) => {
         const counterRef = doc(firestore, "permitCounters", `${unit}-${year}`);
         const counterSnapshot = await transaction.get(counterRef);
-        const nextNumber = (counterSnapshot.exists() ? counterSnapshot.data().lastNumber : 0) + 1;
+        const firstNumber = (counterSnapshot.exists() ? counterSnapshot.data().lastNumber : 0) + 1;
+        const permitNos = nameList.map((_, index) => `${unit}-${year}-${String(firstNumber + index).padStart(4, "0")}`);
+        const lastNumber = firstNumber + nameList.length - 1;
         const permitRef = doc(collection(firestore, "permits"));
-        const record = { permitNo: `${unit}-${year}-${String(nextNumber).padStart(4, "0")}`, date, names: nameList, unit, purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
-        transaction.set(counterRef, { lastNumber: nextNumber, unit, year });
+        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, unit, purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
+        transaction.set(counterRef, { lastNumber, unit, year });
         transaction.set(permitRef, record);
         return { id: permitRef.id, ...record } as Permit;
       });
@@ -96,7 +98,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
 }
 
 function PermitList({ permits, onNew, onPrint }: { permits: Permit[]; onNew: () => void; onPrint: (permit: Permit) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>+ New permit</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.permitNo}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View</button></div>)}</div>}</section>;
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>+ New permit</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.permitNos?.length ? `${permit.permitNos[0]}${permit.permitNos.length > 1 ? ` - ${permit.permitNos[permit.permitNos.length - 1]}` : ""}` : permit.permitNo}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View</button></div>)}</div>}</section>;
 }
 
 function chunkNames(names: string[], size: number) {
@@ -105,7 +107,7 @@ function chunkNames(names: string[], size: number) {
   return chunks;
 }
 
-function PermitCard({ permit, name }: { permit: Permit; name: string }) {
+function PermitCard({ permit, name, permitNo }: { permit: Permit; name: string; permitNo: string }) {
   return <article className="permit-document">
     <header className="permit-header">
       <div className="permit-logos">
@@ -121,7 +123,7 @@ function PermitCard({ permit, name }: { permit: Permit; name: string }) {
       <div className="permit-meta-row">
         <span className="permit-label">PS No.</span>
         <span className="permit-colon">:</span>
-        <span className="permit-input-line">{permit.permitNo}</span>
+        <span className="permit-input-line">{permitNo}</span>
       </div>
       <div className="permit-meta-row">
         <span className="permit-label">Date</span>
@@ -227,7 +229,7 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
     </div>
     <div ref={sheetsRef} className="permit-sheets">
       {sheets.map((sheetNames, sheetIndex) => <div className="permit-sheet" key={sheetIndex}>
-        {sheetNames.map((name, nameIndex) => <PermitCard permit={permit} name={name} key={nameIndex} />)}
+        {sheetNames.map((name, nameIndex) => { const personIndex = sheetIndex * 4 + nameIndex; return <PermitCard permit={permit} name={name} permitNo={permit.permitNos?.[personIndex] ?? permit.permitNo} key={nameIndex} />; })}
       </div>)}
     </div>
   </div>;
