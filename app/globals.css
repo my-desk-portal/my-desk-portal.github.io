@@ -99,3 +99,5 @@
     display: block !important;
   }
 }
+
+.logout-button{align-items:center;display:inline-flex;justify-content:center;padding:6px}.logout-button svg{height:18px;width:18px}
