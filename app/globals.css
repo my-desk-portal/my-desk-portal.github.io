@@ -103,6 +103,7 @@
 .logout-button{align-items:center;display:inline-flex;justify-content:center;padding:6px}.logout-button svg{height:18px;width:18px}
 
 @media(max-width:720px){.topbar{gap:8px;padding:16px 12px}.brand{gap:7px}.main-nav{gap:0;margin:0 3px 0 auto}.nav-button{font-size:10px;padding:8px 5px}.user-menu{gap:6px}}
+.brand-logo,.auth-intro .brand-logo{background:transparent;object-fit:contain}
 
 /* Keep A4 preview pages centered across Permit, Special Order, and NTA. */
 .preview-backdrop{align-content:start;display:grid;grid-template-columns:minmax(0,1fr);justify-items:center}
