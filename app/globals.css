@@ -164,3 +164,10 @@
 }
 .brand-home{background:transparent;border:0;color:inherit;cursor:pointer;padding:0;text-align:left}
 .brand-home:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.auth-validation-message{color:#a23d2d;font-size:12px;margin:-12px 0 0}
+.auth-name-fields{display:grid;gap:14px;grid-template-columns:1fr 1fr}
+.auth-message{font-size:13px;line-height:1.5;padding:12px 14px}
+.auth-message-error{background:#fff0eb;border-left:3px solid var(--accent);color:#9e3824}
+.auth-message-success{background:#eaf5ed;border-left:3px solid #398052;color:#21603a}
+@media(max-width:480px){.auth-name-fields{grid-template-columns:1fr}}
+.user-greeting{color:var(--ink);font-weight:600;white-space:nowrap}

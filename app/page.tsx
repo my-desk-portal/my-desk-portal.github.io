@@ -6,8 +6,11 @@ import { jsPDF } from "jspdf";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  reload,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signOut,
+  updateProfile,
   type User,
 } from "firebase/auth";
 import {
@@ -39,32 +42,69 @@ function formatDate(date: string) {
 
 function Login({ onError }: { onError: (message: string) => void }) {
   const [registering, setRegistering] = useState(false);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
-  async function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!auth) return;
+    setAuthMessage(null);
+    if (registering && (!firstName.trim() || !lastName.trim())) {
+      setAuthMessage({ kind: "error", text: "Enter your first and last name." });
+      return;
+    }
+    if (registering && password !== confirmPassword) return;
     setBusy(true);
     onError("");
     try {
-      if (registering) await createUserWithEmailAndPassword(auth, email, password);
-      else await signInWithEmailAndPassword(auth, email, password);
+      if (registering) {
+        const credential = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(credential.user, { displayName: `${firstName.trim()} ${lastName.trim()}` });
+        await sendEmailVerification(credential.user);
+        await signOut(auth);
+        setAuthMessage({ kind: "success", text: `A verification email was sent to ${email}. Verify your email before signing in.` });
+      } else {
+        const credential = await signInWithEmailAndPassword(auth, email, password);
+        await reload(credential.user);
+        if (!credential.user.emailVerified) {
+          await sendEmailVerification(credential.user);
+          await signOut(auth);
+          setAuthMessage({ kind: "error", text: "Your email is not verified yet. We sent another verification link; verify your email before signing in." });
+        }
+      }
     } catch (error) {
+      if (auth.currentUser && !auth.currentUser.emailVerified) await signOut(auth).catch(() => undefined);
       const firebaseError = error as { code?: string; message?: string };
       const code = firebaseError.code?.replace("auth/", "");
-      onError(code ? `${code}: ${firebaseError.message ?? "Unable to authenticate."}` : "Unable to authenticate.");
+      const message = code ? `${code}: ${firebaseError.message ?? "Unable to authenticate."}` : "Unable to authenticate.";
+      setAuthMessage({ kind: "error", text: message });
+      onError(message);
     } finally { setBusy(false); }
   }
 
   return <main className="auth-shell">
     <section className="auth-intro"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><p className="eyebrow">MD Administration</p><h1>Keep every<br /><em>movement</em> accounted for.</h1><p className="intro-copy">A clear, dependable desk for creating and retrieving official docs.</p><div className="intro-note"><span>01</span><p>Authenticated access for your unit</p></div></section>
-    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><span>My Desk</span></div><p className="eyebrow">{registering ? "New account" : "Welcome back"}</p><h2>{registering ? "Create your account" : "Sign in to My Desk"}</h2><p className="muted">{registering ? "Start managing your permit slips." : "Enter your details to continue."}</p><form onSubmit={submit}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label><label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label><button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button></form><button className="text-button" onClick={() => setRegistering(!registering)}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button></div></section>
+    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><span>My Desk</span></div><p className="eyebrow">{registering ? "New account" : "Welcome back"}</p><h2>{registering ? "Create your account" : "Sign in to My Desk"}</h2><p className="muted">{registering ? "Create your account and verify your email to get started." : "Enter your details to continue."}</p>
+      {authMessage && <div className={`auth-message auth-message-${authMessage.kind}`} role={authMessage.kind === "error" ? "alert" : "status"}>{authMessage.text}</div>}
+      <form onSubmit={submit}>
+        {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Last Name<input autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
+        <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
+        <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label>
+        {registering && <label>Confirm Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label>}
+        {registering && confirmPassword && confirmPassword !== password && <p className="auth-validation-message" role="alert">Passwords do not match.</p>}
+        <button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button>
+      </form>
+      <button className="text-button" onClick={() => { setRegistering(!registering); setConfirmPassword(""); setShowConfirmPassword(false); setAuthMessage(null); onError(""); }}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button>
+    </div></section>
   </main>;
 }
-
 function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (permit: Permit) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [names, setNames] = useState([""]);
@@ -464,7 +504,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { if (!auth) { setLoading(false); return; } return onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); if (currentUser) { setSection("whereabouts-calendar"); setView("list"); } setLoading(false); }); }, []);
+  useEffect(() => { if (!auth) { setLoading(false); return; } return onAuthStateChanged(auth, (currentUser) => { const verifiedUser = currentUser?.emailVerified ? currentUser : null; setUser(verifiedUser); if (verifiedUser) { setSection("whereabouts-calendar"); setView("list"); } setLoading(false); }); }, []);
   useEffect(() => { if (!user || !db) return; getDocs(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc"))).then((snapshot) => setPermits(snapshot.docs.map((item) => {
     const data = item.data() as Record<string, unknown>;
     const names = Array.isArray(data.names) ? data.names as string[] : typeof data.name === "string" ? [data.name] : [];
@@ -490,5 +530,5 @@ export default function Home() {
   if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
   if (!user) return <Login onError={setError} />;
 
-  return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" /><span>My Desk</span></button><nav className="main-nav"><button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button><button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button><button className={section === "travel-orders" ? "nav-button active" : "nav-button"} aria-label="Travel Order" title="Travel Order" onClick={() => { setSection("travel-orders"); setView("list"); }}>TO</button><button className={section === "nta" ? "nav-button active" : "nav-button"} onClick={() => { setSection("nta"); setView("list"); }}>NTA</button></nav><div className="user-menu"><span>{user.email}</span><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header><main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you.</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
+  return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" /><span>My Desk</span></button><nav className="main-nav"><button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button><button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button><button className={section === "travel-orders" ? "nav-button active" : "nav-button"} aria-label="Travel Order" title="Travel Order" onClick={() => { setSection("travel-orders"); setView("list"); }}>TO</button><button className={section === "nta" ? "nav-button active" : "nav-button"} onClick={() => { setSection("nta"); setView("list"); }}>NTA</button></nav><div className="user-menu"><span className="user-greeting">Masaganang Agrikultura{user.displayName?.trim() ? `, ${user.displayName.trim().split(/\s+/)[0]}` : ""}!</span><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header><main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you.</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }

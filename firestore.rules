@@ -1,28 +1,31 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isVerifiedUser() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
     match /permits/{permitId} {
-      allow read: if request.auth != null && resource.data.ownerId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /permitCounters/{counterId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isVerifiedUser();
     }
     match /specialOrders/{orderId} {
-      allow read: if request.auth != null && resource.data.ownerId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /travelOrders/{travelOrderId} {
-      allow read: if request.auth != null && (resource.data.ownerId == request.auth.uid || resource.data.status == "Approved");
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || resource.data.status == "Approved");
+      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /travelOrderNumbers/{numberId} {
-      allow get: if request.auth != null;
+      allow get: if isVerifiedUser();
       allow list: if false;
-      allow create: if request.auth != null
+      allow create: if isVerifiedUser()
         && request.resource.data.keys().hasAll(["ownerId", "travelOrderId"])
         && request.resource.data.keys().hasOnly(["ownerId", "travelOrderId"])
         && request.resource.data.ownerId == request.auth.uid
@@ -32,9 +35,9 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     match /ntaRecords/{ntaId} {
-      allow read: if request.auth != null && resource.data.ownerId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
   }
 }
