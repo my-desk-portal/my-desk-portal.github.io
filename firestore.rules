@@ -25,6 +25,17 @@ service cloud.firestore {
     match /permitCounters/{counterId} {
       allow read, write: if isVerifiedUser();
     }
+    match /approvedPermitCalendar/{entryId} {
+      allow read: if isVerifiedUser();
+      allow create, update: if isPermitAdmin()
+        && request.resource.data.keys().hasAll(["permitId", "statusKey", "status", "permitNo", "name", "date", "purpose", "unit"])
+        && request.resource.data.keys().hasOnly(["permitId", "statusKey", "status", "permitNo", "name", "date", "purpose", "unit"])
+        && request.resource.data.permitId is string
+        && request.resource.data.statusKey is string
+        && request.resource.data.status == "Approved"
+        && getAfter(/databases/$(database)/documents/permits/$(request.resource.data.permitId)).data.personStatuses[request.resource.data.statusKey].status == "Approved";
+      allow delete: if isPermitAdmin();
+    }
     match /specialOrders/{orderId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;

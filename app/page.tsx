@@ -253,8 +253,8 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
 
     <div className="permit-approval">
       <div className="permit-approved-label">Approved:</div>
-      {decision?.status === "Approved" && <div className="permit-digital-signature"><img src={publicAsset("/signature.png")} alt="Digital signature of Gerlie B. Antipaso" /><div><span>Digitally Signed By</span><strong>{decision.signerName || "GERLIE B. ANTIPASO"}</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div></div>}
-      {decision?.status === "Disapproved" && <div className="permit-disapproved-stamp">Disapproved</div>}
+      {decision?.status === "Approved" && <div className="permit-digital-signature"><img src={publicAsset("/gba-signature.png")} alt="Digital signature of Gerlie B. Antipaso" /><div><span>Digitally Signed By</span><strong>{decision.signerName || "GERLIE B. ANTIPASO"}</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div></div>}
+      {decision?.status === "Disapproved" && <div className="permit-disapproved-stamp"><strong>Disapproved</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div>}
       <div className="permit-approved-name">GERLIE B. ANTIPASO</div>
       <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>
     </div>
