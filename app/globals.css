@@ -181,3 +181,4 @@
 .nav-dropdown-item{background:transparent;border:0;color:var(--muted);font-size:12px;padding:10px 12px;text-align:left;white-space:nowrap}
 .nav-dropdown-item:hover,.nav-dropdown-item.active{background:var(--mint);color:var(--ink)}
 .special-order-signatory span{font-style:italic}
+.dashboard-header h1 .dashboard-greeting-name{color:var(--accent)}
