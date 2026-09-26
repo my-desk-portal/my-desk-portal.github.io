@@ -190,6 +190,7 @@ function TravelOrderPaper({ order, person }: { order: TravelOrder; person: Trave
     <div className="travel-order-frame" />
     <img className="travel-order-letterhead" src={asset("/Travel%20Order%20-%20header.jpg")} alt="Department of Agriculture Caraga Region letterhead" />
     <div className="travel-order-document">
+      <div className="travel-order-header-divider" aria-hidden="true" />
       <h1>TRAVEL ORDER</h1>
       <div className="travel-order-number-date"><TravelField label="No.">{person.toNumber ?? ""}</TravelField> <TravelField label="Date" className="travel-order-date-field">{formatTravelDate(order.date)}</TravelField></div>
       <div className="travel-order-person-fields">
