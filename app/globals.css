@@ -200,7 +200,11 @@
 .notification-status{font-family:'DM Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .notification-status-approved{color:#287242}
 .notification-status-disapproved{color:#b52626}
+.notification-status-pending{color:#9b6419}
 .notification-item strong{font-size:13px;overflow-wrap:anywhere}
+.notification-detail{display:grid;gap:2px}
+.notification-detail-label{color:var(--muted);font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+.notification-item strong.notification-status{font-size:10px}
 .notification-permit-number,.notification-item small{color:var(--muted);font-size:11px;overflow-wrap:anywhere}
 .notification-view-label{color:var(--accent-dark);font-size:11px;font-weight:700}
 .notification-empty{color:var(--muted);font-size:12px;margin:0;padding:14px 16px}
