@@ -1,0 +1,75 @@
+.travel-order-form-section,.travel-order-list-section{max-width:1100px}
+.travel-order-form{align-items:start}
+.travel-order-people{display:grid;gap:12px}
+.travel-order-people-heading{display:grid;gap:4px}
+.travel-order-people-heading strong{color:var(--ink);font-size:13px}
+.travel-order-people-heading span,.muted-inline{color:var(--muted);font-size:11px;font-weight:400}
+.travel-order-person{align-items:end;border:1px solid var(--line);display:grid;gap:14px;grid-template-columns:1fr 1fr 1fr;margin:0;min-width:0;padding:16px}
+.travel-order-person legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:11px;padding:0 7px}
+.travel-order-person .remove-participant{grid-column:1/-1;justify-self:start}
+.travel-order-list-head,.travel-order-list-row{grid-template-columns:1.15fr 1.7fr 1.7fr 1.2fr .7fr}
+.travel-order-list-row{align-items:center}
+.travel-order-list-people{overflow-wrap:anywhere}
+.travel-order-status{align-items:start;display:grid;gap:3px}
+.travel-order-status select{background:#fff;border:1px solid var(--line);border-radius:0;color:var(--ink);font-size:12px;font-weight:700;padding:7px 8px;width:100%}
+.travel-order-status-processing select{background:#fff5e8;color:#8e5712}
+.travel-order-status-approved select{background:#eaf5ed;color:#21603a}
+.travel-order-status-disapproved select{background:#fff0ed;color:#a23d2d}
+.travel-order-status small{color:var(--muted);font-size:10px}
+.travel-order-error{margin-bottom:18px}
+.travel-order-preview-backdrop{align-content:start;display:grid;grid-template-columns:minmax(0,1fr);justify-items:center}
+.travel-order-preview-backdrop>.preview-toolbar{width:100%}
+.travel-order-preview-pages{display:grid;gap:24px;justify-items:center;margin:0 auto;width:100%}
+.travel-order-paper{aspect-ratio:210/297;background:#fff;box-shadow:0 18px 50px #0004;container-type:inline-size;overflow:hidden;position:relative;width:min(90vw,210mm)}
+.travel-order-letterhead{height:100%;inset:0;object-fit:fill;position:absolute;width:100%}
+.travel-order-frame{border:1px solid #111;inset:8.8% 12.1% 10.8%;position:absolute;z-index:1}
+.travel-order-document,.travel-order-document *{box-sizing:border-box;color:#111;font-family:Cambria,'Times New Roman',serif}
+.travel-order-document{font-size:1.55cqi;inset:23% 15.8% 12.8%;line-height:1.2;position:absolute;z-index:2}
+.travel-order-document h1{font-size:2.15cqi;line-height:1.15;margin:0 0 2cqi;text-align:center}
+.travel-order-number-date{display:grid;gap:.2cqi;grid-template-columns:1fr;margin:0 0 3.3cqi;margin-left:auto;width:38%}
+.travel-order-field{align-items:end;display:grid;gap:.8cqi;grid-template-columns:max-content minmax(0,1fr);min-width:0}
+.travel-order-field>strong{font-size:1em;white-space:nowrap}
+.travel-order-value{border-bottom:1px solid #111;display:block;line-height:1.2;min-height:2.45cqi;min-width:0;overflow-wrap:anywhere;padding:0 .35cqi .15cqi}
+.travel-order-number-date .travel-order-field{grid-template-columns:5cqi minmax(0,1fr)}
+.travel-order-number-date .travel-order-field>strong{text-align:right}
+.travel-order-date-field .travel-order-value{font-weight:400}
+.travel-order-person-fields,.travel-order-date-fields{display:grid;gap:1.4cqi;grid-template-columns:1fr 1fr}
+.travel-order-person-fields{margin-bottom:3cqi}
+.travel-order-person-fields>div{display:grid;gap:.5cqi}
+.travel-order-date-fields{margin-bottom:1.5cqi}
+.travel-order-fields-stack{display:grid;gap:.8cqi}
+.travel-order-fields-stack .travel-order-field{align-items:end;grid-template-columns:max-content minmax(0,1fr)}
+.travel-order-fields-stack .travel-order-value{min-height:2.75cqi}
+.travel-order-approvals{display:grid;gap:5cqi;grid-template-columns:1fr 1fr;margin-top:2.5cqi;text-align:center}
+.travel-order-approvals>div{display:grid;grid-template-rows:auto 4.2cqi auto;min-width:0}
+.travel-order-approvals span{font-size:.95em;text-align:left}
+.travel-order-approvals strong{align-self:end;border-bottom:1px solid #111;font-size:.95em;line-height:1.15;overflow-wrap:anywhere;padding:0 .2cqi .15cqi}
+.travel-order-approvals em{font-size:.95em;margin-top:.3cqi}
+.travel-order-certification{border-collapse:collapse;table-layout:fixed;margin-top:2.4cqi;width:100%}
+.travel-order-certification th,.travel-order-certification td{border:1px solid #111;padding:.35cqi .4cqi;text-align:center}
+.travel-order-certification th{font-size:.95em;line-height:1.1}
+.travel-order-certification td{height:8cqi}
+.travel-order-certification th:first-child{width:17%}
+.travel-order-certification th:nth-child(2){width:47%}
+.travel-order-certification th:nth-child(3){width:36%}
+.sr-only{clip:rect(0,0,0,0);clip-path:inset(50%);height:1px;overflow:hidden;position:absolute;white-space:nowrap;width:1px}
+@media(max-width:720px){
+  .travel-order-person{grid-template-columns:1fr;padding:14px}
+  .travel-order-person .remove-participant{grid-column:auto}
+  .travel-order-list-head{display:none}
+  .travel-order-list-row{grid-template-columns:1fr 1fr}
+  .travel-order-list-row>strong,.travel-order-list-people,.travel-order-list-row>.travel-order-status,.travel-order-list-row>.row-action{grid-column:1/-1}
+  .travel-order-preview-backdrop{padding:12px}
+}
+@media(max-width:480px){
+  .travel-order-preview-backdrop{padding:8px}
+  .travel-order-preview-pages{gap:14px}
+  .travel-order-paper{width:min(94vw,210mm)}
+}
+@media print{
+  .travel-order-preview-backdrop{background:#fff;padding:0;position:static}
+  .travel-order-preview-pages{display:block;width:auto}
+  .travel-order-paper{aspect-ratio:auto;break-after:page;box-shadow:none;margin:0 auto;page-break-after:always;width:210mm}
+  .travel-order-paper:last-child{break-after:auto;page-break-after:auto}
+  .travel-order-preview-backdrop>.preview-toolbar{display:none}
+}
