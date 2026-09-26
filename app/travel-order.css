@@ -56,9 +56,8 @@
 .travel-order-approvals strong{align-self:end;border-bottom:1px solid #111;font-size:.95em;line-height:1.15;overflow-wrap:anywhere;padding:0 .2cqi .15cqi}
 .travel-order-approvals em{font-size:.95em;margin-top:.3cqi}
 .travel-order-certification{border-collapse:collapse;table-layout:fixed;margin-top:2.4cqi;width:100%}
-.travel-order-certification th,.travel-order-certification td{border:1px solid #111;padding:.35cqi .4cqi;text-align:center}
+.travel-order-certification th,.travel-order-certification td{border:1px solid #111;overflow-wrap:anywhere;padding:.35cqi .4cqi;text-align:center;vertical-align:top;white-space:normal}
 .travel-order-certification th{font-size:.95em;line-height:1.1}
-.travel-order-certification td{height:8cqi}
 .travel-order-certification th:first-child{width:15%}
 .travel-order-certification th:nth-child(2){width:27%}
 .travel-order-certification th:nth-child(3){width:28%}
