@@ -7,6 +7,7 @@ import { db } from "@/lib/firebase";
 import "./permit-slip-admin.css";
 
 type PermitStatus = "Processing" | "Approved" | "Disapproved";
+type PermitUnitFilter = "All" | "AGRISTAT" | "AMIA" | "DRRM";
 type PersonDecision = { status?: PermitStatus; decidedAt?: Timestamp | Date | string; signerName?: string; decidedBy?: string };
 type AdminPermit = {
   id: string;
@@ -15,6 +16,7 @@ type AdminPermit = {
   date: string;
   names: string[];
   name?: string;
+  unit?: "AGRISTAT" | "AMIA" | "DRRM";
   purpose: string;
   ownerId?: string;
   personStatuses?: Record<string, PersonDecision>;
@@ -55,6 +57,7 @@ function displayDate(value: string) {
 export default function PermitSlipAdmin({ user, mode }: { user: User; mode: "statistics" | "status" }) {
   const [permits, setPermits] = useState<AdminPermit[]>([]);
   const [month, setMonth] = useState(monthString(new Date()));
+  const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>("All");
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState("");
   const [error, setError] = useState("");
@@ -92,6 +95,7 @@ export default function PermitSlipAdmin({ user, mode }: { user: User; mode: "sta
     const stats = new Map<string, { name: string; purposes: Set<string>; approved: number; disapproved: number }>();
     for (const entry of entries) {
       if (!entry.permit.date?.startsWith(`${month}-`)) continue;
+      if (unitFilter !== "All" && entry.permit.unit !== unitFilter) continue;
       const key = entry.name.trim().toLocaleLowerCase();
       if (!key) continue;
       const row = stats.get(key) ?? { name: entry.name.trim(), purposes: new Set<string>(), approved: 0, disapproved: 0 };
@@ -101,7 +105,7 @@ export default function PermitSlipAdmin({ user, mode }: { user: User; mode: "sta
       stats.set(key, row);
     }
     return [...stats.values()].sort((left, right) => left.name.localeCompare(right.name));
-  }, [entries, month]);
+  }, [entries, month, unitFilter]);
 
   async function changeStatus(permit: AdminPermit, personIndex: number, status: PermitStatus) {
     if (!db || !isPermitAdmin(user.email)) return;
@@ -133,7 +137,7 @@ export default function PermitSlipAdmin({ user, mode }: { user: User; mode: "sta
   return <section className="content-section permit-admin-section">
     <div className="section-heading permit-admin-heading">
       <div><p className="eyebrow">Administrator access</p><h2>{title}</h2><p className="muted">{mode === "statistics" ? "Monthly approved and disapproved Permit Slips, grouped by person." : "Review and update each person’s Permit Slip independently."}</p></div>
-      {mode === "statistics" && <label className="permit-admin-month">Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}
+      {mode === "statistics" && <div className="permit-admin-filters"><label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><label>Unit<select value={unitFilter} onChange={(event) => setUnitFilter(event.target.value as PermitUnitFilter)}><option value="All">All units</option><option value="AGRISTAT">Agricultural Statistics</option><option value="AMIA">AMIA</option><option value="DRRM">DRRM</option></select></label></div>}
     </div>
     {error && <div className="permit-admin-error" role="alert">{error}</div>}
     {loading ? <p className="permit-admin-empty">Loading Permit Slips…</p> : mode === "statistics" ? <>
