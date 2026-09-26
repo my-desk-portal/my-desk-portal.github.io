@@ -183,6 +183,27 @@
 .special-order-signatory span{font-style:italic}
 .dashboard-header h1 .dashboard-greeting-name{color:var(--accent)}
 .profile-menu{position:relative}
+.notification-center{position:relative}
+.notification-button{align-items:center;background:transparent;border:0;color:var(--ink);display:inline-flex;height:34px;justify-content:center;padding:5px;position:relative;width:34px}
+.notification-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.notification-button svg{height:21px;width:21px}
+.notification-badge{align-items:center;background:#c52222;border:2px solid var(--paper);border-radius:999px;color:#fff;display:flex;font-family:'DM Sans',sans-serif;font-size:9px;font-weight:700;height:18px;justify-content:center;line-height:1;min-width:18px;padding:0 4px;position:absolute;right:-2px;top:-2px}
+.user-menu .notification-badge{display:flex}
+.notification-dropdown{background:#fff;border:1px solid var(--line);box-shadow:0 10px 26px #18211f20;max-height:min(70vh,560px);overflow:auto;position:absolute;right:-8px;top:calc(100% + 9px);width:min(360px,calc(100vw - 24px));z-index:70}
+.notification-dropdown-heading{align-items:center;background:#fff;display:flex;justify-content:space-between;padding:14px 16px;position:sticky;top:0;z-index:1}
+.notification-dropdown-heading strong{font-size:13px}
+.notification-dropdown-heading button{background:transparent;border:0;color:var(--muted);font-size:22px;line-height:1;padding:0 2px}
+.notification-dropdown ul{display:grid;gap:0;list-style:none;margin:0;padding:0}
+.notification-dropdown li{border-top:1px solid var(--line)}
+.notification-item{background:#fff;border:0;color:var(--ink);display:grid;gap:5px;padding:13px 16px;text-align:left;width:100%}
+.notification-item:hover,.notification-item:focus-visible{background:#f4f8f4;outline:none}
+.notification-status{font-family:'DM Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.notification-status-approved{color:#287242}
+.notification-status-disapproved{color:#b52626}
+.notification-item strong{font-size:13px;overflow-wrap:anywhere}
+.notification-permit-number,.notification-item small{color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.notification-view-label{color:var(--accent-dark);font-size:11px;font-weight:700}
+.notification-empty{color:var(--muted);font-size:12px;margin:0;padding:14px 16px}
 .profile-trigger{align-items:center;background:transparent;border:0;display:inline-flex;gap:8px;max-width:min(32vw,280px);overflow:hidden;padding:8px 0;text-overflow:ellipsis;white-space:nowrap}
 .profile-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 .profile-trigger>span{color:var(--muted);font-size:10px}
