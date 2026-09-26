@@ -95,10 +95,13 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [nameSearch, setNameSearch] = useState("");
   const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>("All");
+  const [selectedPeoplePage, setSelectedPeoplePage] = useState(0);
   const [permitPage, setPermitPage] = useState(0);
   const [travelPage, setTravelPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => { setSelectedPeoplePage(0); }, [selectedDate]);
 
   useEffect(() => {
     let active = true;
@@ -166,13 +169,40 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     const next = new Date(year, monthIndex + offset, 1);
     setMonth(next);
     setSelectedDate(dateKey(next.getFullYear(), next.getMonth(), 1));
+    setSelectedPeoplePage(0);
     setPermitPage(0);
     setTravelPage(0);
   }
 
   const selectedOrders = ordersOnDate(selectedDate);
   const selectedPermitSlips = permitSlips.filter((permit) => permit.date === selectedDate);
-  const selectedRecordCount = selectedOrders.length + selectedPermitSlips.length;
+  const selectedPeople = [
+    ...selectedOrders.flatMap((order) => {
+      const people: ApprovedTravelOrder["people"] = order.people?.length ? order.people : [{ name: "Not specified" }];
+      return people.map((person, index) => ({
+        id: `travel-${order.id}-${index}`,
+        type: "Travel Order",
+        name: person.name || "Not specified",
+        number: person.toNumber || "",
+        date: `${formatCalendarDate(order.departureDate)} – ${formatCalendarDate(order.returnDate)}`,
+        purpose: order.purpose || "—",
+        destination: order.placeOfTravel || "—",
+      }));
+    }),
+    ...selectedPermitSlips.map((permit) => ({
+      id: `permit-${permit.id}`,
+      type: "Permit Slip",
+      name: permit.name,
+      number: "",
+      date: formatCalendarDate(permit.date),
+      purpose: permit.purpose || "—",
+      destination: "",
+    })),
+  ];
+  const selectedPeoplePageSize = 8;
+  const selectedPeoplePageCount = Math.max(1, Math.ceil(selectedPeople.length / selectedPeoplePageSize));
+  const currentSelectedPeoplePage = Math.min(selectedPeoplePage, selectedPeoplePageCount - 1);
+  const visibleSelectedPeople = selectedPeople.slice(currentSelectedPeoplePage * selectedPeoplePageSize, currentSelectedPeoplePage * selectedPeoplePageSize + selectedPeoplePageSize);
   const summaryYear = String(year);
   const yearStart = `${summaryYear}-01-01`;
   const yearEnd = `${summaryYear}-12-31`;
@@ -197,7 +227,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     <div className="section-heading whereabouts-heading"><div><p className="eyebrow">Approved travel and Permit Slips</p><h2>Whereabouts Calendar</h2><p className="muted">Select a shaded date to view approved Travel Orders and Permit Slips.</p></div></div>
     {error && <div className="error-message whereabouts-error">{error}</div>}
     <section className="whereabouts-calendar" aria-label="Approved Travel Order and Permit Slip calendar">
-      <header className="whereabouts-calendar-toolbar"><button type="button" className="whereabouts-month-arrow" aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button><h3>{monthName}</h3><button type="button" className="whereabouts-month-arrow" aria-label="Next month" onClick={() => changeMonth(1)}>›</button><button type="button" className="whereabouts-today-button" onClick={() => { setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(todayKey); setPermitPage(0); setTravelPage(0); }}>Today</button></header>
+      <header className="whereabouts-calendar-toolbar"><button type="button" className="whereabouts-month-arrow" aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button><h3>{monthName}</h3><button type="button" className="whereabouts-month-arrow" aria-label="Next month" onClick={() => changeMonth(1)}>›</button><button type="button" className="whereabouts-today-button" onClick={() => { setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(todayKey); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); }}>Today</button></header>
       <div className="whereabouts-weekdays" aria-hidden="true">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((name) => <span key={name}>{name}</span>)}</div>
       <div className="whereabouts-days">
         {cells.map((day, index) => {
@@ -208,16 +238,19 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
           const level = peopleCount > 4 ? 3 : peopleCount > 1 ? 2 : peopleCount > 0 ? 1 : 0;
           const classes = ["whereabouts-day", level ? `whereabouts-day-level-${level}` : "", selected ? "whereabouts-day-selected" : ""].filter(Boolean).join(" ");
           const label = `${formatCalendarDate(key, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${peopleCount ? `, ${peopleCount} approved ${peopleCount === 1 ? "person or Permit Slip" : "people or Permit Slips"}` : ", no approved travel or Permit Slips"}`;
-          return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => setSelectedDate(key)}><span className="whereabouts-day-number">{day}</span>{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
+          return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className="whereabouts-day-number">{day}</span>{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
         })}
       </div>
       <div className="whereabouts-legend"><span><i className="whereabouts-legend-level-1" />1 person or Permit Slip</span><span><i className="whereabouts-legend-level-2" />2–4 people or Permit Slips</span><span><i className="whereabouts-legend-level-3" />5+ people or Permit Slips</span></div>
     </section>
     <section className="whereabouts-date-details" aria-live="polite">
-      <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading…" : `${selectedRecordCount} approved ${selectedRecordCount === 1 ? "record" : "records"}`}</span></div>
-      {loading ? <p className="muted">Loading approved Travel Orders and Permit Slips…</p> : selectedRecordCount === 0 ? <p className="whereabouts-empty-date">No approved travel or Permit Slips on this date.</p> : <div className="whereabouts-order-list">{selectedOrders.map((order) => <article className="whereabouts-order-card" key={`travel-${order.id}`}>
-        <p className="whereabouts-record-type">Approved Travel Order</p><dl><div><dt>Name / Names</dt><dd>{(order.people ?? []).map((person) => person.name ? `${person.name}${person.toNumber ? ` (${person.toNumber})` : ""}` : "").filter(Boolean).join(", ") || "Not specified"}</dd></div><div><dt>Departure to Return</dt><dd>{formatCalendarDate(order.departureDate)} – {formatCalendarDate(order.returnDate)}</dd></div><div><dt>Purpose</dt><dd>{order.purpose}</dd></div><div><dt>Destination</dt><dd>{order.placeOfTravel}</dd></div></dl>
-      </article>)}{selectedPermitSlips.map((permit) => <article className="whereabouts-order-card whereabouts-permit-card" key={`permit-${permit.id}`}><p className="whereabouts-record-type">Approved Permit Slip</p><dl><div><dt>PS No.</dt><dd>{permit.permitNo}</dd></div><div><dt>Name</dt><dd>{permit.name}</dd></div><div><dt>Date</dt><dd>{formatCalendarDate(permit.date)}</dd></div><div><dt>Purpose</dt><dd>{permit.purpose}</dd></div><div><dt>Unit</dt><dd>{permit.unit === "AGRISTAT" ? "Agricultural Statistics" : permit.unit || "—"}</dd></div></dl></article>)}</div>}
+      <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} approved ${selectedPeople.length === 1 ? "person" : "people"}`}</span></div>
+      {loading ? <p className="muted">Loading approved Travel Orders and Permit Slips...</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No approved travel or Permit Slips on this date.</p> : <>
+        <div className="whereabouts-date-table-wrap"><table className="whereabouts-date-table"><thead><tr><th>Person</th><th>Date</th><th>Purpose / Destination</th></tr></thead><tbody>
+          {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span><strong>{person.name}{person.number && ` (${person.number})`}</strong></td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
+        </tbody></table></div>
+        {selectedPeoplePageCount > 1 && <nav className="whereabouts-pagination" aria-label="Selected date people pages"><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.max(0, page - 1))} disabled={currentSelectedPeoplePage === 0}>Previous</button><span aria-live="polite">Page {currentSelectedPeoplePage + 1} of {selectedPeoplePageCount}</span><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.min(selectedPeoplePageCount - 1, page + 1))} disabled={currentSelectedPeoplePage >= selectedPeoplePageCount - 1}>Next</button></nav>}
+      </>}
     </section>
     <section className="whereabouts-annual-summary" aria-label={`Approved Permit Slip and Travel Order summaries for ${summaryYear}`}>
       <header className="whereabouts-summary-heading"><div><p className="eyebrow">Annual summary</p><h2>Approved Records — {summaryYear}</h2><p className="muted">Search by name and filter by unit. Tables show 10 records per page, newest first.</p></div></header>

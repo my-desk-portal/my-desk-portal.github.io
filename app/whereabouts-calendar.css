@@ -1,4 +1,5 @@
 .whereabouts-calendar-section{display:grid;gap:22px;margin:0 auto;max-width:1120px;min-width:0}
+@media(min-width:1100px){.whereabouts-calendar-section{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}.whereabouts-heading,.whereabouts-error,.whereabouts-annual-summary{grid-column:1/-1}.whereabouts-calendar{grid-column:1}.whereabouts-date-details{grid-column:2}}
 .whereabouts-heading{margin-bottom:0}
 .whereabouts-heading h2{margin:0}
 .whereabouts-heading .muted{margin:8px 0 0}
@@ -31,6 +32,16 @@
 .whereabouts-details-heading h3{color:var(--ink);font-size:19px;margin:0}
 .whereabouts-detail-count{background:#f1f5f1;border-radius:99px;color:var(--muted);font-size:11px;padding:7px 10px;white-space:nowrap}
 .whereabouts-empty-date{color:var(--muted);font-size:14px;margin:18px 0 0}
+.whereabouts-date-details{align-content:start;display:grid;gap:14px}
+.whereabouts-date-table-wrap{max-width:100%;overflow-x:auto}
+.whereabouts-date-table{border-collapse:collapse;table-layout:fixed;text-align:left;width:100%}
+.whereabouts-date-table th,.whereabouts-date-table td{border:1px solid var(--line);font-size:11px;line-height:1.4;padding:8px;vertical-align:top}
+.whereabouts-date-table th{background:#f6f8f6;color:var(--muted);font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase}
+.whereabouts-date-table th:first-child{width:34%}.whereabouts-date-table th:nth-child(2){width:25%}.whereabouts-date-table th:last-child{width:41%}
+.whereabouts-date-table td{color:var(--ink);overflow-wrap:anywhere}
+.whereabouts-date-table td strong{display:block;font-size:11px}
+.whereabouts-date-person-type{color:var(--accent-dark);display:block;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.02em;margin-bottom:4px;text-transform:uppercase}
+.whereabouts-date-purpose small{color:var(--muted);display:block;font-size:10px;margin-top:5px}
 .whereabouts-order-list{display:grid;gap:12px;padding-top:14px}
 .whereabouts-order-card{border:1px solid var(--line);min-width:0;padding:15px}
 .whereabouts-record-type{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.06em;margin:0 0 12px;text-transform:uppercase}
