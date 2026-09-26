@@ -18,6 +18,7 @@ import {
   collection,
   doc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   runTransaction,
@@ -28,9 +29,11 @@ import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import NtaModule from "./Nta";
 import TravelOrderModule from "./TravelOrder";
 import WhereaboutsCalendarModule from "./WhereaboutsCalendar";
+import PermitSlipAdmin, { isPermitAdmin } from "./PermitSlipAdmin";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
-type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; unit: Unit; purpose: string; createdAt?: unknown };
+type PermitDecision = { status?: "Processing" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string };
+type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; unit: Unit; purpose: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; venue: string; participants: string[]; createdAt?: unknown };
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
@@ -38,6 +41,25 @@ const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${date}T00:00:00`));
+}
+
+function signatureDate(value: unknown) {
+  const date = value && typeof value === "object" && "toDate" in value && typeof value.toDate === "function"
+    ? value.toDate() as Date
+    : value instanceof Date ? value : typeof value === "string" || typeof value === "number" ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}.${part("month")}.${part("day")}`;
+}
+
+function signatureTime(value: unknown) {
+  const date = value && typeof value === "object" && "toDate" in value && typeof value.toDate === "function"
+    ? value.toDate() as Date
+    : value instanceof Date ? value : typeof value === "string" || typeof value === "number" ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const time = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date);
+  return `${time} +0800`;
 }
 
 function Login({ onError }: { onError: (message: string) => void }) {
@@ -83,7 +105,9 @@ function Login({ onError }: { onError: (message: string) => void }) {
       if (auth.currentUser && !auth.currentUser.emailVerified) await signOut(auth).catch(() => undefined);
       const firebaseError = error as { code?: string; message?: string };
       const code = firebaseError.code?.replace("auth/", "");
-      const message = code ? `${code}: ${firebaseError.message ?? "Unable to authenticate."}` : "Unable to authenticate.";
+      const message = code === "invalid-credential"
+        ? "Email or password is incorrect. Please check your details and try again."
+        : code ? `${code}: ${firebaseError.message ?? "Unable to authenticate."}` : "Unable to authenticate.";
       setAuthMessage({ kind: "error", text: message });
       onError(message);
     } finally { setBusy(false); }
@@ -150,7 +174,13 @@ function chunkNames(names: string[], size: number) {
   return chunks;
 }
 
-function PermitCard({ permit, name, permitNo }: { permit: Permit; name: string; permitNo: string }) {
+function permitDecisionKey(permit: Permit, index: number) {
+  return permit.permitNos?.[index] ?? (permit.names.length > 1 ? `${permit.permitNo}__person_${index + 1}` : permit.permitNo);
+}
+
+function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; name: string; permitNo: string; decisionKey: string }) {
+  const decision = permit.personStatuses?.[decisionKey];
+  const decisionTime = signatureTime(decision?.decidedAt);
   return <article className="permit-document">
     <header className="permit-header">
       <div className="permit-logos">
@@ -223,6 +253,8 @@ function PermitCard({ permit, name, permitNo }: { permit: Permit; name: string; 
 
     <div className="permit-approval">
       <div className="permit-approved-label">Approved:</div>
+      {decision?.status === "Approved" && <div className="permit-digital-signature"><img src={publicAsset("/signature.png")} alt="Digital signature of Gerlie B. Antipaso" /><div><span>Digitally Signed By</span><strong>{decision.signerName || "GERLIE B. ANTIPASO"}</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div></div>}
+      {decision?.status === "Disapproved" && <div className="permit-disapproved-stamp">Disapproved</div>}
       <div className="permit-approved-name">GERLIE B. ANTIPASO</div>
       <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>
     </div>
@@ -272,7 +304,7 @@ function PrintPreview({ permit, onClose }: { permit: Permit; onClose: () => void
     </div>
     <div ref={sheetsRef} className="permit-sheets">
       {sheets.map((sheetNames, sheetIndex) => <div className="permit-sheet" key={sheetIndex}>
-        {sheetNames.map((name, nameIndex) => { const personIndex = sheetIndex * 4 + nameIndex; return <PermitCard permit={permit} name={name} permitNo={permit.permitNos?.[personIndex] ?? permit.permitNo} key={nameIndex} />; })}
+        {sheetNames.map((name, nameIndex) => { const personIndex = sheetIndex * 4 + nameIndex; return <PermitCard permit={permit} name={name} permitNo={permit.permitNos?.[personIndex] ?? permit.permitNo} decisionKey={permitDecisionKey(permit, personIndex)} key={nameIndex} />; })}
       </div>)}
     </div>
   </div>;
@@ -498,18 +530,19 @@ export default function Home() {
   const [permits, setPermits] = useState<Permit[]>([]);
   const [specialOrders, setSpecialOrders] = useState<SpecialOrder[]>([]);
   const [view, setView] = useState<"list" | "new">("list");
-  const [section, setSection] = useState<"permits" | "special-orders" | "nta" | "travel-orders" | "whereabouts-calendar">("whereabouts-calendar");
+  const [section, setSection] = useState<"permits" | "special-orders" | "nta" | "travel-orders" | "whereabouts-calendar" | "permit-statistics" | "permit-status">("whereabouts-calendar");
   const [preview, setPreview] = useState<Permit | null>(null);
   const [specialOrderPreview, setSpecialOrderPreview] = useState<SpecialOrder | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { if (!auth) { setLoading(false); return; } return onAuthStateChanged(auth, (currentUser) => { const verifiedUser = currentUser?.emailVerified ? currentUser : null; setUser(verifiedUser); if (verifiedUser) { setSection("whereabouts-calendar"); setView("list"); } setLoading(false); }); }, []);
-  useEffect(() => { if (!user || !db) return; getDocs(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc"))).then((snapshot) => setPermits(snapshot.docs.map((item) => {
+  useEffect(() => { setPreview((currentPreview) => { if (!currentPreview) return currentPreview; return permits.find((permit) => permit.id === currentPreview.id) ?? currentPreview; }); }, [permits]);
+  useEffect(() => { if (!user || !db) return; return onSnapshot(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc")), (snapshot) => setPermits(snapshot.docs.map((item) => {
     const data = item.data() as Record<string, unknown>;
     const names = Array.isArray(data.names) ? data.names as string[] : typeof data.name === "string" ? [data.name] : [];
     return { id: item.id, ...data, names } as Permit;
-  }))).catch(() => setError("Could not load permits. If this is your first setup, deploy the Firestore index or refresh.")); }, [user]);
+  })), () => setError("Could not load permits. If this is your first setup, deploy the Firestore index or refresh.")); }, [user]);
   useEffect(() => {
     if (!user || !db) return;
     getDocs(query(collection(db, "specialOrders"), where("ownerId", "==", user.uid))).then((snapshot) => {
@@ -530,5 +563,6 @@ export default function Home() {
   if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
   if (!user) return <Login onError={setError} />;
 
-  return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" /><span>My Desk</span></button><nav className="main-nav"><button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button><button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button><button className={section === "travel-orders" ? "nav-button active" : "nav-button"} aria-label="Travel Order" title="Travel Order" onClick={() => { setSection("travel-orders"); setView("list"); }}>TO</button><button className={section === "nta" ? "nav-button active" : "nav-button"} onClick={() => { setSection("nta"); setView("list"); }}>NTA</button></nav><div className="user-menu"><span className="user-greeting">Masaganang Agrikultura{user.displayName?.trim() ? `, ${user.displayName.trim().split(/\s+/)[0]}` : ""}!</span><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header><main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you.</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
+  const isAdmin = isPermitAdmin(user.email);
+  return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" /><span>My Desk</span></button><nav className="main-nav"><button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button><button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button><button className={section === "travel-orders" ? "nav-button active" : "nav-button"} aria-label="Travel Order" title="Travel Order" onClick={() => { setSection("travel-orders"); setView("list"); }}>TO</button><button className={section === "nta" ? "nav-button active" : "nav-button"} onClick={() => { setSection("nta"); setView("list"); }}>NTA</button>{isAdmin && <><button className={section === "permit-statistics" ? "nav-button active" : "nav-button"} onClick={() => setSection("permit-statistics")}>Permit Slip Statistics</button><button className={section === "permit-status" ? "nav-button active" : "nav-button"} onClick={() => setSection("permit-status")}>Permit Slip Status</button></>}</nav><div className="user-menu"><span className="user-greeting">Masaganang Agrikultura{user.displayName?.trim() ? `, ${user.displayName.trim().split(/\s+/)[0]}` : ""}!</span><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header><main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you.</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }

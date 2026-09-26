@@ -4,10 +4,23 @@ service cloud.firestore {
     function isVerifiedUser() {
       return request.auth != null && request.auth.token.email_verified == true;
     }
+    function isPermitAdmin() {
+      return isVerifiedUser()
+        && request.auth.token.email in ["gerlieantipaso27@gmail.com", "rjamescute2@gmail.com"];
+    }
     match /permits/{permitId} {
-      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
-      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isPermitAdmin());
+      allow create: if isVerifiedUser()
+        && request.resource.data.ownerId == request.auth.uid
+        && !request.resource.data.keys().hasAny(["personStatuses"]);
+      allow update: if isVerifiedUser() && (
+        (resource.data.ownerId == request.auth.uid
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["personStatuses"]))
+        || (isPermitAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["personStatuses"])
+          && request.resource.data.personStatuses is map)
+      );
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /permitCounters/{counterId} {
       allow read, write: if isVerifiedUser();
