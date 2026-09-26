@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     description: "where your docs meet automation",
     url: "/",
     siteName: "My Desk",
-    images: [{ url: "/share-image.png", alt: "My Desk" }],
+    images: [{ url: "/og.png", alt: "My Desk" }],
     locale: "en_US",
     type: "website",
   },
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "My Desk",
     description: "where your docs meet automation",
-    images: ["/share-image.png"],
+    images: ["/og.png"],
   },
 };
 
