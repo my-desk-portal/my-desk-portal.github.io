@@ -52,7 +52,6 @@ function formatTravelDate(value: string) {
 }
 
 function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (order: TravelOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
-  const [date, setDate] = useState(localDateValue);
   const [people, setPeople] = useState<TravelOrderPerson[]>([{ name: "", position: "", salary: "" }]);
   const [departureDate, setDepartureDate] = useState("");
   const [returnDate, setReturnDate] = useState("");
@@ -76,7 +75,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
     setBusy(true);
     onError("");
     const record = {
-      date,
+      date: "",
       people: people.map((person) => ({ name: person.name.trim(), position: person.position.trim(), salary: person.salary.trim() })),
       officeStation,
       departureDate,
@@ -103,9 +102,8 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
   }
 
   return <section className="content-section form-section travel-order-form-section">
-    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Travel Order</h2><p className="muted">One A4 Travel Order page will be generated for each person.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Travel Order</h2><p className="muted">One A4 Travel Order page will be generated for each person. The date and TO No. are entered when approving.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     <form className="permit-form travel-order-form" onSubmit={save}>
-      <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
       <label>Office Station<input value={officeStation} readOnly /></label>
       <div className="travel-order-people wide-field">
         <div className="travel-order-people-heading"><strong>Persons traveling</strong><span>Add each person who needs a separate Travel Order page.</span></div>
@@ -132,8 +130,9 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
   </section>;
 }
 
-function TravelOrderList({ orders, onNew, onPreview, onStatusChange, updatingId }: { orders: TravelOrder[]; onNew: () => void; onPreview: (order: TravelOrder) => void; onStatusChange: (order: TravelOrder, status: TravelOrderStatus, toNumbers?: string[]) => Promise<boolean>; updatingId: string | null }) {
+function TravelOrderList({ orders, onNew, onPreview, onStatusChange, updatingId }: { orders: TravelOrder[]; onNew: () => void; onPreview: (order: TravelOrder) => void; onStatusChange: (order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]) => Promise<boolean>; updatingId: string | null }) {
   const [approvalOrderId, setApprovalOrderId] = useState<string | null>(null);
+  const [approvalDate, setApprovalDate] = useState("");
   const [approvalNumbers, setApprovalNumbers] = useState<string[]>([]);
   const [approvalError, setApprovalError] = useState("");
 
@@ -144,6 +143,10 @@ function TravelOrderList({ orders, onNew, onPreview, onStatusChange, updatingId 
 
   async function confirmApproval(event: FormEvent<HTMLFormElement>, order: TravelOrder) {
     event.preventDefault();
+    if (!approvalDate) {
+      setApprovalError("Enter the Travel Order date before approving.");
+      return;
+    }
     const numbers = approvalNumbers.map((number) => number.trim());
     if (numbers.length !== order.people.length || numbers.some((number) => !number)) {
       setApprovalError("Enter a TO No. for every person before approving.");
@@ -154,7 +157,7 @@ function TravelOrderList({ orders, onNew, onPreview, onStatusChange, updatingId 
       return;
     }
     setApprovalError("");
-    if (await onStatusChange(order, "Approved", numbers)) setApprovalOrderId(null);
+    if (await onStatusChange(order, "Approved", approvalDate, numbers)) setApprovalOrderId(null);
   }
 
   return <section className="content-section travel-order-list-section">
@@ -163,12 +166,13 @@ function TravelOrderList({ orders, onNew, onPreview, onStatusChange, updatingId 
       <div className="table-head travel-order-list-head"><span>Date</span><span>Personnel</span><span>Place of Travel</span><span>Status</span><span>Preview</span></div>
       {orders.map((order) => <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">
-          <strong>{formatTravelDate(order.date)}</strong><span className="travel-order-list-people">{order.people.map((person) => person.name).join(", ")}</span><span>{order.placeOfTravel}</span>
-          <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={updatingId === order.id} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label>
+          <strong>{order.date ? formatTravelDate(order.date) : "Pending approval"}</strong><span className="travel-order-list-people">{order.people.map((person) => person.name).join(", ")}</span><span>{order.placeOfTravel}</span>
+          <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={updatingId === order.id} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label>
           <button className="row-action" onClick={() => onPreview(order)}>Preview</button>
         </div>
         {approvalOrderId === order.id && <form className="travel-order-approval-editor" onSubmit={(event) => confirmApproval(event, order)}>
-          <div><strong>Assign a unique TO No. to each person</strong><p>Every person gets an individual number shown on their Travel Order preview.</p></div>
+          <div><strong>Complete approval details</strong><p>Enter the approval date and assign a unique TO No. to each person.</p></div>
+          <label>Date<input type="date" value={approvalDate} onChange={(event) => { setApprovalDate(event.target.value); setApprovalError(""); }} required /></label>
           <div className="travel-order-number-fields">{order.people.map((person, index) => <label key={`${order.id}-to-number-${index}`}>{person.name}<input value={approvalNumbers[index] ?? ""} onChange={(event) => updateApprovalNumber(index, event.target.value)} placeholder="TO No." required /></label>)}</div>
           {approvalError && <p className="travel-order-number-error" role="alert">{approvalError}</p>}
           <div className="travel-order-number-actions"><button type="button" className="ghost-button" disabled={updatingId === order.id} onClick={() => { setApprovalOrderId(null); setApprovalError(""); }}>Cancel</button><button className="primary-button" disabled={updatingId === order.id}>{updatingId === order.id ? "Approving..." : "Confirm Approval"}</button></div>
@@ -207,7 +211,7 @@ function TravelOrderPaper({ order, person }: { order: TravelOrder; person: Trave
         <div><span>Recommending Approval:</span><strong>REBECCA R. ATEGA</strong><em>Field Operations Division</em></div>
         <div><span>Approved:</span><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></div>
       </div>
-      <table className="travel-order-certification"><thead><tr><th>Date</th><th>Place of Visited</th><th>Certifying Officer</th></tr></thead><tbody><tr><td /><td /><td /></tr></tbody></table>
+      <table className="travel-order-certification"><thead><tr><th>Date</th><th>Place of Visited</th><th>Purpose</th><th>Certifying Officer</th></tr></thead><tbody><tr><td /><td /><td>{order.purpose}</td><td /></tr></tbody></table>
     </div>
   </article>;
 }
@@ -261,13 +265,17 @@ export default function TravelOrderModule({ user }: { user: User }) {
     }).finally(() => setLoading(false));
   }, [user.uid]);
 
-  async function changeStatus(order: TravelOrder, status: TravelOrderStatus, toNumbers?: string[]): Promise<boolean> {
+  async function changeStatus(order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]): Promise<boolean> {
     const firestore = db;
     if (!firestore) { setError("Firebase is not configured."); return false; }
     setUpdatingId(order.id);
     setError("");
     try {
       if (status === "Approved") {
+        if (!date) {
+          setError("Enter the Travel Order date before approving.");
+          return false;
+        }
         const numbers = (toNumbers ?? []).map((number) => number.trim());
         if (numbers.length !== order.people.length || numbers.some((number) => !number)) {
           setError("Enter a TO No. for every person before approving.");
@@ -287,12 +295,12 @@ export default function TravelOrderModule({ user }: { user: User }) {
           if (registeredNumbers.some((snapshot) => snapshot.exists() && (snapshot.data().ownerId !== user.uid || snapshot.data().travelOrderId !== order.id))) {
             throw new Error("This TO No. is already assigned to another Travel Order.");
           }
-          transaction.update(travelOrderRef, { status, people, updatedAt: serverTimestamp() });
+          transaction.update(travelOrderRef, { status, date, people, updatedAt: serverTimestamp() });
           registeredNumbers.forEach((snapshot, index) => {
             if (!snapshot.exists()) transaction.set(numberRefs[index], { ownerId: user.uid, travelOrderId: order.id });
           });
         });
-        setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status, people } : item));
+        setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status, date, people } : item));
       } else {
         await updateDoc(doc(firestore, "travelOrders", order.id), { status, updatedAt: serverTimestamp() });
         setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status } : item));
