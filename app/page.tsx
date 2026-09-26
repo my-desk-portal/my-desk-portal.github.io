@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   reload,
+  sendPasswordResetEmail,
   sendEmailVerification,
   signInWithEmailAndPassword,
   signOut,
+  updatePassword,
   updateProfile,
   type User,
 } from "firebase/auth";
@@ -77,6 +79,7 @@ function signatureTime(value: unknown) {
 
 function Login({ onError }: { onError: (message: string) => void }) {
   const [registering, setRegistering] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -126,19 +129,45 @@ function Login({ onError }: { onError: (message: string) => void }) {
     } finally { setBusy(false); }
   }
 
+  async function sendLoginReset(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!auth) return;
+    const resetEmail = email.trim();
+    setAuthMessage(null);
+    setBusy(true);
+    try {
+      await sendPasswordResetEmail(auth, resetEmail);
+      setAuthMessage({ kind: "success", text: `A password reset link was sent to ${resetEmail}. Check your inbox.` });
+    } catch (error) {
+      const firebaseError = error as { code?: string; message?: string };
+      const code = firebaseError.code?.replace("auth/", "");
+      const message = code === "user-not-found"
+        ? "The email is not registered."
+        : code ? `${code}: ${firebaseError.message ?? "Could not send a password reset link."}` : "Could not send a password reset link. Try again.";
+      setAuthMessage({ kind: "error", text: message });
+    } finally { setBusy(false); }
+  }
+
   return <main className="auth-shell">
     <section className="auth-intro"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><p className="eyebrow">MD Administration</p><h1>Keep every<br /><em>movement</em> accounted for.</h1><p className="intro-copy">A clear, dependable desk for creating and retrieving official docs.</p><div className="intro-note"><span>01</span><p>Authenticated access for your unit</p></div></section>
-    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><span>My Desk</span></div><p className="eyebrow">{registering ? "New account" : "Welcome back"}</p><h2>{registering ? "Create your account" : "Sign in to My Desk"}</h2><p className="muted">{registering ? "Create your account and verify your email to get started." : "Enter your details to continue."}</p>
+    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><span>My Desk</span></div><p className="eyebrow">{forgotPasswordOpen ? "Password reset" : registering ? "New account" : "Welcome back"}</p><h2>{forgotPasswordOpen ? "Reset your password" : registering ? "Create your account" : "Sign in to My Desk"}</h2><p className="muted">{forgotPasswordOpen ? "Enter your account email and we will send a password reset link." : registering ? "Create your account and verify your email to get started." : "Enter your details to continue."}</p>
       {authMessage && <div className={`auth-message auth-message-${authMessage.kind}`} role={authMessage.kind === "error" ? "alert" : "status"}>{authMessage.text}</div>}
-      <form onSubmit={submit}>
-        {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Last Name<input autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
+      {forgotPasswordOpen ? <form className="auth-reset-form" onSubmit={sendLoginReset}>
         <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
-        <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label>
-        {registering && <label>Confirm Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label>}
-        {registering && confirmPassword && confirmPassword !== password && <p className="auth-validation-message" role="alert">Passwords do not match.</p>}
-        <button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button>
-      </form>
-      <button className="text-button" onClick={() => { setRegistering(!registering); setConfirmPassword(""); setShowConfirmPassword(false); setAuthMessage(null); onError(""); }}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button>
+        <button className="primary-button" disabled={busy}>{busy ? "Sending..." : "Reset"}</button>
+        <button type="button" className="text-button" onClick={() => { setForgotPasswordOpen(false); setAuthMessage(null); }}>Back to Sign In</button>
+      </form> : <>
+        <form onSubmit={submit}>
+          {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Last Name<input autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
+          <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
+          <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label>
+          {registering && <label>Confirm Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label>}
+          {registering && confirmPassword && confirmPassword !== password && <p className="auth-validation-message" role="alert">Passwords do not match.</p>}
+          <button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button>
+          {!registering && <button type="button" className="text-button auth-forgot-password" onClick={() => { setForgotPasswordOpen(true); setAuthMessage(null); }}>Forgot password?</button>}
+        </form>
+        <button type="button" className="text-button" onClick={() => { setRegistering(!registering); setForgotPasswordOpen(false); setConfirmPassword(""); setShowConfirmPassword(false); setAuthMessage(null); onError(""); }}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button>
+      </>}
     </div></section>
   </main>;
 }
@@ -551,6 +580,71 @@ export default function Home() {
   const [specialOrderPreview, setSpecialOrderPreview] = useState<SpecialOrder | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [changePassword, setChangePassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [resetEmailBusy, setResetEmailBusy] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+  function closeProfile() {
+    setProfileOpen(false);
+    setChangePassword("");
+    setConfirmNewPassword("");
+    setShowChangePassword(false);
+    setShowConfirmNewPassword(false);
+    setPasswordMessage(null);
+  }
+
+  async function savePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordMessage(null);
+    if (changePassword !== confirmNewPassword) {
+      setPasswordMessage({ kind: "error", text: "The passwords do not match." });
+      return;
+    }
+    if (changePassword.length < 6) {
+      setPasswordMessage({ kind: "error", text: "Password must be at least 6 characters." });
+      return;
+    }
+    if (!user) return;
+    setPasswordBusy(true);
+    try {
+      await updatePassword(user, changePassword);
+      setPasswordMessage({ kind: "success", text: "Your password has been updated." });
+      setChangePassword("");
+      setConfirmNewPassword("");
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      const text = code === "auth/requires-recent-login"
+        ? "For security, sign in again before changing your password, or use Reset to receive a reset link."
+        : code ? `Could not update the password (${code}).` : "Could not update the password. Try again.";
+      setPasswordMessage({ kind: "error", text });
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
+  async function sendResetLink() {
+    setPasswordMessage(null);
+    if (!auth || !user?.email) {
+      setPasswordMessage({ kind: "error", text: "A verified email address is required to send a reset link." });
+      return;
+    }
+    setResetEmailBusy(true);
+    try {
+      await sendPasswordResetEmail(auth, user.email);
+      setPasswordMessage({ kind: "success", text: `A password reset link was sent to ${user.email}.` });
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setPasswordMessage({ kind: "error", text: code ? `Could not send the reset link (${code}).` : "Could not send the reset link. Try again." });
+    } finally {
+      setResetEmailBusy(false);
+    }
+  }
 
   useEffect(() => { if (!auth) { setLoading(false); return; } return onAuthStateChanged(auth, (currentUser) => { const verifiedUser = currentUser?.emailVerified ? currentUser : null; setUser(verifiedUser); if (verifiedUser) { setSection("whereabouts-calendar"); setView("list"); } setLoading(false); }); }, []);
   useEffect(() => { setPreview((currentPreview) => { if (!currentPreview) return currentPreview; return permits.find((permit) => permit.id === currentPreview.id) ?? currentPreview; }); }, [permits]);
@@ -582,5 +676,5 @@ export default function Home() {
   const fullName = user.displayName?.trim().replace(/\s+/g, " ") || "";
   const firstName = fullName.split(" ")[0] || "";
   const isAdmin = isPermitAdmin(user.email);
-  return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" /><span>My Desk</span></button><nav className="main-nav">{isAdmin ? <div className="nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPermitMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setPermitMenuOpen(false); }}><button type="button" className={section === "permits" || section === "permit-statistics" || section === "permit-status" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={permitMenuOpen} aria-controls="permit-admin-menu" onClick={() => setPermitMenuOpen((open) => !open)}>Permit Slip <span className="nav-dropdown-arrow" aria-hidden="true">▾</span></button>{permitMenuOpen && <div className="nav-dropdown-menu" id="permit-admin-menu"><button type="button" className={section === "permits" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permits"); setView("list"); setPermitMenuOpen(false); }}>Permit Slip</button><button type="button" className={section === "permit-status" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-status"); setPermitMenuOpen(false); }}>Permit Slip Status</button><button type="button" className={section === "permit-statistics" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-statistics"); setPermitMenuOpen(false); }}>Permit Slip Statistics</button></div>}</div> : <button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button>}<button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button><button className={section === "travel-orders" ? "nav-button active" : "nav-button"} aria-label="Travel Order" title="Travel Order" onClick={() => { setSection("travel-orders"); setView("list"); }}>TO</button><button className={section === "nta" ? "nav-button active" : "nav-button"} onClick={() => { setSection("nta"); setView("list"); }}>NTA</button></nav><div className="user-menu"><span className="user-greeting">{fullName}</span><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header><main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
+  return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" /><span>My Desk</span></button><nav className="main-nav">{isAdmin ? <div className="nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPermitMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setPermitMenuOpen(false); }}><button type="button" className={section === "permits" || section === "permit-statistics" || section === "permit-status" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={permitMenuOpen} aria-controls="permit-admin-menu" onClick={() => setPermitMenuOpen((open) => !open)}>Permit Slip <span className="nav-dropdown-arrow" aria-hidden="true">▾</span></button>{permitMenuOpen && <div className="nav-dropdown-menu" id="permit-admin-menu"><button type="button" className={section === "permits" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permits"); setView("list"); setPermitMenuOpen(false); }}>Permit Slip</button><button type="button" className={section === "permit-status" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-status"); setPermitMenuOpen(false); }}>Permit Slip Status</button><button type="button" className={section === "permit-statistics" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-statistics"); setPermitMenuOpen(false); }}>Permit Slip Statistics</button></div>}</div> : <button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button>}<button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button><button className={section === "travel-orders" ? "nav-button active" : "nav-button"} aria-label="Travel Order" title="Travel Order" onClick={() => { setSection("travel-orders"); setView("list"); }}>TO</button><button className={section === "nta" ? "nav-button active" : "nav-button"} onClick={() => { setSection("nta"); setView("list"); }}>NTA</button></nav><div className="user-menu"><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{fullName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); setChangePassword(""); setConfirmNewPassword(""); setPasswordMessage(null); setProfileOpen(true); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header>{profileOpen && <div className="profile-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeProfile(); }} onKeyDown={(event) => { if (event.key === "Escape") closeProfile(); }}><section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title"><header className="profile-dialog-header"><div><p className="eyebrow">Account</p><h2 id="profile-title">Profile</h2></div><button type="button" className="ghost-button" onClick={closeProfile}>Close</button></header><dl className="profile-details"><div><dt>Name</dt><dd>{fullName || "Not provided"}</dd></div><div><dt>Email</dt><dd>{user.email || "Not provided"}</dd></div></dl><form className="profile-password-form" onSubmit={savePassword}><label>Change Password<div className="password-field"><input type={showChangePassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={changePassword} onChange={(event) => setChangePassword(event.target.value)} required /><button type="button" className="password-toggle" aria-label={showChangePassword ? "Hide new password" : "Show new password"} onClick={() => setShowChangePassword((show) => !show)}>{showChangePassword ? "Hide" : "Show"}</button></div></label><label>Confirmation Password<div className="password-field"><input type={showConfirmNewPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} required /><button type="button" className="password-toggle" aria-label={showConfirmNewPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmNewPassword((show) => !show)}>{showConfirmNewPassword ? "Hide" : "Show"}</button></div></label>{passwordMessage && <p className={passwordMessage.kind === "error" ? "auth-message auth-message-error" : "auth-message auth-message-success"} role={passwordMessage.kind === "error" ? "alert" : "status"}>{passwordMessage.text}</p>}<div className="profile-password-actions"><button type="button" className="ghost-button" disabled={passwordBusy || resetEmailBusy} onClick={() => void sendResetLink()}>{resetEmailBusy ? "Sending..." : "Reset"}</button><button className="primary-button" disabled={passwordBusy || resetEmailBusy}>{passwordBusy ? "Saving..." : "Save"}</button></div></form></section></div>}<main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={setPreview} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} onClose={() => setPreview(null)} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }
