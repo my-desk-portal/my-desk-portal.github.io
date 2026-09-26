@@ -758,7 +758,7 @@ export default function Home() {
         const permit = { ...data, id: item.id, names } as Permit;
         return names.flatMap((name, index) => {
           if ((permit.personStatuses?.[permitDecisionKey(permit, index)]?.status ?? "Processing") !== "Processing") return [];
-          return [{ permitId: item.id, statusKey: permitDecisionKey(permit, index), permitNo: permitPersonNumber(permit, index), name, date: permit.date, purpose: permit.purpose, submittedAt: item.createTime?.toMillis() ?? 0 }];
+          return [{ permitId: item.id, statusKey: permitDecisionKey(permit, index), permitNo: permitPersonNumber(permit, index), name, date: permit.date, purpose: permit.purpose, submittedAt: timestampMillis(permit.createdAt) }];
         });
       }).sort((left, right) => right.submittedAt - left.submittedAt || right.permitNo.localeCompare(left.permitNo, "en", { numeric: true }));
       setPendingPermitNotifications(pending);
