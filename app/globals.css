@@ -104,6 +104,7 @@
 
 @media(max-width:720px){.topbar{gap:8px;padding:16px 12px}.brand{gap:7px}.main-nav{gap:0;margin:0 3px 0 auto}.nav-button{font-size:10px;padding:8px 5px}.user-menu{gap:6px}}
 .brand-logo,.auth-intro .brand-logo{background:transparent;object-fit:contain}
+.auth-title-logo{display:inline-block;height:1.65em;margin-left:4px;object-fit:contain;vertical-align:-.28em;width:1.65em}
 @media(max-width:720px){.brand>span{display:none}.main-nav{flex:1;justify-content:flex-end;margin-right:0}.nav-button{font-size:9px;padding:8px 3px}}
 
 /* Keep A4 preview pages centered across Permit, Special Order, and NTA. */
