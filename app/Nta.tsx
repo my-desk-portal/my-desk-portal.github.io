@@ -157,9 +157,9 @@ function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, hid
       <dl className="nta-details nta-batch-overview">{[
         ["Title", <strong key="title">{record.activityTitle}</strong>],
         ["Organizer / Host", <strong key="organizer">{record.organizer}</strong>],
-        ["Date", batches.map((batch) => <strong key={batch.number}>Batch {batch.number} – {formatDateRange(batch.dateFrom, batch.dateTo)}</strong>)],
-        ["Time", batches.map((batch) => <strong key={batch.number}>Batch {batch.number} – {formatTime(batch.timeFrom)} – {formatTime(batch.timeTo)}</strong>)],
-        ["Venue / Platform", batches.map((batch) => <strong key={batch.number}>Batch {batch.number} – {batch.venue}{batch.venueType === "virtual" && batch.link ? ` (${batch.link})` : ""}</strong>)],
+        ["Date", batches.map((batch) => <strong key={batch.number}>{formatDateRange(batch.dateFrom, batch.dateTo)}</strong>)],
+        ["Time", batches.map((batch) => <strong key={batch.number}>{formatTime(batch.timeFrom)} – {formatTime(batch.timeTo)}</strong>)],
+        ["Venue / Platform", batches.map((batch) => <strong key={batch.number}>{batch.venue}{batch.venueType === "virtual" && batch.link ? ` (${batch.link})` : ""}</strong>)],
       ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><b>:</b><dd>{value}</dd></div>)}</dl>
       <p className="nta-attendance-intro">The said concerned personnel are as follows:</p><div className="nta-batch-tables nta-first-page-attendees">{firstPageRows > 0 && batches.slice(0, 1).map((batch) => <NtaBatchTable batch={{ ...batch, attendees: batch.attendees.slice(0, firstPageRows) }} key={batch.number} />)}</div>
       {showFixedCopy && <NtaFixedCopy />}
@@ -187,7 +187,7 @@ function NtaIndividualClosing({ units, signatoryPulledBack = false, continuation
 }
 
 function NtaBatchTable({ batch, startIndex = 0, showCaption = true }: { batch: NtaBatch; startIndex?: number; showCaption?: boolean }) {
-  return <section className="nta-attendance-batch">{showCaption && <p className="nta-batch-caption">Batch {batch.number} – {batch.venue}{batch.venueType === "virtual" && batch.link ? ` – ${batch.link}` : ""} ({formatDateRange(batch.dateFrom, batch.dateTo)} | {formatTime(batch.timeFrom)} – {formatTime(batch.timeTo)})</p>}<table><thead><tr><th>No.</th><th>Name</th><th>Office</th></tr></thead><tbody>{batch.attendees.map((attendee, index) => <tr key={`${attendee.name}-${index}`}><td>{startIndex + index + 1}</td><td>{attendee.name}</td><td>{attendee.office}</td></tr>)}</tbody></table></section>;
+  return <section className="nta-attendance-batch">{showCaption && <p className="nta-batch-caption">{batch.venue}{batch.venueType === "virtual" && batch.link ? ` – ${batch.link}` : ""} ({formatDateRange(batch.dateFrom, batch.dateTo)} | {formatTime(batch.timeFrom)} – {formatTime(batch.timeTo)})</p>}<table><thead><tr><th>No.</th><th>Name</th><th>Office</th></tr></thead><tbody>{batch.attendees.map((attendee, index) => <tr key={`${attendee.name}-${index}`}><td>{startIndex + index + 1}</td><td>{attendee.name}</td><td>{attendee.office}</td></tr>)}</tbody></table></section>;
 }
 
 function formatTime(value: string) {
@@ -341,7 +341,7 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to create the PDF."); }
     finally { setDownloading(false); }
   }
-  return <div className="preview-backdrop nta-preview-backdrop"><div className="preview-toolbar"><span>NTA preview · {record.mode}</span><button className="ghost-button" onClick={onClose}>Close</button><button className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>{error && <small className="download-error">{error}</small>}</div><div ref={pagesRef} className="nta-preview-pages">{record.mode === "individual" ? <><NtaPage record={record} page="individual" individualClosingUnits={individualFirstPageClosing} individualSignatoryPulledBack={individualSignatoryPulledBack} />{individualContinuationClosing.length > 0 && <NtaPage record={record} page="individual-continuation" individualClosingUnits={individualContinuationClosing} />}</> : <><NtaPage record={record} page="batch-overview" firstPageRows={firstPageRows} showFixedCopy={rosterPages.length === 0} hideFixedCopy={copyOnSeparatePage} />{rosterPages.map((sections, index) => <NtaPage key={`batch-attendees-${index}`} record={record} page="batch-attendees" rosterSections={sections} showFixedCopy={index === rosterPages.length - 1} hideFixedCopy={index === rosterPages.length - 1 && copyOnSeparatePage} />)}{copyOnSeparatePage && <NtaPage record={record} page="batch-copy" showFixedCopy />}</>}</div></div>;
+  return <div className="preview-backdrop nta-preview-backdrop"><div className="preview-toolbar"><span>NTA preview</span><button className="ghost-button" onClick={onClose}>Close</button><button className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>{error && <small className="download-error">{error}</small>}</div><div ref={pagesRef} className="nta-preview-pages">{record.mode === "individual" ? <><NtaPage record={record} page="individual" individualClosingUnits={individualFirstPageClosing} individualSignatoryPulledBack={individualSignatoryPulledBack} />{individualContinuationClosing.length > 0 && <NtaPage record={record} page="individual-continuation" individualClosingUnits={individualContinuationClosing} />}</> : <><NtaPage record={record} page="batch-overview" firstPageRows={firstPageRows} showFixedCopy={rosterPages.length === 0} hideFixedCopy={copyOnSeparatePage} />{rosterPages.map((sections, index) => <NtaPage key={`batch-attendees-${index}`} record={record} page="batch-attendees" rosterSections={sections} showFixedCopy={index === rosterPages.length - 1} hideFixedCopy={index === rosterPages.length - 1 && copyOnSeparatePage} />)}{copyOnSeparatePage && <NtaPage record={record} page="batch-copy" showFixedCopy />}</>}</div></div>;
 }
 
 export default function NtaModule({ user }: { user: User }) {
