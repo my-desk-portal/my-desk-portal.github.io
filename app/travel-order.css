@@ -33,6 +33,7 @@
 .travel-order-paper{aspect-ratio:210/297;background:#fff;box-shadow:0 18px 50px #0004;container-type:inline-size;overflow:hidden;position:relative;width:min(90vw,210mm)}
 .travel-order-letterhead{height:100%;inset:0;object-fit:fill;position:absolute;transform:translateY(-5.99%);width:100%}
 .travel-order-frame{border:1.5px solid #111;inset:4.28% 6.05%;position:absolute;z-index:1}
+.travel-order-disapproved-stamp{background:#fffE;border:1.5px solid #c52222;color:#c52222;font-family:Arial,sans-serif;font-size:1.8cqi;font-weight:800;letter-spacing:.12em;padding:.65cqi 1.2cqi;position:absolute;right:7%;text-align:center;top:6%;transform:rotate(7deg);z-index:4}
 .travel-order-document,.travel-order-document *{box-sizing:border-box;color:#111;font-family:Cambria,'Times New Roman',serif}
 .travel-order-document{font-size:1.55cqi;inset:16.27% 15.8% 12.8%;line-height:1.2;position:absolute;z-index:2}
 .travel-order-header-divider{border-top:1.5px solid #111;margin:0 -9.75cqi 1.5cqi}

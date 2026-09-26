@@ -214,6 +214,7 @@ function TravelOrderPaper({ order, person }: { order: TravelOrder; person: Trave
       </div>
       <table className="travel-order-certification"><thead><tr><th>Date</th><th>Place of Visited</th><th>Purpose</th><th>Certifying Officer</th></tr></thead><tbody><tr><td /><td /><td>{order.purpose}</td><td /></tr></tbody></table>
     </div>
+    {order.status === "Disapproved" && <div className="travel-order-disapproved-stamp" aria-label="Disapproved">DISAPPROVED</div>}
   </article>;
 }
 
