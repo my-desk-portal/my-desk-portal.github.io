@@ -262,7 +262,8 @@ export default function TravelOrderModule({ user }: { user: User }) {
   }, [user.uid]);
 
   async function changeStatus(order: TravelOrder, status: TravelOrderStatus, toNumbers?: string[]): Promise<boolean> {
-    if (!db) { setError("Firebase is not configured."); return false; }
+    const firestore = db;
+    if (!firestore) { setError("Firebase is not configured."); return false; }
     setUpdatingId(order.id);
     setError("");
     try {
@@ -279,11 +280,10 @@ export default function TravelOrderModule({ user }: { user: User }) {
         }
 
         const people = order.people.map((person, index) => ({ ...person, toNumber: numbers[index] }));
-        const travelOrderRef = doc(db, "travelOrders", order.id);
-        const numberRefs = normalizedNumbers.map((number) => doc(db, "travelOrderNumbers", travelOrderNumberKey(number)));
-        await runTransaction(db, async (transaction) => {
-          const registeredNumbers = [];
-          for (const numberRef of numberRefs) registeredNumbers.push(await transaction.get(numberRef));
+        const travelOrderRef = doc(firestore, "travelOrders", order.id);
+        const numberRefs = normalizedNumbers.map((number) => doc(firestore, "travelOrderNumbers", travelOrderNumberKey(number)));
+        await runTransaction(firestore, async (transaction) => {
+          const registeredNumbers = await Promise.all(numberRefs.map((numberRef) => transaction.get(numberRef)));
           if (registeredNumbers.some((snapshot) => snapshot.exists() && (snapshot.data().ownerId !== user.uid || snapshot.data().travelOrderId !== order.id))) {
             throw new Error("This TO No. is already assigned to another Travel Order.");
           }
@@ -294,7 +294,7 @@ export default function TravelOrderModule({ user }: { user: User }) {
         });
         setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status, people } : item));
       } else {
-        await updateDoc(doc(db, "travelOrders", order.id), { status, updatedAt: serverTimestamp() });
+        await updateDoc(doc(firestore, "travelOrders", order.id), { status, updatedAt: serverTimestamp() });
         setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status } : item));
       }
       return true;
