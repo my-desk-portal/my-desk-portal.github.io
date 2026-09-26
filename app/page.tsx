@@ -299,7 +299,7 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
       </div>
     </section>
 
-    <h2 className="permit-banner">PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h2>
+    <h3 className="permit-banner">PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h3>
     <p className="permit-blank-line permit-blank-line-lg permit-name-line">{name}</p>
 
     <section className="permit-purpose-block">

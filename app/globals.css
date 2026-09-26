@@ -123,7 +123,7 @@
 .permit-metadata{gap:.378cqi;margin:1.089cqi 0}
 .permit-meta-row{gap:.63cqi;grid-template-columns:7.5cqi 1.26cqi 1fr}
 .permit-input-line{min-height:1.89cqi;padding-top:.252cqi}
-.permit-banner{font-size:2.268cqi;margin:.968cqi 0 .378cqi}
+.permit-banner{font-size:1.85cqi;letter-spacing:-.02em;margin:.968cqi .75cqi .378cqi;white-space:nowrap}
 .permit-blank-line{margin: .756cqi 0;min-height:1.89cqi}
 .permit-blank-line-lg{margin-top:1.008cqi}
 .permit-name-line{font-size:2.268cqi;padding-top:.252cqi}
