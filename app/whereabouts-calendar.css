@@ -2,7 +2,6 @@
 .whereabouts-heading{margin-bottom:0}
 .whereabouts-heading h2{margin:0}
 .whereabouts-heading .muted{margin:8px 0 0}
-.whereabouts-nav-short{display:none}
 .whereabouts-calendar,.whereabouts-date-details{background:#fff;border:1px solid var(--line);min-width:0;padding:22px}
 .whereabouts-calendar-toolbar{align-items:center;display:grid;gap:12px;grid-template-columns:44px minmax(0,1fr) 44px auto;margin-bottom:18px}
 .whereabouts-calendar-toolbar h3{color:var(--ink);font-size:20px;margin:0;text-align:center}
@@ -40,8 +39,6 @@
 .whereabouts-order-card dd{color:var(--ink);font-size:13px;font-weight:600;line-height:1.45;margin:0;overflow-wrap:anywhere}
 .whereabouts-error{margin:0}
 @media(max-width:720px){
-  .whereabouts-nav-full{display:none}
-  .whereabouts-nav-short{display:inline}
   .whereabouts-calendar-section{gap:16px}
   .whereabouts-calendar,.whereabouts-date-details{padding:16px}
   .whereabouts-calendar-toolbar{gap:8px;grid-template-columns:38px minmax(0,1fr) 38px auto;margin-bottom:14px}
