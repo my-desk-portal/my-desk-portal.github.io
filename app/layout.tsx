@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./permit-standalone.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://my-desk-portal.github.io"),

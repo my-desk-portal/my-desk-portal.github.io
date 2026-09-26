@@ -14,3 +14,11 @@
 .nta-individual-closing>p{margin:0 0 2cqi}
 .nta-individual-closing .nta-signatory{margin-top:10cqi}
 .nta-individual-closing-pulled .nta-signatory{margin-top:5.04cqi}
+@media print{
+  .nta-preview-pages{display:block;width:auto}
+  .nta-document-page{aspect-ratio:auto;break-after:page;box-shadow:none;height:297mm;margin:0 auto;page-break-after:always;width:210mm}
+  .nta-document-page:last-child{break-after:auto;page-break-after:auto}
+  .nta-letterhead{display:block;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .nta-document-page,.nta-document-page *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+.nta-to-recipient{display:grid;gap:1.2cqi}

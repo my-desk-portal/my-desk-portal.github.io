@@ -1,0 +1,35 @@
+/* Standalone Permit Slip notification preview. */
+.preview-toolbar-single{justify-content:center}
+.preview-backdrop-single{align-content:start;display:grid;grid-template-columns:minmax(0,1fr);justify-items:center}
+.permit-sheets-single{display:block;justify-self:center;margin:0 auto;overflow:visible;width:min(100%,160mm)}
+.permit-sheets-single-scale{container-type:inline-size;width:100%}
+.permit-sheets-single-scale .permit-document{font-size:3.024cqi;height:auto;padding:.2in;transform:none;width:100%}
+.permit-sheets-single .permit-header{gap:1.936cqi;margin-bottom:1.452cqi}
+.permit-sheets-single .permit-logos{gap:1.21cqi}
+.permit-sheets-single .permit-logo-left{height:10.16cqi;width:10.644cqi}
+.permit-sheets-single .permit-logo-right{height:9.676cqi;width:9.676cqi}
+.permit-sheets-single .permit-heading{font-size:3.528cqi}
+.permit-sheets-single .permit-metadata{gap:.756cqi;margin:2.178cqi 0}
+.permit-sheets-single .permit-meta-row{gap:1.26cqi;grid-template-columns:15cqi 2.52cqi 1fr}
+.permit-sheets-single .permit-input-line{min-height:3.78cqi;padding-top:.504cqi}
+.permit-sheets-single .permit-banner{font-size:3.7cqi;letter-spacing:-.02em;margin:1.936cqi 1.5cqi .756cqi;white-space:nowrap}
+.permit-sheets-single .permit-blank-line{margin:1.512cqi 0;min-height:3.78cqi}
+.permit-sheets-single .permit-blank-line-lg{margin-top:2.016cqi}
+.permit-sheets-single .permit-name-line{font-size:4.536cqi;padding-top:.504cqi}
+.permit-sheets-single .permit-purpose-block h3{margin:2.178cqi 0 .756cqi}
+.permit-sheets-single .permit-grid{margin-top:1.936cqi}
+.permit-sheets-single .permit-grid th,.permit-sheets-single .permit-grid td{height:4.032cqi;padding:.504cqi .756cqi}
+.permit-sheets-single .permit-signature-row{gap:.756cqi;margin-top:2.178cqi}
+.permit-sheets-single .permit-time-block{gap:.756cqi}
+.permit-sheets-single .permit-time-row{gap:.756cqi;grid-template-columns:15.968cqi 1.512cqi 1fr 1.512cqi 1fr}
+.permit-sheets-single .permit-time-line{min-height:2.268cqi}
+.permit-sheets-single .permit-guard-signature{margin-bottom:.756cqi}
+.permit-sheets-single .permit-approval{margin-top:2.42cqi}
+.permit-sheets-single .permit-approved-label{margin-bottom:.756cqi}
+.permit-sheets-single .permit-approved-name{padding:1.008cqi 0}
+.permit-sheets-single .permit-approved-role{margin-top:.756cqi}
+.permit-sheets-single .permit-input-line,.permit-sheets-single .permit-filled-line,.permit-sheets-single .permit-name-line{overflow-wrap:anywhere}
+
+@media(max-width:720px){.preview-toolbar-single{padding-top:.1in}}
+@media(max-width:480px){.permit-sheets-single .permit-banner{white-space:normal}}
+@media print{.permit-sheets-single{display:block!important;height:auto;margin:0 auto;overflow:visible;width:105mm!important}.permit-sheets-single-scale{width:100%}}

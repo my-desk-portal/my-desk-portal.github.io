@@ -222,6 +222,8 @@ function TravelOrderPreview({ order, onClose }: { order: TravelOrder; onClose: (
   const pagesRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState("");
 
   async function downloadPdf() {
     if (!pagesRef.current) return;
@@ -230,6 +232,7 @@ function TravelOrderPreview({ order, onClose }: { order: TravelOrder; onClose: (
     try {
       await Promise.all(Array.from(pagesRef.current.querySelectorAll("img")).map(async (image) => {
         if (!image.complete) await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("The Travel Order header image could not be loaded.")); });
+        if (image.naturalWidth === 0) throw new Error("The Travel Order header image could not be loaded.");
         if (image.decode) await image.decode();
       }));
       const pages = Array.from(pagesRef.current.querySelectorAll<HTMLElement>(".travel-order-paper"));
@@ -244,7 +247,30 @@ function TravelOrderPreview({ order, onClose }: { order: TravelOrder; onClose: (
     finally { setDownloading(false); }
   }
 
-  return <div className="preview-backdrop travel-order-preview-backdrop"><div className="preview-toolbar"><span>Travel Order preview · {order.people.length} {order.people.length === 1 ? "page" : "pages"}</span><button className="ghost-button" onClick={onClose}>Close</button><button className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>{error && <small className="download-error">{error}</small>}</div><div ref={pagesRef} className="travel-order-preview-pages">{order.people.map((person, index) => <TravelOrderPaper key={`${order.id}-${index}`} order={order} person={person} />)}</div></div>;
+  async function printPreview() {
+    if (!pagesRef.current) return;
+    setPrinting(true);
+    setPrintError("");
+    try {
+      await Promise.all(Array.from(pagesRef.current.querySelectorAll("img")).map(async (image) => {
+        if (!image.complete) await new Promise<void>((resolve, reject) => {
+          image.onload = () => resolve();
+          image.onerror = () => reject(new Error("The Travel Order header image could not be loaded."));
+        });
+        if (image.naturalWidth === 0) throw new Error("The Travel Order header image could not be loaded.");
+        if (image.decode) await image.decode();
+      }));
+      if (document.fonts?.ready) await document.fonts.ready;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      window.print();
+    } catch (cause) {
+      setPrintError(cause instanceof Error ? cause.message : "Unable to prepare the Travel Order for printing.");
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  return <div className="preview-backdrop travel-order-preview-backdrop"><div className="preview-toolbar"><span>Travel Order preview · {order.people.length} {order.people.length === 1 ? "page" : "pages"}</span><button type="button" className="ghost-button" onClick={onClose}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>{error && <small className="download-error">{error}</small>}{printError && <small className="download-error" role="alert">{printError}</small>}</div><div ref={pagesRef} className="travel-order-preview-pages">{order.people.map((person, index) => <TravelOrderPaper key={`${order.id}-${index}`} order={order} person={person} />)}</div></div>;
 }
 
 export default function TravelOrderModule({ user }: { user: User }) {
