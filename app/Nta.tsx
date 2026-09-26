@@ -167,7 +167,7 @@ function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, hid
       <div className="nta-batch-tables">{rosterSections.map((section) => <NtaBatchTable batch={{ ...section.batch, attendees: section.attendees }} startIndex={section.startIndex} showCaption={!section.continued} key={`${section.batchIndex}-${section.startIndex}`} />)}</div>
       {showFixedCopy && <NtaFixedCopy />}
     </>}
-    {(showFixedCopy && (page === "batch-overview" || page === "batch-attendees" || page === "batch-copy")) && <footer className="nta-signatory"><strong>MELODY M. GUIMARY</strong><span>Chief, Field Operations Division</span></footer>}
+    {(showFixedCopy && (page === "batch-overview" || page === "batch-attendees" || page === "batch-copy")) && <footer className="nta-signatory"><strong>MELODY M. GUIMARY</strong><span><i>Chief</i>, Field Operations Division</span></footer>}
   </div></article>;
 }
 
@@ -175,7 +175,7 @@ function NtaIndividualClosing({ units, signatoryPulledBack = false, continuation
   if (units.length === 0) return null;
   return <div className={`nta-individual-closing${continuation ? " nta-individual-closing-continuation" : ""}${signatoryPulledBack ? " nta-individual-closing-pulled" : ""}`}>
     {units.map((unit) => {
-      if (unit === "signatory") return <footer className="nta-signatory nta-individual-closing-unit" data-nta-individual-closing-unit key={unit}><strong>MELODY M. GUIMARY</strong><span>Chief, Field Operations Division</span></footer>;
+      if (unit === "signatory") return <footer className="nta-signatory nta-individual-closing-unit" data-nta-individual-closing-unit key={unit}><strong>MELODY M. GUIMARY</strong><span><i>Chief</i>, Field Operations Division</span></footer>;
       const copy = {
         feedback: "As a representative, you are expected to actively participate and note key discussions and agreements. A brief report of feedback shall be submitted within ____ days after the activity.",
         expenses: "Travel and other incidental expenses, if any, shall be subject to existing accounting and auditing rules and regulations.",
