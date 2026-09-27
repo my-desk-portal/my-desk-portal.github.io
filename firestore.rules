@@ -8,6 +8,21 @@ service cloud.firestore {
       return isVerifiedUser()
         && request.auth.token.email in ["gerlieantipaso27@gmail.com", "rjamescute2@gmail.com"];
     }
+    match /users/{userId} {
+      allow read: if isVerifiedUser() && request.auth.uid == userId;
+      // New accounts must save their profile before email verification; only the same UID can write it.
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasAll(["name", "position", "unit"])
+        && request.resource.data.keys().hasOnly(["name", "position", "unit"])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.position is string
+        && request.resource.data.position.size() <= 120
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"];
+      allow delete: if false;
+    }
     match /permits/{permitId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isPermitAdmin());
       allow create: if isVerifiedUser()

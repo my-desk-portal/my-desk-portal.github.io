@@ -19,12 +19,14 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   where,
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
@@ -82,6 +84,8 @@ function Login({ onError }: { onError: (message: string) => void }) {
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [position, setPosition] = useState("");
+  const [unit, setUnit] = useState<Unit | "">("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -98,13 +102,32 @@ function Login({ onError }: { onError: (message: string) => void }) {
       setAuthMessage({ kind: "error", text: "Enter your first and last name." });
       return;
     }
+    if (registering && !position.trim()) {
+      setAuthMessage({ kind: "error", text: "Enter your position." });
+      return;
+    }
+    if (registering && !unit) {
+      setAuthMessage({ kind: "error", text: "Select your unit." });
+      return;
+    }
+    if (registering && `${firstName.trim()} ${lastName.trim()}`.replace(/\s+/g, " ").length > 120) {
+      setAuthMessage({ kind: "error", text: "Your name must be 120 characters or fewer." });
+      return;
+    }
+    if (registering && position.trim().length > 120) {
+      setAuthMessage({ kind: "error", text: "Your position must be 120 characters or fewer." });
+      return;
+    }
     if (registering && password !== confirmPassword) return;
     setBusy(true);
     onError("");
     try {
       if (registering) {
         const credential = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(credential.user, { displayName: `${firstName.trim()} ${lastName.trim()}` });
+        const name = `${firstName.trim()} ${lastName.trim()}`.replace(/\s+/g, " ");
+        await updateProfile(credential.user, { displayName: name });
+        if (!db) throw new Error("Profile storage is unavailable.");
+        await setDoc(doc(db, "users", credential.user.uid), { name, position: position.trim(), unit: unit as Unit });
         await sendEmailVerification(credential.user);
         await signOut(auth);
         setAuthMessage({ kind: "success", text: `A verification email was sent to ${email}. Verify your email before signing in.` });
@@ -123,7 +146,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
       const code = firebaseError.code?.replace("auth/", "");
       const message = code === "invalid-credential"
         ? "Email or password is incorrect. Please check your details and try again."
-        : code ? `${code}: ${firebaseError.message ?? "Unable to authenticate."}` : "Unable to authenticate.";
+        : code ? `${code}: ${firebaseError.message ?? "Unable to authenticate."}` : firebaseError.message ?? "Unable to authenticate.";
       setAuthMessage({ kind: "error", text: message });
       onError(message);
     } finally { setBusy(false); }
@@ -149,8 +172,8 @@ function Login({ onError }: { onError: (message: string) => void }) {
   }
 
   return <main className="auth-shell">
-    <section className="auth-intro"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><p className="eyebrow">MD Administration</p><h1>Keep every<br /><em>movement</em> accounted for.</h1><p className="intro-copy">A clear, dependable desk for creating and retrieving official docs.</p><div className="intro-note"><span>01</span><p>Authenticated access for your unit</p></div></section>
-    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><span>My Desk</span></div><p className="eyebrow">{forgotPasswordOpen ? "Password reset" : registering ? "New account" : "Welcome back"}</p><h2>{forgotPasswordOpen ? "Reset your password" : registering ? "Create your account" : <>Sign in to <img className="auth-title-logo" src="/my%20desk%20logo.png" alt="My Desk" /></>}</h2><p className="muted">{forgotPasswordOpen ? "Enter your account email and we will send a password reset link." : registering ? "Create your account and verify your email to get started." : "Enter your details to continue."}</p>
+    <section className="auth-intro"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><p className="eyebrow">MD Administration</p><h1>Keep every<br /><em>movement</em> accounted for.</h1><p className="intro-copy">A clear, dependable desk for creating and retrieving official docs.</p><div className="intro-note"><span>01</span><p>Authenticated access for your unit</p></div></section>
+    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span>My Desk</span></div><p className="eyebrow">{forgotPasswordOpen ? "Password reset" : registering ? "New account" : "Welcome back"}</p><h2>{forgotPasswordOpen ? "Reset your password" : registering ? "Create your account" : <>Sign in to <img className="auth-title-logo" src="/my%20desk%20logo.png" alt="My Desk" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /></>}</h2><p className="muted">{forgotPasswordOpen ? "Enter your account email and we will send a password reset link." : registering ? "Create your account and verify your email to get started." : "Enter your details to continue."}</p>
       {authMessage && <div className={`auth-message auth-message-${authMessage.kind}`} role={authMessage.kind === "error" ? "alert" : "status"}>{authMessage.text}</div>}
       {forgotPasswordOpen ? <form className="auth-reset-form" onSubmit={sendLoginReset}>
         <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
@@ -159,6 +182,8 @@ function Login({ onError }: { onError: (message: string) => void }) {
       </form> : <>
         <form onSubmit={submit}>
           {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Last Name<input autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
+          {registering && <label>Position<input autoComplete="organization-title" maxLength={120} value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Your position" required /></label>}
+          {registering && <label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit | "")} required><option value="" disabled>Select your unit</option>{units.map((option) => <option key={option}>{option}</option>)}</select></label>}
           <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
           <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label>
           {registering && <label>Confirm Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label>}
@@ -741,61 +766,133 @@ export default function Home() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
-  const [passwordBusy, setPasswordBusy] = useState(false);
   const [resetEmailBusy, setResetEmailBusy] = useState(false);
-  const [passwordMessage, setPasswordMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const [profileName, setProfileName] = useState("");
+  const [profilePosition, setProfilePosition] = useState("");
+  const [profileUnit, setProfileUnit] = useState<Unit>(units[0]);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    const preventAssetTransfer = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest("img")) event.preventDefault();
+    };
+    document.addEventListener("dragstart", preventAssetTransfer, true);
+    document.addEventListener("contextmenu", preventAssetTransfer, true);
+    document.querySelectorAll("img").forEach((image) => { image.draggable = false; });
+    return () => {
+      document.removeEventListener("dragstart", preventAssetTransfer, true);
+      document.removeEventListener("contextmenu", preventAssetTransfer, true);
+    };
+  }, []);
 
   function closeProfile() {
     setProfileOpen(false);
+    setProfileMessage(null);
     setChangePassword("");
     setConfirmNewPassword("");
     setShowChangePassword(false);
     setShowConfirmNewPassword(false);
-    setPasswordMessage(null);
   }
 
-  async function savePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPasswordMessage(null);
-    if (changePassword !== confirmNewPassword) {
-      setPasswordMessage({ kind: "error", text: "The passwords do not match." });
-      return;
-    }
-    if (changePassword.length < 6) {
-      setPasswordMessage({ kind: "error", text: "Password must be at least 6 characters." });
-      return;
-    }
-    if (!user) return;
-    setPasswordBusy(true);
+  async function openProfile() {
+    if (!user || !db) return;
+    setProfileMenuOpen(false);
+    setProfileOpen(true);
+    setProfileLoading(true);
+    setProfileMessage(null);
+    setProfileName(user.displayName ?? "");
+    setProfilePosition("");
+    setProfileUnit(units[0]);
     try {
-      await updatePassword(user, changePassword);
-      setPasswordMessage({ kind: "success", text: "Your password has been updated." });
-      setChangePassword("");
-      setConfirmNewPassword("");
+      const profileSnapshot = await getDoc(doc(db, "users", user.uid));
+      if (profileSnapshot.exists()) {
+        const profile = profileSnapshot.data();
+        if (typeof profile.name === "string") setProfileName(profile.name);
+        if (typeof profile.position === "string") setProfilePosition(profile.position);
+        if (units.includes(profile.unit as Unit)) setProfileUnit(profile.unit as Unit);
+      }
     } catch (cause) {
       const code = (cause as { code?: string }).code;
-      const text = code === "auth/requires-recent-login"
-        ? "For security, sign in again before changing your password, or use Reset to receive a reset link."
-        : code ? `Could not update the password (${code}).` : "Could not update the password. Try again.";
-      setPasswordMessage({ kind: "error", text });
+      setProfileMessage({ kind: "error", text: code ? `Could not load your profile (${code}).` : "Could not load your profile. Try again." });
     } finally {
-      setPasswordBusy(false);
+      setProfileLoading(false);
+    }
+  }
+
+  async function saveChanges(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setProfileMessage(null);
+    const name = profileName.trim().replace(/\s+/g, " ");
+    const position = profilePosition.trim().replace(/\s+/g, " ");
+    const wantsPasswordChange = changePassword.length > 0 || confirmNewPassword.length > 0;
+    if (!name) {
+      setProfileMessage({ kind: "error", text: "Enter your name." });
+      return;
+    }
+    if (wantsPasswordChange && (!changePassword || !confirmNewPassword)) {
+      setProfileMessage({ kind: "error", text: "Enter and confirm the new password, or leave both password fields empty." });
+      return;
+    }
+    if (wantsPasswordChange && changePassword !== confirmNewPassword) {
+      setProfileMessage({ kind: "error", text: "The passwords do not match." });
+      return;
+    }
+    if (wantsPasswordChange && changePassword.length < 6) {
+      setProfileMessage({ kind: "error", text: "Password must be at least 6 characters." });
+      return;
+    }
+    if (!user || !db) {
+      setProfileMessage({ kind: "error", text: "Your account is unavailable. Sign in again and retry." });
+      return;
+    }
+    setProfileSaving(true);
+    let profileDataSaved = false;
+    let accountNameSaved = false;
+    try {
+      await setDoc(doc(db, "users", user.uid), { name, position, unit: profileUnit });
+      profileDataSaved = true;
+      await updateProfile(user, { displayName: name });
+      accountNameSaved = true;
+      setUser(auth?.currentUser ?? user);
+      setProfileName(name);
+      setProfilePosition(position);
+      if (wantsPasswordChange) await updatePassword(user, changePassword);
+      setChangePassword("");
+      setConfirmNewPassword("");
+      setProfileMessage({ kind: "success", text: "Your changes have been saved." });
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      const reason = code === "auth/requires-recent-login"
+        ? "Sign in again before changing your password, or choose Reset Password."
+        : code ? `Firebase returned ${code}.` : "Try again.";
+      const message = !profileDataSaved
+        ? `Could not save your changes. ${reason}`
+        : !accountNameSaved
+          ? `Your profile fields were saved, but the account name was not updated. ${reason}`
+          : wantsPasswordChange
+            ? `Your profile was saved, but the password was not changed. ${reason}`
+            : `Your profile was saved, but the account could not be updated. ${reason}`;
+      setProfileMessage({ kind: "error", text: message });
+    } finally {
+      setProfileSaving(false);
     }
   }
 
   async function sendResetLink() {
-    setPasswordMessage(null);
+    setProfileMessage(null);
     if (!auth || !user?.email) {
-      setPasswordMessage({ kind: "error", text: "A verified email address is required to send a reset link." });
+      setProfileMessage({ kind: "error", text: "A verified email address is required to send a reset link." });
       return;
     }
     setResetEmailBusy(true);
     try {
       await sendPasswordResetEmail(auth, user.email);
-      setPasswordMessage({ kind: "success", text: `A password reset link was sent to ${user.email}.` });
+      setProfileMessage({ kind: "success", text: `A password reset link was sent to ${user.email}.` });
     } catch (cause) {
       const code = (cause as { code?: string }).code;
-      setPasswordMessage({ kind: "error", text: code ? `Could not send the reset link (${code}).` : "Could not send the reset link. Try again." });
+      setProfileMessage({ kind: "error", text: code ? `Could not send the reset link (${code}).` : "Could not send the reset link. Try again." });
     } finally {
       setResetEmailBusy(false);
     }
@@ -844,7 +941,7 @@ export default function Home() {
   }, [user]);
 
   if (loading) return <div className="loading-screen">Loading My Desk...</div>;
-  if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" /><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
+  if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
   if (!user) return <Login onError={setError} />;
 
   const fullName = user.displayName?.trim().replace(/\s+/g, " ") || "";
@@ -856,5 +953,16 @@ export default function Home() {
     return [{ permit, personIndex, permitNo: permitPersonNumber(permit, personIndex), name, date: permit.date, status: decision.status, decidedAt: decision.decidedAt }];
   })).sort((left, right) => timestampMillis(right.decidedAt) - timestampMillis(left.decidedAt));
   const notificationCount = pendingPermitNotifications.length;
-  return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" /><span>My Desk</span></button><nav className="main-nav">{isAdmin ? <div className="nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPermitMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setPermitMenuOpen(false); }}><button type="button" className={section === "permits" || section === "permit-statistics" || section === "permit-status" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={permitMenuOpen} aria-controls="permit-admin-menu" onClick={() => setPermitMenuOpen((open) => !open)}>Permit Slip <span className="nav-dropdown-arrow" aria-hidden="true">▾</span></button>{permitMenuOpen && <div className="nav-dropdown-menu" id="permit-admin-menu"><button type="button" className={section === "permits" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permits"); setView("list"); setPermitMenuOpen(false); }}>Permit Slip</button><button type="button" className={section === "permit-status" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-status"); setPermitMenuOpen(false); }}>Permit Slip Status</button><button type="button" className={section === "permit-statistics" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-statistics"); setPermitMenuOpen(false); }}>Permit Slip Statistics</button></div>}</div> : <button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button>}<button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button><button className={section === "travel-orders" ? "nav-button active" : "nav-button"} aria-label="Travel Order" title="Travel Order" onClick={() => { setSection("travel-orders"); setView("list"); }}>TO</button><button className={section === "nta" ? "nav-button active" : "nav-button"} onClick={() => { setSection("nta"); setView("list"); }}>NTA</button></nav><div className="user-menu"><PermitNotificationCenter isAdmin={isAdmin} userId={user.uid} count={notificationCount} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} onAdminOpen={(notification) => { setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onViewPermit={(notification) => { setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); setChangePassword(""); setConfirmNewPassword(""); setPasswordMessage(null); setProfileOpen(true); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header>{profileOpen && <div className="profile-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeProfile(); }} onKeyDown={(event) => { if (event.key === "Escape") closeProfile(); }}><section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title"><header className="profile-dialog-header"><div><p className="eyebrow">Account</p><h2 id="profile-title">Profile</h2></div><button type="button" className="ghost-button" onClick={closeProfile}>Close</button></header><dl className="profile-details"><div><dt>Name</dt><dd>{fullName || "Not provided"}</dd></div><div><dt>Email</dt><dd>{user.email || "Not provided"}</dd></div></dl><form className="profile-password-form" onSubmit={savePassword}><label>Change Password<div className="password-field"><input type={showChangePassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={changePassword} onChange={(event) => setChangePassword(event.target.value)} required /><button type="button" className="password-toggle" aria-label={showChangePassword ? "Hide new password" : "Show new password"} onClick={() => setShowChangePassword((show) => !show)}>{showChangePassword ? "Hide" : "Show"}</button></div></label><label>Confirmation Password<div className="password-field"><input type={showConfirmNewPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} required /><button type="button" className="password-toggle" aria-label={showConfirmNewPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmNewPassword((show) => !show)}>{showConfirmNewPassword ? "Hide" : "Show"}</button></div></label>{passwordMessage && <p className={passwordMessage.kind === "error" ? "auth-message auth-message-error" : "auth-message auth-message-success"} role={passwordMessage.kind === "error" ? "alert" : "status"}>{passwordMessage.text}</p>}<div className="profile-password-actions"><button type="button" className="ghost-button" disabled={passwordBusy || resetEmailBusy} onClick={() => void sendResetLink()}>{resetEmailBusy ? "Sending..." : "Reset"}</button><button className="primary-button" disabled={passwordBusy || resetEmailBusy}>{passwordBusy ? "Saving..." : "Save"}</button></div></form></section></div>}<main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
+  return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span>My Desk</span></button><nav className="main-nav">{isAdmin ? <div className="nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPermitMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setPermitMenuOpen(false); }}><button type="button" className={section === "permits" || section === "permit-statistics" || section === "permit-status" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={permitMenuOpen} aria-controls="permit-admin-menu" onClick={() => setPermitMenuOpen((open) => !open)}>Permit Slip <span className="nav-dropdown-arrow" aria-hidden="true">▾</span></button>{permitMenuOpen && <div className="nav-dropdown-menu" id="permit-admin-menu"><button type="button" className={section === "permits" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permits"); setView("list"); setPermitMenuOpen(false); }}>Permit Slip</button><button type="button" className={section === "permit-status" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-status"); setPermitMenuOpen(false); }}>Permit Slip Status</button><button type="button" className={section === "permit-statistics" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-statistics"); setPermitMenuOpen(false); }}>Permit Slip Statistics</button></div>}</div> : <button className={section === "permits" ? "nav-button active" : "nav-button"} onClick={() => { setSection("permits"); setView("list"); }}>Permit Slip</button>}<button className={section === "special-orders" ? "nav-button active" : "nav-button"} onClick={() => { setSection("special-orders"); setView("list"); }}>Special Order</button><button className={section === "travel-orders" ? "nav-button active" : "nav-button"} aria-label="Travel Order" title="Travel Order" onClick={() => { setSection("travel-orders"); setView("list"); }}>TO</button><button className={section === "nta" ? "nav-button active" : "nav-button"} onClick={() => { setSection("nta"); setView("list"); }}>NTA</button></nav><div className="user-menu"><PermitNotificationCenter isAdmin={isAdmin} userId={user.uid} count={notificationCount} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} onAdminOpen={(notification) => { setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onViewPermit={(notification) => { setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div></header>{profileOpen && <div className="profile-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeProfile(); }} onKeyDown={(event) => { if (event.key === "Escape") closeProfile(); }}><section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title"><header className="profile-dialog-header"><div><p className="eyebrow">Account</p><h2 id="profile-title">Profile</h2></div><button type="button" className="ghost-button" onClick={closeProfile}>Close</button></header><form className="profile-form" onSubmit={saveChanges} aria-busy={profileLoading || profileSaving}>
+  <label>Name<input autoComplete="name" maxLength={120} value={profileName} onChange={(event) => setProfileName(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
+  <label>Position<input autoComplete="organization-title" maxLength={120} value={profilePosition} onChange={(event) => setProfilePosition(event.target.value)} disabled={profileLoading || profileSaving} /></label>
+  <label>Unit<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value as Unit)} disabled={profileLoading || profileSaving}>{units.map((option) => <option key={option}>{option}</option>)}</select></label>
+  <label>Email<input type="email" value={user.email ?? ""} readOnly /></label>
+  <div className="profile-password-fields">
+  <label>Change Password<div className="password-field"><input type={showChangePassword ? "text" : "password"} autoComplete="new-password" value={changePassword} onChange={(event) => setChangePassword(event.target.value)} /><button type="button" className="password-toggle" aria-label={showChangePassword ? "Hide new password" : "Show new password"} onClick={() => setShowChangePassword((show) => !show)}>{showChangePassword ? "Hide" : "Show"}</button></div></label>
+  <label>Confirmation Password<div className="password-field"><input type={showConfirmNewPassword ? "text" : "password"} autoComplete="new-password" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} /><button type="button" className="password-toggle" aria-label={showConfirmNewPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmNewPassword((show) => !show)}>{showConfirmNewPassword ? "Hide" : "Show"}</button></div></label>
+  </div>
+  <div className="profile-password-actions"><button type="button" className="ghost-button" disabled={profileSaving || resetEmailBusy} onClick={() => void sendResetLink()}>{resetEmailBusy ? "Sending..." : "Reset Password"}</button><button className="primary-button" disabled={profileLoading || profileSaving || resetEmailBusy}>{profileLoading ? "Loading..." : profileSaving ? "Saving..." : "Save Changes"}</button></div>
+  {profileMessage && <p className={`auth-message auth-message-${profileMessage.kind}`} role={profileMessage.kind === "error" ? "alert" : "status"}>{profileMessage.text}</p>}
+  </form></section></div>}<main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }

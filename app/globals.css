@@ -245,8 +245,9 @@
 .profile-details>div{border-bottom:1px solid var(--line);display:grid;gap:12px;grid-template-columns:100px minmax(0,1fr);padding:12px 0}
 .profile-details dt{color:var(--muted);font-size:12px}
 .profile-details dd{font-size:13px;font-weight:600;margin:0;overflow-wrap:anywhere}
-.profile-password-form{border-top:1px solid var(--line);gap:16px;padding-top:22px}
-.profile-password-form .auth-message{margin:0}
+.profile-form{display:grid;gap:14px}
+.profile-form .auth-message{margin:0}
+.profile-password-fields{display:grid;gap:16px;margin-top:8px}
 .profile-password-actions{display:flex;gap:10px;justify-content:flex-end}
 .auth-forgot-password{justify-self:start;margin:0!important}
 .auth-reset-form .text-button{justify-self:start;margin:0}
@@ -255,3 +256,6 @@
 .permit-form>label,.permit-form>.date-range-field{min-width:0}
 .permit-date-input{font-size:16px;max-width:100%;min-width:0;width:100%}
 @media(max-width:720px){.permit-form{grid-template-columns:minmax(0,1fr)}.permit-form>*{min-width:0}.permit-date-field{grid-column:auto}.notification-dropdown{max-height:calc(100dvh - 124px);position:fixed;right:12px;top:112px;width:min(420px,calc(100vw - 24px))}}
+
+.brand-logo,.auth-title-logo{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
+img{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
