@@ -78,5 +78,41 @@ service cloud.firestore {
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
+    match /accomplishmentReports/{reportId} {
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && request.resource.data.ownerId == request.auth.uid
+        && reportId == request.auth.uid + "_" + request.resource.data.month + (request.resource.data.cycle == 1 ? "_first" : "_second")
+        && request.resource.data.keys().hasAll(["ownerId", "month", "cycle", "startDay", "endDay", "activities", "unit", "preparedName", "preparedPosition", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "month", "cycle", "startDay", "endDay", "activities", "unit", "preparedName", "preparedPosition", "createdAt"])
+        && request.resource.data.month is string
+        && request.resource.data.month.size() == 7
+        && ((request.resource.data.cycle == 1
+          && request.resource.data.startDay == 1
+          && request.resource.data.endDay == 15)
+          || (request.resource.data.cycle == 2
+          && request.resource.data.startDay == 16
+          && request.resource.data.endDay >= 28
+          && request.resource.data.endDay <= 31))
+        && request.resource.data.activities is list
+        && request.resource.data.activities.size() > 0
+        && request.resource.data.activities.size() <= 30
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"]
+        && request.resource.data.preparedName is string
+        && request.resource.data.preparedName.size() > 0
+        && request.resource.data.preparedName.size() <= 120
+        && request.resource.data.preparedPosition is string
+        && request.resource.data.preparedPosition.size() > 0
+        && request.resource.data.preparedPosition.size() <= 120
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasAny(["activities"])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["activities"])
+        && request.resource.data.activities is list
+        && request.resource.data.activities.size() > 0
+        && request.resource.data.activities.size() <= 30;
+      allow delete: if false;
+    }
   }
 }
