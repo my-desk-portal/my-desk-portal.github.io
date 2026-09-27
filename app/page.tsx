@@ -48,6 +48,25 @@ function formatDate(date: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${date}T00:00:00`));
 }
 
+function formatPhilippineDateTime(date: Date) {
+  const dateText = new Intl.DateTimeFormat("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }).format(date);
+  const timeParts = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hourCycle: "h12", timeZone: "Asia/Manila" }).formatToParts(date);
+  const timePart = (type: string) => timeParts.find((part) => part.type === type)?.value ?? "";
+  const timeText = `${timePart("hour")}:${timePart("minute")} ${timePart("dayPeriod").toUpperCase()}`;
+  return `${dateText} | ${timeText} Philippine Time`;
+}
+
+function getPhilippineBiometricsGreeting(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Manila" }).formatToParts(date);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  if (!["Mon", "Tue", "Wed", "Thu", "Fri"].includes(part("weekday"))) return null;
+  const minutes = Number(part("hour")) * 60 + Number(part("minute"));
+  if (minutes >= 12 * 60 && minutes <= 12 * 60 + 29) return "BIOMETRICS Break-out";
+  if (minutes >= 12 * 60 + 31 && minutes <= 12 * 60 + 59) return "BIOMETRICS Break-in";
+  if (minutes >= 17 * 60 && minutes <= 17 * 60 + 15) return "BIOMETRICS Check-out";
+  return null;
+}
+
 function formatTime(value?: string) {
   if (!value) return "";
   const [hours, minutes] = value.split(":").map(Number);
@@ -748,6 +767,8 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
 }
 
 export default function Home() {
+  const [philippineDateTime, setPhilippineDateTime] = useState("");
+  const [biometricsGreeting, setBiometricsGreeting] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [permits, setPermits] = useState<Permit[]>([]);
   const [pendingPermitNotifications, setPendingPermitNotifications] = useState<PendingPermitNotification[]>([]);
@@ -774,6 +795,24 @@ export default function Home() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      setPhilippineDateTime(formatPhilippineDateTime(now));
+      setBiometricsGreeting(getPhilippineBiometricsGreeting(now));
+    };
+    updateClock();
+    let interval = 0;
+    const nextMinute = window.setTimeout(() => {
+      updateClock();
+      interval = window.setInterval(updateClock, 60_000);
+    }, 60_000 - (Date.now() % 60_000));
+    return () => {
+      window.clearTimeout(nextMinute);
+      if (interval) window.clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     const preventAssetTransfer = (event: Event) => {
@@ -965,5 +1004,5 @@ export default function Home() {
   </div>
   <div className="profile-password-actions"><button type="button" className="ghost-button" disabled={profileSaving || resetEmailBusy} onClick={() => void sendResetLink()}>{resetEmailBusy ? "Sending..." : "Reset Password"}</button><button className="primary-button" disabled={profileLoading || profileSaving || resetEmailBusy}>{profileLoading ? "Loading..." : profileSaving ? "Saving..." : "Save Changes"}</button></div>
   {profileMessage && <p className={`auth-message auth-message-${profileMessage.kind}`} role={profileMessage.kind === "error" ? "alert" : "status"}>{profileMessage.text}</p>}
-  </form></section></div>}<main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-PH", { dateStyle: "full" }).format(new Date())}</p><h1>Good to see you{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "myar" ? <AccomplishmentReportModule user={user} /> : section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
+  </form></section></div>}<main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{philippineDateTime}</p><h1>{biometricsGreeting ?? "Good to see you"}{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "myar" ? <AccomplishmentReportModule user={user} /> : section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }
