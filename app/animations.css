@@ -66,6 +66,10 @@ body > :not(.system-background) {
 .content-section { animation-delay: 50ms; }
 .dashboard-header .eyebrow { font-size: 16px; }
 .dashboard-time { color: var(--ink); font-size: 16px; font-weight: 700; }
+@media (max-width: 720px) {
+  .dashboard-header .eyebrow { font-size: clamp(12px, 3.6vw, 14px); letter-spacing: .06em; }
+  .dashboard-time { font-size: clamp(12px, 3.6vw, 14px); }
+}
 .loading-screen { gap: 10px; font-size: 16px; font-weight: 600; }
 .loading-logo { height: 52px; object-fit: contain; width: 60px; }
 

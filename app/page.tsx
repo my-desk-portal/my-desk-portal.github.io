@@ -53,7 +53,7 @@ function formatPhilippineDateTime(date: Date) {
   const timeParts = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hourCycle: "h12", timeZone: "Asia/Manila" }).formatToParts(date);
   const timePart = (type: string) => timeParts.find((part) => part.type === type)?.value ?? "";
   const timeText = `${timePart("hour")}:${timePart("minute")} ${timePart("dayPeriod").toUpperCase()}`;
-  return `${dateText} | ${timeText} Philippine Time`;
+  return `${dateText} | ${timeText}`;
 }
 
 function getPhilippineBiometricsGreeting(date: Date) {
@@ -164,9 +164,12 @@ function Login({ onError }: { onError: (message: string) => void }) {
       if (auth.currentUser && !auth.currentUser.emailVerified) await signOut(auth).catch(() => undefined);
       const firebaseError = error as { code?: string; message?: string };
       const code = firebaseError.code?.replace("auth/", "");
-      const message = code === "invalid-credential"
+      const invalidSignInCodes = ["invalid-credential", "invalid-login-credentials", "user-not-found", "wrong-password"];
+      const message = !registering && invalidSignInCodes.includes(code ?? "")
         ? "Email or password is incorrect. Please check your details and try again."
-        : code ? `${code}: ${firebaseError.message ?? "Unable to authenticate."}` : firebaseError.message ?? "Unable to authenticate.";
+        : registering
+          ? "Unable to create your account. Please check your details and try again."
+          : "Unable to sign in. Please check your details and try again.";
       setAuthMessage({ kind: "error", text: message });
       onError(message);
     } finally { setBusy(false); }
@@ -193,7 +196,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
 
   return <main className="auth-shell">
     <section className="auth-intro"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><p className="eyebrow">MD Administration</p><h1>Keep every<br /><em>movement</em> accounted for.</h1><p className="intro-copy">A clear, dependable desk for creating and retrieving official docs.</p><div className="intro-note"><span>01</span><p>Authenticated access for your unit</p></div></section>
-    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span>My Desk</span></div><p className="eyebrow">{forgotPasswordOpen ? "Password reset" : registering ? "New account" : "Welcome back"}</p><h2>{forgotPasswordOpen ? "Reset your password" : registering ? "Create your account" : <>Sign in to <img className="auth-title-logo" src="/my%20desk%20logo.png" alt="My Desk" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /></>}</h2><p className="muted">{forgotPasswordOpen ? "Enter your account email and we will send a password reset link." : registering ? "Create your account and verify your email to get started." : "Enter your details to continue."}</p>
+    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span>My Desk</span></div><p className="eyebrow">{forgotPasswordOpen ? "Password reset" : registering ? "New account" : "Welcome back"}</p><h2>{forgotPasswordOpen ? "Reset your password" : registering ? "Create your account" : <>Sign in to <img className="auth-title-logo" src="/my%20desk%20logo.png" alt="My Desk" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /></>}</h2>{(forgotPasswordOpen || registering) && <p className="muted">{forgotPasswordOpen ? "Enter your account email and we will send a password reset link." : "Create your account and verify your email to get started."}</p>}
       {authMessage && <div className={`auth-message auth-message-${authMessage.kind}`} role={authMessage.kind === "error" ? "alert" : "status"}>{authMessage.text}</div>}
       {forgotPasswordOpen ? <form className="auth-reset-form" onSubmit={sendLoginReset}>
         <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
@@ -209,9 +212,11 @@ function Login({ onError }: { onError: (message: string) => void }) {
           {registering && <label>Confirm Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label>}
           {registering && confirmPassword && confirmPassword !== password && <p className="auth-validation-message" role="alert">Passwords do not match.</p>}
           <button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button>
-          {!registering && <button type="button" className="text-button auth-forgot-password" onClick={() => { setForgotPasswordOpen(true); setAuthMessage(null); }}>Forgot password?</button>}
         </form>
-        <button type="button" className="text-button" onClick={() => { setRegistering(!registering); setForgotPasswordOpen(false); setConfirmPassword(""); setShowConfirmPassword(false); setAuthMessage(null); onError(""); }}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button>
+        <div className="auth-footer-actions">
+          {!registering && !forgotPasswordOpen && <button type="button" className="text-button auth-forgot-password" onClick={() => { setForgotPasswordOpen(true); setAuthMessage(null); }}>Forgot Password?</button>}
+          <button type="button" className="text-button" onClick={() => { setRegistering(!registering); setForgotPasswordOpen(false); setConfirmPassword(""); setShowConfirmPassword(false); setAuthMessage(null); onError(""); }}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button>
+        </div>
       </>}
     </div></section>
   </main>;
