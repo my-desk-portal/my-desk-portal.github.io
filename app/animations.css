@@ -1,0 +1,162 @@
+:root {
+  --motion-quick: 160ms;
+  --motion-standard: 240ms;
+  --motion-enter: cubic-bezier(.2, .75, .25, 1);
+}
+
+.system-background {
+  background: var(--paper);
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: fixed;
+  z-index: 0;
+}
+
+.system-background-video {
+  height: 100%;
+  inset: 0;
+  mix-blend-mode: multiply;
+  object-fit: cover;
+  object-position: center;
+  opacity: .82;
+  position: absolute;
+  width: 100%;
+}
+
+body { isolation: isolate; }
+
+body > :not(.system-background) {
+  position: relative;
+  z-index: 1;
+}
+
+@media (min-width: 1440px) {
+  .system-background-video { object-position: center 54%; }
+}
+
+@media (max-width: 720px) {
+  .system-background-video { object-position: center; }
+}
+
+@keyframes ui-rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ui-panel-in {
+  from { opacity: 0; transform: translateY(12px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.auth-intro,
+.auth-panel,
+.dashboard-header,
+.content-section,
+.error-message,
+.auth-message {
+  animation: ui-rise-in 420ms var(--motion-enter) both;
+}
+
+.content-section { animation-delay: 50ms; }
+.dashboard-header .eyebrow { font-size: 16px; }
+.dashboard-time { color: var(--ink); font-size: 16px; font-weight: 700; }
+.loading-screen { gap: 10px; font-size: 16px; font-weight: 600; }
+.loading-logo { height: 52px; object-fit: contain; width: 60px; }
+
+button,
+input,
+select,
+textarea {
+  transition: background-color var(--motion-quick) ease,
+    border-color var(--motion-quick) ease,
+    box-shadow var(--motion-quick) ease,
+    color var(--motion-quick) ease,
+    transform var(--motion-quick) ease;
+}
+
+button:not(:disabled):active { transform: scale(.985); }
+
+.primary-button:hover:not(:disabled),
+.pdf-button:hover:not(:disabled) {
+  box-shadow: 0 5px 14px #18211f1c;
+  transform: translateY(-1px);
+}
+
+.ghost-button:hover:not(:disabled) {
+  background: #f4f8f4;
+  border-color: #cbd8ce;
+  transform: translateY(-1px);
+}
+
+.nav-button {
+  transition: background-color var(--motion-quick) ease,
+    color var(--motion-quick) ease,
+    transform var(--motion-quick) ease;
+}
+
+.nav-button:hover:not(.active) { background: #f0f5f1; color: var(--ink); }
+.nav-button.active { animation: ui-fade-in 180ms ease both; }
+.row-action:hover { color: var(--accent); transform: translateX(2px); }
+.text-button:hover { color: var(--ink); }
+.table-row { transition: background-color var(--motion-quick) ease; }
+.table-row:hover { background-color: #f8faf8; }
+
+.profile-backdrop,
+.preview-backdrop,
+.ar-preview-backdrop,
+.nta-preview-backdrop,
+.travel-order-preview-backdrop {
+  animation: ui-fade-in 180ms ease both;
+}
+
+.profile-dialog,
+.nav-dropdown-menu,
+.profile-dropdown,
+.notification-dropdown {
+  animation: ui-panel-in var(--motion-standard) var(--motion-enter) both;
+  transform-origin: top right;
+}
+
+.preview-toolbar,
+.ar-preview-actions { animation: ui-rise-in 240ms var(--motion-enter) both; }
+
+.permit-paper,
+.permit-sheet,
+.special-order-paper,
+.nta-document-page,
+.travel-order-paper,
+.ar-document {
+  animation: ui-panel-in 320ms var(--motion-enter) both;
+}
+
+input:focus,
+select:focus,
+textarea:focus { transition-duration: 120ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+@media print {
+  .system-background { display: none !important; }
+
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -237,7 +237,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
           const selected = selectedDate === key;
           const level = peopleCount > 4 ? 3 : peopleCount > 1 ? 2 : peopleCount > 0 ? 1 : 0;
           const classes = ["whereabouts-day", level ? `whereabouts-day-level-${level}` : "", selected ? "whereabouts-day-selected" : ""].filter(Boolean).join(" ");
-          const label = `${formatCalendarDate(key, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${peopleCount ? `, ${peopleCount} approved ${peopleCount === 1 ? "person or Permit Slip" : "people or Permit Slips"}` : ", no approved travel or Permit Slips"}`;
+          const label = `${formatCalendarDate(key, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${peopleCount ? `, ${peopleCount} approved ${peopleCount === 1 ? "person or Permit Slip" : "people or Permit Slips"}` : ", no approved Travel or Permit Slips"}`;
           return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className="whereabouts-day-number">{day}</span>{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
         })}
       </div>
@@ -245,7 +245,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     </section>
     <section className="whereabouts-date-details" aria-live="polite">
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} approved ${selectedPeople.length === 1 ? "person" : "people"}`}</span></div>
-      {loading ? <p className="muted">Loading approved Travel Orders and Permit Slips...</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No approved travel or Permit Slips on this date.</p> : <>
+      {loading ? <p className="muted">Loading approved Travel Orders and Permit Slips...</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No approved Travel or Permit Slips on this date.</p> : <>
         <div className="whereabouts-date-table-wrap"><table className="whereabouts-date-table"><thead><tr><th>Person</th><th>Date</th><th>Purpose / Destination</th></tr></thead><tbody>
           {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span><strong>{person.name}{person.number && ` (${person.number})`}</strong></td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
         </tbody></table></div>
