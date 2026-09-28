@@ -324,7 +324,7 @@ function CompletionForm({ onCancel, onSubmit, saving, error }: { onCancel: () =>
   const [distributionPlace, setDistributionPlace] = useState("");
 
   return <section className="content-section completion-section completion-form-section">
-    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Completion Certificate</h2><p className="muted">Enter the event and completer details. The certificate prints on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Completion</h2><p className="muted">Enter the event and completer details. The certificate prints on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="completion-error" role="alert">{error}</p>}
     <form className="permit-form completion-form" onSubmit={onSubmit}>
       <label className="wide-field">Unit<select name="unit" defaultValue="DRRM"><option value="AMIA" disabled>AMIA</option><option value="AGRISTAT" disabled>AGRISTAT</option><option value="DRRM">DRRM</option></select><small>AMIA and AGRISTAT templates are on hold for now.</small></label>
