@@ -1,4 +1,4 @@
-.coa-list-section,.coa-form-section{max-width:980px}
+.coa-list-section,.coa-form-section{max-width:1100px}
 .coa-record-list{border-top:1px solid var(--line)}
 .coa-record-head,.coa-record-row{align-items:center;display:grid;gap:16px;grid-template-columns:minmax(180px,1.4fr) minmax(125px,.8fr) minmax(200px,1.4fr) 140px;padding:15px 8px}
 .coa-record-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}

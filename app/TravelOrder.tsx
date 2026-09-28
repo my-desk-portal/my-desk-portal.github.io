@@ -150,7 +150,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
       <label>Charge to<select value={chargeTo} onChange={(event) => setChargeTo(event.target.value)} required><option value="" disabled>Select appropriation</option>{chargeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
       <label>Means of Transportation<input value={transportation} onChange={(event) => setTransportation(event.target.value)} required /></label>
       <label className="wide-field">Remarks or Special Instructions <span className="muted-inline">(optional)</span><input value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Enter any remarks or special instructions" /></label>
-      <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save Travel Order"}</button></div>
+      <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
 }

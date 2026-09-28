@@ -137,7 +137,7 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
           {batches.length > 1 && <button type="button" className="remove-participant nta-remove-batch" onClick={() => setBatches((current) => current.filter((_, index) => index !== batchIndex))}>Remove group</button>}
         </fieldset>)}<button type="button" className="text-button" onClick={() => setBatches((current) => [...current, { ...initialBatch(), number: String(current.length + 1) }])}>+ Add group</button></div>
       </>}
-      <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save NTA"}</button></div>
+      <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
 }

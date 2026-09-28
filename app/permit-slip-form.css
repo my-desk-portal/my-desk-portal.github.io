@@ -1,0 +1,48 @@
+.content-section.form-section.permit-slip-form-section {
+  max-width: 1100px;
+}
+
+.permit-slip-create-form {
+  grid-template-areas:
+    "date"
+    "people"
+    "unit"
+    "purpose"
+    "actions";
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.permit-slip-create-form > .permit-date-field {
+  grid-area: date;
+}
+
+.permit-slip-create-form > .participant-fields {
+  grid-area: people;
+}
+
+.permit-slip-create-form > .permit-unit-field {
+  grid-area: unit;
+}
+
+.permit-slip-create-form > .permit-purpose-field {
+  grid-area: purpose;
+}
+
+.permit-slip-create-form > .form-actions {
+  grid-area: actions;
+}
+
+.permit-slip-create-form > * {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .permit-slip-create-form {
+    grid-template-areas:
+      "date unit"
+      "people people"
+      "purpose purpose"
+      "actions actions";
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}

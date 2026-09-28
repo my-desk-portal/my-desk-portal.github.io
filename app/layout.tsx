@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./animations.css";
 import "./permit-standalone.css";
+import "./permit-slip-form.css";
+import "./special-order-form.css";
 import SystemBackground from "./SystemBackground";
 
 export const metadata: Metadata = {

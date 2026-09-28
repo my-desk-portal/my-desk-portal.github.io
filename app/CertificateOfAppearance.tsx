@@ -236,7 +236,7 @@ function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () =
       <label>Signatory Name<input name="signatory-name" maxLength={160} required /></label>
       <label>Designation<input name="designation" maxLength={160} required /></label>
       <label className="wide-field">Division<input name="division" maxLength={180} required /></label>
-      <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save certificate"}</button></div>
+      <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
 }
