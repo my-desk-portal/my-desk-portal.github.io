@@ -245,7 +245,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const response = await fetch(publicAsset("/Personnel.xlsx"));
+        const response = await fetch(publicAsset("/Personnel.xlsx"), { cache: "no-store" });
         if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
         const entries = (await parsePersonnelWorkbook(new Uint8Array(await response.arrayBuffer())))
           .sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
@@ -613,7 +613,7 @@ function SpecialOrderForm({ user, onSaved, onCancel, onError }: { user: User; on
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const response = await fetch(publicAsset("/Personnel.xlsx"));
+        const response = await fetch(publicAsset("/Personnel.xlsx"), { cache: "no-store" });
         if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
         const entries = (await parsePersonnelWorkbook(new Uint8Array(await response.arrayBuffer())))
           .sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
@@ -669,7 +669,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const response = await fetch(publicAsset("/Personnel.xlsx"));
+        const response = await fetch(publicAsset("/Personnel.xlsx"), { cache: "no-store" });
         if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
         const entries = await parsePersonnelWorkbook(new Uint8Array(await response.arrayBuffer()));
         if (!cancelled) {

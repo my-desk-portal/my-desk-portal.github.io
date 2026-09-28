@@ -72,7 +72,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const response = await fetch(asset("/Personnel.xlsx"));
+        const response = await fetch(asset("/Personnel.xlsx"), { cache: "no-store" });
         if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
         const entries = (await parsePersonnelWorkbook(new Uint8Array(await response.arrayBuffer())))
           .sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));

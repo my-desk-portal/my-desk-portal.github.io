@@ -66,7 +66,7 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const response = await fetch(asset("/Personnel.xlsx"));
+        const response = await fetch(asset("/Personnel.xlsx"), { cache: "no-store" });
         if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
         const workbookBytes = new Uint8Array(await response.arrayBuffer());
         const loadedPersonnel = (await parsePersonnelWorkbook(workbookBytes))
