@@ -30,6 +30,7 @@ import {
   where,
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
+import { parsePersonnelWorkbook, type PersonnelEntry } from "@/lib/personnel";
 import NtaModule from "./Nta";
 import TravelOrderModule from "./TravelOrder";
 import WhereaboutsCalendarModule from "./WhereaboutsCalendar";
@@ -43,6 +44,16 @@ type SpecialOrder = { id: string; subject: string; activityTitle: string; organi
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+
+function permitUnitForPersonnel(person?: PersonnelEntry): Unit | "" {
+  const value = person?.unit.trim().toUpperCase();
+  if (units.includes(value as Unit)) return value as Unit;
+  return value === "AGRICULTURAL STATISTICS" ? "AGRISTAT" : "";
+}
+
+function personnelUnitKey(person?: PersonnelEntry) {
+  return permitUnitForPersonnel(person) || person?.unit.trim().toLocaleLowerCase() || "";
+}
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${date}T00:00:00`));
@@ -224,27 +235,80 @@ function Login({ onError }: { onError: (message: string) => void }) {
 function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (permit: Permit) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [names, setNames] = useState([""]);
-  const [unit, setUnit] = useState<Unit>("AMIA");
+  const [unit, setUnit] = useState<Unit | "">("");
   const [purpose, setPurpose] = useState("");
+  const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
+  const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPersonnel() {
+      try {
+        const response = await fetch(publicAsset("/Personnel.xlsx"));
+        if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
+        const entries = (await parsePersonnelWorkbook(new Uint8Array(await response.arrayBuffer())))
+          .sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
+        if (!entries.length) throw new Error("The personnel sheet has no names.");
+        if (!cancelled) {
+          setPersonnel(entries);
+          setPersonnelStatus("ready");
+        }
+      } catch {
+        if (!cancelled) setPersonnelStatus("error");
+      }
+    }
+    void loadPersonnel();
+    return () => { cancelled = true; };
+  }, []);
+
+  function selectPerson(index: number, name: string) {
+    const selectedPerson = personnel.find((person) => person.name === name);
+    if (index === 0) {
+      const selectedUnitKey = personnelUnitKey(selectedPerson);
+      setNames((current) => current.map((currentName, currentIndex) => {
+        if (currentIndex === 0 || !currentName || !selectedPerson) return currentIndex === 0 ? name : currentName;
+        return personnelUnitKey(personnel.find((person) => person.name === currentName)) === selectedUnitKey ? currentName : "";
+      }));
+      setUnit(permitUnitForPersonnel(selectedPerson));
+      return;
+    }
+    setNames((current) => current.map((currentName, currentIndex) => currentIndex === index ? name : currentName));
+  }
+
+  function removePerson(index: number) {
+    const remaining = names.filter((_, currentIndex) => currentIndex !== index);
+    if (index !== 0) {
+      setNames(remaining);
+      return;
+    }
+    const firstPerson = personnel.find((person) => person.name === remaining[0]);
+    const firstUnitKey = personnelUnitKey(firstPerson);
+    setNames(remaining.map((name, currentIndex) => currentIndex === 0 || !name || !firstPerson
+      || personnelUnitKey(personnel.find((person) => person.name === name)) === firstUnitKey ? name : ""));
+    setUnit(permitUnitForPersonnel(firstPerson));
+  }
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!db) return;
+    const nameList = names.map((person) => person.trim()).filter(Boolean);
+    if (!nameList.length) { onError("Select at least one personnel name."); return; }
+    if (!unit) { onError("Select a unit for the permit slip."); return; }
+    const selectedUnit = unit;
     const firestore = db;
     setBusy(true); onError("");
     try {
-      const nameList = names.map((person) => person.trim()).filter(Boolean);
       const year = new Date(`${date}T00:00:00`).getFullYear();
       const permit = await runTransaction(firestore, async (transaction) => {
-        const counterRef = doc(firestore, "permitCounters", `${unit}-${year}`);
+        const counterRef = doc(firestore, "permitCounters", `${selectedUnit}-${year}`);
         const counterSnapshot = await transaction.get(counterRef);
         const firstNumber = (counterSnapshot.exists() ? counterSnapshot.data().lastNumber : 0) + 1;
-        const permitNos = nameList.map((_, index) => `${unit}-${year}-${String(firstNumber + index).padStart(4, "0")}`);
+        const permitNos = nameList.map((_, index) => `${selectedUnit}-${year}-${String(firstNumber + index).padStart(4, "0")}`);
         const lastNumber = firstNumber + nameList.length - 1;
         const permitRef = doc(collection(firestore, "permits"));
-        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, unit, purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
-        transaction.set(counterRef, { lastNumber, unit, year });
+        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, unit: selectedUnit, purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
+        transaction.set(counterRef, { lastNumber, unit: selectedUnit, year });
         transaction.set(permitRef, record);
         return { id: permitRef.id, ...record } as Permit;
       });
@@ -253,7 +317,9 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Full name</span>{names.map((person, index) => <div className="participant-input" key={index}><input aria-label={`Person ${index + 1}`} value={person} onChange={(event) => setNames(names.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required={index === 0} placeholder={`Person ${index + 1}`} />{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove person ${index + 1}`} onClick={() => setNames(names.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button add-participant" onClick={() => setNames([...names, ""])}>+ Add name</button></div><label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit)}>{units.map((option) => <option key={option}>{option}</option>)}</select></label><label className="wide-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={5} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save permit slip"}</button></div></form></section>;
+  const firstPerson = personnel.find((person) => person.name === names[0]);
+  const unitNeedsManualSelection = Boolean(names[0]) && !permitUnitForPersonnel(firstPerson) && !unit;
+  return <section className="content-section form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Full name</span>{names.map((person, index) => { const firstUnitKey = personnelUnitKey(firstPerson); const choices = index === 0 || !names[0] ? personnel : personnel.filter((candidate) => personnelUnitKey(candidate) === firstUnitKey); return <div className="participant-input" key={index}><select aria-label={`Person ${index + 1}`} value={person} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Select person ${index + 1}`}</option>{choices.map((candidate) => <option key={candidate.name} value={candidate.name}>{candidate.name}</option>)}</select>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove person ${index + 1}`} onClick={() => removePerson(index)}>Remove</button>}</div>; })}<button type="button" className="text-button add-participant" onClick={() => setNames([...names, ""])}>+ Add name</button>{names.length > 1 && <span className="muted">All names on a permit slip must belong to the same unit.</span>}{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</span>}</div><label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit | "")} required disabled={personnelStatus !== "ready" || Boolean(unit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : personnelStatus === "loading" ? "Loading personnel..." : "Select a person"}</option>{units.map((option) => <option key={option} value={option}>{option}</option>)}</select>{unitNeedsManualSelection && <span className="auth-message auth-message-error" role="status">No supported unit abbreviation is listed for this person. Select a unit to continue.</span>}</label><label className="wide-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={5} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save permit slip"}</button></div></form></section>;
 }
 
 function PermitList({ permits, onNew, onPrint }: { permits: Permit[]; onNew: () => void; onPrint: (permit: Permit) => void }) {
@@ -539,21 +605,45 @@ function SpecialOrderForm({ user, onSaved, onCancel, onError }: { user: User; on
   const [timeTo, setTimeTo] = useState("");
   const [venue, setVenue] = useState("");
   const [participants, setParticipants] = useState([""]);
+  const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
+  const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPersonnel() {
+      try {
+        const response = await fetch(publicAsset("/Personnel.xlsx"));
+        if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
+        const entries = (await parsePersonnelWorkbook(new Uint8Array(await response.arrayBuffer())))
+          .sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
+        if (!entries.length) throw new Error("The personnel sheet has no names.");
+        if (!cancelled) {
+          setPersonnel(entries);
+          setPersonnelStatus("ready");
+        }
+      } catch {
+        if (!cancelled) setPersonnelStatus("error");
+      }
+    }
+    void loadPersonnel();
+    return () => { cancelled = true; };
+  }, []);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!db) return;
+    const participantList = participants.map((person) => person.trim()).filter(Boolean);
+    if (!participantList.length) { onError("Select at least one designated participant."); return; }
     setBusy(true); onError("");
     try {
-      const participantList = participants.map((person) => person.trim()).filter(Boolean);
       const reference = await addDoc(collection(db, "specialOrders"), { subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venue: venue.trim(), participants: participantList, ownerId: user.uid, createdAt: serverTimestamp() });
       onSaved({ id: reference.id, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venue: venue.trim(), participants: participantList });
     } catch (error) { onError(error instanceof Error ? error.message : "Unable to save special order."); }
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated participants.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Participant</span>{participants.map((participant, index) => <div className="participant-input" key={index}><input aria-label={`Designated participant ${index + 1}`} value={participant} onChange={(event) => setParticipants(participants.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required={index === 0} placeholder={`Participant ${index + 1}`} />{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove participant ${index + 1}`} onClick={() => setParticipants(participants.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button add-participant" onClick={() => setParticipants([...participants, ""])}>+ Add participant</button></div><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save special order"}</button></div></form></section>;
+  return <section className="content-section form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated participants.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Participant</span>{participants.map((participant, index) => <div className="participant-input" key={index}><select aria-label={`Designated participant ${index + 1}`} value={participant} onChange={(event) => setParticipants((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Participant ${index + 1}`}</option>{personnel.map((person) => <option key={person.name} value={person.name}>{person.name}</option>)}</select>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove participant ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button add-participant" onClick={() => setParticipants((current) => [...current, ""])}>+ Add participant</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</span>}</div><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save special order"}</button></div></form></section>;
 }
 
 function SpecialOrderList({ orders, onNew, onPrint }: { orders: SpecialOrder[]; onNew: () => void; onPrint: (order: SpecialOrder) => void }) {
@@ -562,6 +652,8 @@ function SpecialOrderList({ orders, onNew, onPrint }: { orders: SpecialOrder[]; 
 
 function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose: () => void }) {
   const pagesRef = useRef<HTMLDivElement>(null);
+  const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
+  const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
   const [printing, setPrinting] = useState(false);
@@ -572,6 +664,25 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
   const [closingUnitsOnLastAttendeePage, setClosingUnitsOnLastAttendeePage] = useState(7);
   const [closingPageSettings, setClosingPageSettings] = useState<{ capacity: number; saturated: boolean }[]>([]);
   const [signatoryPulledBack, setSignatoryPulledBack] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPersonnel() {
+      try {
+        const response = await fetch(publicAsset("/Personnel.xlsx"));
+        if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
+        const entries = await parsePersonnelWorkbook(new Uint8Array(await response.arrayBuffer()));
+        if (!cancelled) {
+          setPersonnel(entries);
+          setPersonnelStatus("ready");
+        }
+      } catch {
+        if (!cancelled) setPersonnelStatus("error");
+      }
+    }
+    void loadPersonnel();
+    return () => { cancelled = true; };
+  }, []);
 
   const continuationPages: string[][] = [];
   const remainingParticipants = order.participants.slice(firstPageCount);
@@ -704,7 +815,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
         return;
       }
     }
-  }, [closingContinuationPages.length, closingPageSettings, closingUnitsOnLastAttendeePage, continuationPages.length, continuationSettings, firstPageCount, firstPageSaturated, order.participants, signatoryPulledBack]);
+  }, [closingContinuationPages.length, closingPageSettings, closingUnitsOnLastAttendeePage, continuationPages.length, continuationSettings, firstPageCount, firstPageSaturated, order.participants, personnel, signatoryPulledBack]);
 
   async function downloadPdf() {
     if (!pagesRef.current) return;
@@ -753,13 +864,13 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     <section className={`special-order-participants ${className}`}>
       {!continued && <div className="special-order-spacer" aria-hidden="true" />}
       <h2>{continued ? "Designated Participants (continued):" : order.participants.length === 1 ? "Designated Participant:" : "Designated Participants:"}</h2>
-      <ol>{participants.map((participant, index) => <li key={`${pageKey}-${index}`}>{participant}</li>)}</ol>
+      <ol>{participants.map((participant, index) => { const position = personnel.find((person) => person.name === participant)?.position; return <li key={`${pageKey}-${index}`}><strong>{participant}</strong>{position && <>, <em>{position}</em></>}</li>; })}</ol>
     </section>
     {includeClosing && renderClosingUnits(closingUnits.slice(0, closingUnitsOnLastAttendeePage))}
   </>;
 
   const firstPageHasAllParticipants = continuationPages.length === 0;
-  return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button type="button" className="ghost-button" onClick={onClose}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>{downloadError && <small className="download-error">{downloadError}</small>}{printError && <small className="download-error" role="alert">{printError}</small>}</div>
+  return <div className="preview-backdrop"><div className="preview-toolbar"><span>Special Order preview</span><button type="button" className="ghost-button" onClick={onClose}>Close</button><button type="button" className="pdf-button" disabled={downloading || personnelStatus === "loading"} onClick={downloadPdf}>{personnelStatus === "loading" ? "Loading personnel..." : downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing || personnelStatus === "loading"} onClick={printPreview}>{personnelStatus === "loading" ? "Loading personnel..." : printing ? "Preparing print..." : "Print"}</button>{personnelStatus === "error" && <small className="download-error" role="status">Personnel positions could not be loaded.</small>}{downloadError && <small className="download-error">{downloadError}</small>}{printError && <small className="download-error" role="alert">{printError}</small>}</div>
     <div ref={pagesRef} className="special-order-preview-pages">
       <article className="special-order-paper"><img className="special-order-letterhead" src={publicAsset("/Document-Header-Footer.jpg")} alt="" /><div className="special-order-content"><header className="special-order-heading"><h1>SPECIAL ORDER</h1><p>No. <span /></p><p>Series of {new Date().getFullYear()}</p></header><div className="special-order-flow"><section className="special-order-subject"><p><b>SUBJECT :</b><span>{order.subject}</span></p></section><p className="special-order-intro">In view of the unavailability of the undersigned and/or the absence of specified participants on the received communications, the following personnel is/are hereby designated to attend and represent this Office in the activity detailed below:</p><div className="special-order-body"><section className="special-order-details"><p><b>Title of the Activity :</b><span>{order.activityTitle}</span></p><p><b>Organizer/ Host :</b><span>{order.organizer}</span></p><p><b>Date :</b><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` to ${formatDate(order.dateTo)}`}</span></p><p><b>Time :</b><span>{formatTimeRange(order.timeFrom, order.timeTo)}</span></p><p><b>Venue :</b><span>{order.venue}</span></p></section>{(firstPageCount > 0 || order.participants.length === 0) && pageParticipants(order.participants.slice(0, firstPageCount), false, "first", "special-order-first-participants", firstPageHasAllParticipants)}</div></div></div></article>
       {continuationPages.map((participants, index) => {

@@ -6,6 +6,7 @@ import { jsPDF } from "jspdf";
 import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { parsePersonnelWorkbook, type PersonnelEntry } from "@/lib/personnel";
 import "./nta.css";
 
 type NtaMode = "individual" | "batch";
@@ -56,8 +57,32 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
   const [venue, setVenue] = useState("");
   const [link, setLink] = useState("");
   const [batches, setBatches] = useState<NtaBatch[]>([initialBatch()]);
+  const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
+  const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPersonnel() {
+      try {
+        const response = await fetch(asset("/Personnel.xlsx"));
+        if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
+        const workbookBytes = new Uint8Array(await response.arrayBuffer());
+        const loadedPersonnel = (await parsePersonnelWorkbook(workbookBytes))
+          .sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
+        if (!loadedPersonnel.length) throw new Error("The personnel sheet has no names.");
+        if (!cancelled) {
+          setPersonnel(loadedPersonnel);
+          setPersonnelStatus("ready");
+        }
+      } catch {
+        if (!cancelled) setPersonnelStatus("error");
+      }
+    }
+    void loadPersonnel();
+    return () => { cancelled = true; };
+  }, []);
 
   function updateBatch(index: number, update: Partial<NtaBatch>) {
     setBatches((current) => current.map((batch, itemIndex) => itemIndex === index ? { ...batch, ...update } : batch));
@@ -88,8 +113,8 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
     <form className="permit-form" onSubmit={save}>
       <label className="wide-field">Notice type<select value={mode} onChange={(event) => setMode(event.target.value as NtaMode)}><option value="individual">Individual</option><option value="batch">Group</option></select></label>
       {mode === "individual" ? <>
-        <label>TO<input value={to} onChange={(event) => setTo(event.target.value)} required /></label>
-        <label>Position/Designation<input value={positionDesignation} onChange={(event) => setPositionDesignation(event.target.value)} required /></label>
+        <label>TO<select value={to} onChange={(event) => { const selectedName = event.target.value; setTo(selectedName); setPositionDesignation(personnel.find((person) => person.name === selectedName)?.position ?? ""); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((person) => <option key={person.name} value={person.name}>{person.name}</option>)}</select>{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</span>}</label>
+        <label>Position/Designation<input value={positionDesignation} readOnly required /></label>
         <label>SUBJECT<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
         <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
         <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
@@ -108,7 +133,7 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
           <label>Venue type<select value={batch.venueType} onChange={(event) => updateBatch(batchIndex, { venueType: event.target.value as "physical" | "virtual" })}><option value="physical">Physical venue</option><option value="virtual">Virtual meeting</option></select></label>
           <label>{batch.venueType === "virtual" ? "Platform" : "Place"}<input value={batch.venue} onChange={(event) => updateBatch(batchIndex, { venue: event.target.value })} required /></label>
           {batch.venueType === "virtual" && <label className="wide-field">Meeting link<input type="url" value={batch.link} onChange={(event) => updateBatch(batchIndex, { link: event.target.value })} placeholder="https://" required /></label>}
-          <div className="nta-attendee-fields"><span>Personnel attending this group</span>{batch.attendees.map((attendee, attendeeIndex) => <div className="nta-attendee-input" key={attendeeIndex}><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} name`} placeholder="Name" value={attendee.name} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { name: event.target.value })} required /><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} office`} placeholder="Office" value={attendee.office} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { office: event.target.value })} required />{batch.attendees.length > 1 && <button type="button" className="remove-participant" onClick={() => updateBatch(batchIndex, { attendees: batch.attendees.filter((_, index) => index !== attendeeIndex) })}>Remove</button>}</div>)}<button type="button" className="text-button" onClick={() => updateBatch(batchIndex, { attendees: [...batch.attendees, { name: "", office: "" }] })}>+ Add person</button></div>
+          <div className="nta-attendee-fields"><span>Personnel attending this group</span>{batch.attendees.map((attendee, attendeeIndex) => <div className="nta-attendee-input" key={attendeeIndex}><select aria-label={`Group ${batch.number} person ${attendeeIndex + 1} name`} value={attendee.name} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { name: event.target.value })} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((person) => <option key={person.name} value={person.name}>{person.name}</option>)}</select><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} office`} placeholder="Office" value={attendee.office} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { office: event.target.value })} required />{batch.attendees.length > 1 && <button type="button" className="remove-participant" onClick={() => updateBatch(batchIndex, { attendees: batch.attendees.filter((_, index) => index !== attendeeIndex) })}>Remove</button>}</div>)}{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</span>}<button type="button" className="text-button" onClick={() => updateBatch(batchIndex, { attendees: [...batch.attendees, { name: "", office: "" }] })}>+ Add person</button></div>
           {batches.length > 1 && <button type="button" className="remove-participant nta-remove-batch" onClick={() => setBatches((current) => current.filter((_, index) => index !== batchIndex))}>Remove group</button>}
         </fieldset>)}<button type="button" className="text-button" onClick={() => setBatches((current) => [...current, { ...initialBatch(), number: String(current.length + 1) }])}>+ Add group</button></div>
       </>}

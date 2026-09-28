@@ -22,3 +22,4 @@
   .nta-document-page,.nta-document-page *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 .nta-to-recipient{display:grid;gap:1.2cqi}
+.nta-personnel-error{color:var(--accent-dark);font-size:11px;font-weight:500;letter-spacing:0}

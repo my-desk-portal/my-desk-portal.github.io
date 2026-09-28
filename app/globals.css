@@ -28,7 +28,7 @@
 .special-order-expenses{margin:3.81cqi 0}
 .special-order-done{margin:4.76cqi 0}
 .special-order-signatory{margin-top:5.71cqi}
-.date-range-field{color:#4e5b55;display:grid;font-size:12px;font-weight:600;gap:8px}.date-range-field>div{align-items:center;display:flex;gap:8px}.date-range-field input{min-width:0}.date-range-field>div>span{color:var(--muted);font-size:12px;font-weight:400}.participant-fields{color:#4e5b55;display:grid;font-size:12px;font-weight:600;gap:8px}.participant-input{align-items:center;display:flex;gap:8px}.participant-input input{flex:1}.remove-participant{background:transparent;border:0;color:var(--accent-dark);font-size:12px;padding:8px 0}.add-participant{justify-self:start}
+.date-range-field{color:#4e5b55;display:grid;font-size:12px;font-weight:600;gap:8px}.date-range-field>div{align-items:center;display:flex;gap:8px}.date-range-field input{min-width:0}.date-range-field>div>span{color:var(--muted);font-size:12px;font-weight:400}.participant-fields{color:#4e5b55;display:grid;font-size:12px;font-weight:600;gap:8px}.participant-input{align-items:center;display:flex;gap:8px}.participant-input input,.participant-input select{flex:1;min-width:0}.remove-participant{background:transparent;border:0;color:var(--accent-dark);font-size:12px;padding:8px 0}.add-participant{justify-self:start}
 @media print{
   @page { size: A4; margin: 0; }
   html, body {

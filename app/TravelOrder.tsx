@@ -7,6 +7,7 @@ import { jsPDF } from "jspdf";
 import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { parsePersonnelWorkbook, type PersonnelEntry } from "@/lib/personnel";
 import "./travel-order.css";
 
 type TravelOrderStatus = "Processing" | "Approved" | "Disapproved";
@@ -53,6 +54,8 @@ function formatTravelDate(value: string) {
 
 function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (order: TravelOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [people, setPeople] = useState<TravelOrderPerson[]>([{ name: "", position: "", salary: "" }]);
+  const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
+  const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [departureDate, setDepartureDate] = useState("");
   const [returnDate, setReturnDate] = useState("");
   const [placeOfTravel, setPlaceOfTravel] = useState("");
@@ -64,6 +67,27 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
   const [transportation, setTransportation] = useState("");
   const [remarks, setRemarks] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPersonnel() {
+      try {
+        const response = await fetch(asset("/Personnel.xlsx"));
+        if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
+        const entries = (await parsePersonnelWorkbook(new Uint8Array(await response.arrayBuffer())))
+          .sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
+        if (!entries.length) throw new Error("The personnel sheet has no names.");
+        if (!cancelled) {
+          setPersonnel(entries);
+          setPersonnelStatus("ready");
+        }
+      } catch {
+        if (!cancelled) setPersonnelStatus("error");
+      }
+    }
+    void loadPersonnel();
+    return () => { cancelled = true; };
+  }, []);
 
   function updatePerson(index: number, update: Partial<TravelOrderPerson>) {
     setPeople((current) => current.map((person, itemIndex) => itemIndex === index ? { ...person, ...update } : person));
@@ -107,10 +131,11 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
       <label>Office Station<input value={officeStation} readOnly /></label>
       <div className="travel-order-people wide-field">
         <div className="travel-order-people-heading"><strong>Persons traveling</strong><span>Add each person who needs a separate Travel Order page.</span></div>
+        {personnelStatus === "error" && <p className="travel-order-number-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</p>}
         {people.map((person, index) => <fieldset className="travel-order-person" key={index}>
           <legend>Person {index + 1}</legend>
-          <label>Name<input value={person.name} onChange={(event) => updatePerson(index, { name: event.target.value })} placeholder="Full name" required /></label>
-          <label>Position<input value={person.position} onChange={(event) => updatePerson(index, { position: event.target.value })} placeholder="Position" required /></label>
+          <label>Name<select value={person.name} onChange={(event) => { const name = event.target.value; updatePerson(index, { name, position: personnel.find((entry) => entry.name === name)?.position ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((entry) => <option key={entry.name} value={entry.name}>{entry.name}</option>)}</select></label>
+          <label>Position<input value={person.position} readOnly required /></label>
           <label>Salary per Month <span className="muted-inline">(optional)</span><input value={person.salary} onChange={(event) => updatePerson(index, { salary: event.target.value })} placeholder="e.g. 25,000.00" /></label>
           {people.length > 1 && <button type="button" className="remove-participant" onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove person</button>}
         </fieldset>)}
