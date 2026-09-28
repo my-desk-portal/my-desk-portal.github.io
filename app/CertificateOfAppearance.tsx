@@ -247,7 +247,7 @@ function CertificateNamesForm({ record, onCancel, onSubmit, saving, error }: { r
     {error && <p className="coa-error" role="alert">{error}</p>}
     <form className="permit-form coa-name-edit-form" onSubmit={onSubmit}>
       {record.people.map((person, index) => <label className="wide-field" key={`${record.id}-${index}`}>Attendee {index + 1} Name<input name="person-name" maxLength={160} defaultValue={person.name} required /></label>)}
-      <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save name correction"}</button></div>
+      <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
 }
