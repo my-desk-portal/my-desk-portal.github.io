@@ -8,6 +8,14 @@
 .appreciation-form-section .section-heading>div{min-width:0}
 .appreciation-form-section .section-heading h2{font-size:clamp(22px,2.5vw,30px);overflow-wrap:anywhere}
 .appreciation-form-section .section-heading>.ghost-button{flex:0 0 auto}
+.appreciation-speakers-fieldset{border:1px solid var(--line);display:grid;gap:14px;margin:0;min-width:0;padding:18px}
+.appreciation-speakers-fieldset legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:12px;padding:0 8px}
+.appreciation-speakers-hint{color:var(--muted);font-size:13px;margin:0}
+.appreciation-speaker-card{border:1px solid var(--line);display:grid;gap:14px 18px;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0;padding:16px}
+.appreciation-speaker-card h3{font-size:14px;grid-column:1/-1;margin:0}
+.appreciation-speaker-card>label{min-width:0}
+.appreciation-speaker-card input,.appreciation-speaker-card select{max-width:100%;min-width:0;width:100%}
+.appreciation-speaker-card>.remove-participant{justify-self:start}
 .appreciation-form label small{color:var(--muted);font-size:11px;font-weight:400;letter-spacing:0;line-height:1.45}
 .appreciation-schedule{display:grid;gap:18px;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
 .appreciation-date-range,.appreciation-time-range{align-items:end;display:grid;gap:9px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);min-width:0}
@@ -21,8 +29,9 @@
 .appreciation-template-link{color:var(--accent-dark);text-decoration:none}
 .appreciation-list-actions,.appreciation-empty-actions{align-items:center;display:flex;gap:10px}
 .appreciation-empty-actions{justify-content:center;margin-top:8px}
+.appreciation-hold-note{color:var(--muted);font-size:11px;font-weight:400;line-height:1.2;margin:18px 0 0}
 .appreciation-record-list{border-top:1px solid var(--line)}
-.appreciation-record-head,.appreciation-record-row{align-items:center;display:grid;gap:14px;grid-template-columns:75px minmax(150px,1fr) minmax(180px,1.3fr) minmax(165px,1fr) 90px;padding:15px 8px}
+.appreciation-record-head,.appreciation-record-row{align-items:center;display:grid;gap:14px;grid-template-columns:75px minmax(150px,1fr) minmax(180px,1.3fr) minmax(165px,1fr) 150px;padding:15px 8px}
 .appreciation-record-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
 .appreciation-record-row{border-top:1px solid var(--line);font-size:13px}
 .appreciation-record-row>strong,.appreciation-record-row>span{overflow-wrap:anywhere}
@@ -56,6 +65,8 @@
   .appreciation-form-section .appreciation-form{grid-template-columns:minmax(0,1fr)}
   .appreciation-form-section .appreciation-form>.wide-field,.appreciation-form-section .appreciation-form>.form-actions{grid-column:1/-1}
   .appreciation-form-section .appreciation-form .form-actions .primary-button{width:100%}
+  .appreciation-speaker-card{grid-template-columns:minmax(0,1fr);padding:14px}
+  .appreciation-speaker-card h3{grid-column:1}
   .appreciation-schedule{grid-template-columns:minmax(0,1fr);gap:16px}
   .appreciation-date-range,.appreciation-time-range{grid-template-columns:minmax(0,1fr);gap:8px}
   .appreciation-date-range>span,.appreciation-time-range>span{padding:0;text-align:center}
@@ -79,5 +90,6 @@
   .appreciation-preview-toolbar,.appreciation-error{display:none!important}
   .appreciation-preview-pages{display:block!important;margin:0!important}
   .appreciation-print-sheet{aspect-ratio:auto!important;box-shadow:none!important;height:8.5in!important;margin:0 auto!important;width:11in!important}
+  .appreciation-print-sheet:not(:last-child){break-after:page!important;page-break-after:always!important}
   .appreciation-paper,.appreciation-paper *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 }

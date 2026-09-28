@@ -79,7 +79,7 @@ service cloud.firestore {
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.keys().hasAll(["unit", "speakerName", "speakerGender", "speakerPosition", "speakerOffice", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
-        && request.resource.data.keys().hasOnly(["unit", "speakerName", "speakerGender", "speakerPosition", "speakerOffice", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasOnly(["unit", "speakerName", "speakerGender", "speakerPosition", "speakerOffice", "speakers", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
         && request.resource.data.unit == "DRRM"
         && request.resource.data.speakerName is string
         && request.resource.data.speakerName.size() > 0
@@ -110,8 +110,39 @@ service cloud.firestore {
         && request.resource.data.distributionPlace.size() > 0
         && request.resource.data.distributionPlace.size() <= 240
         && (!request.resource.data.distributionSameAsDestination || request.resource.data.distributionPlace == request.resource.data.eventDestination)
+        && (!request.resource.data.keys().hasAny(["speakers"])
+          || (request.resource.data.speakers is list
+            && request.resource.data.speakers.size() > 0
+            && request.resource.data.speakers.size() <= 100
+            && request.resource.data.speakers[0] is map
+            && request.resource.data.speakers[0].name == request.resource.data.speakerName
+            && request.resource.data.speakers[0].gender == request.resource.data.speakerGender
+            && request.resource.data.speakers[0].position == request.resource.data.speakerPosition
+            && request.resource.data.speakers[0].office == request.resource.data.speakerOffice))
         && request.resource.data.createdAt is timestamp;
-      allow update, delete: if false;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["speakers", "speakerName", "speakerGender", "speakerPosition", "speakerOffice"])
+        && request.resource.data.speakers is list
+        && request.resource.data.speakers.size() > 0
+        && request.resource.data.speakers.size() <= 100
+        && request.resource.data.speakerName is string
+        && request.resource.data.speakerName.size() > 0
+        && request.resource.data.speakerName.size() <= 180
+        && request.resource.data.speakerGender in ["female", "male"]
+        && request.resource.data.speakerPosition is string
+        && request.resource.data.speakerPosition.size() > 0
+        && request.resource.data.speakerPosition.size() <= 180
+        && request.resource.data.speakerOffice is string
+        && request.resource.data.speakerOffice.size() > 0
+        && request.resource.data.speakerOffice.size() <= 240
+        && request.resource.data.speakers[0] is map
+        && request.resource.data.speakers[0].name == request.resource.data.speakerName
+        && request.resource.data.speakers[0].gender == request.resource.data.speakerGender
+        && request.resource.data.speakers[0].position == request.resource.data.speakerPosition
+        && request.resource.data.speakers[0].office == request.resource.data.speakerOffice;
+      allow delete: if false;
     }
     match /completionCertificates/{certificateId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;

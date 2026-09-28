@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { addDoc, collection, doc, getDocs, query, serverTimestamp, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -10,9 +10,12 @@ import { parseAppreciationImportWorkbook } from "@/lib/appreciation-import";
 import "./appreciation.css";
 
 type AppreciationGender = "female" | "male";
+type AppreciationSpeaker = { name: string; gender: AppreciationGender; position: string; office: string };
+type AppreciationSpeakerDraft = { name: string; gender: AppreciationGender | ""; position: string; office: string };
 type AppreciationRecord = {
   id: string;
   unit: "DRRM";
+  speakers?: AppreciationSpeaker[];
   speakerName: string;
   speakerGender: AppreciationGender;
   speakerPosition: string;
@@ -28,6 +31,8 @@ type AppreciationRecord = {
   ownerId: string;
   createdAt?: { toMillis?: () => number };
 };
+
+const MAX_SPEAKERS = 100;
 
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const blankAppreciation = asset("/appreciation-drrm-blank.jpg");
@@ -72,10 +77,22 @@ function countryLocation(value: string) {
   return /philippines/i.test(value) ? value : `${value}, Philippines`;
 }
 
+function recordSpeakers(record: AppreciationRecord): AppreciationSpeaker[] {
+  const speakers = record.speakers?.filter((speaker) => speaker && String(speaker.name ?? "").trim()) ?? [];
+  if (speakers.length) return speakers;
+  return record.speakerName?.trim() ? [{ name: record.speakerName, gender: record.speakerGender, position: record.speakerPosition, office: record.speakerOffice }] : [];
+}
+
+function primarySpeakerFields(speakers: AppreciationSpeaker[]) {
+  const primary = speakers[0];
+  return { speakerName: primary.name, speakerGender: primary.gender, speakerPosition: primary.position, speakerOffice: primary.office };
+}
+
 export default function AppreciationCertificate({ user }: { user: User }) {
   const [records, setRecords] = useState<AppreciationRecord[]>([]);
-  const [view, setView] = useState<"list" | "new">("list");
+  const [view, setView] = useState<"list" | "new" | "edit">("list");
   const [preview, setPreview] = useState<AppreciationRecord | null>(null);
+  const [editingRecord, setEditingRecord] = useState<AppreciationRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -110,13 +127,20 @@ export default function AppreciationCertificate({ user }: { user: User }) {
     const sameAsDestination = form.get("distribution-same") === "yes";
     const unit = String(form.get("unit") ?? "") as "AMIA" | "AGRISTAT" | "DRRM";
     if (unit !== "DRRM") { setError("Only the DRRM appreciation certificate is available right now."); return; }
+    const names = form.getAll("speaker-name").map((value) => String(value).trim());
+    const genders = form.getAll("speaker-gender").map((value) => String(value) as AppreciationGender);
+    const positions = form.getAll("speaker-position").map((value) => String(value).trim());
+    const offices = form.getAll("speaker-office").map((value) => String(value).trim());
+    if (!names.length || names.length > MAX_SPEAKERS || names.some((name) => !name) || genders.length !== names.length || genders.some((gender) => !gender) || positions.length !== names.length || positions.some((position) => !position) || offices.length !== names.length || offices.some((office) => !office)) {
+      setError(`Enter complete details for each resource speaker (up to ${MAX_SPEAKERS}).`);
+      return;
+    }
+    const speakers = names.map((name, index) => ({ name, gender: genders[index], position: positions[index], office: offices[index] }));
     const distributionPlace = sameAsDestination ? eventDestination : String(form.get("distribution-place") ?? "").trim();
     const recordData = {
       unit,
-      speakerName: String(form.get("speaker-name") ?? "").trim(),
-      speakerGender: String(form.get("speaker-gender") ?? "") as AppreciationGender,
-      speakerPosition: String(form.get("speaker-position") ?? "").trim(),
-      speakerOffice: String(form.get("speaker-office") ?? "").trim(),
+      speakers,
+      ...primarySpeakerFields(speakers),
       eventTitle: String(form.get("event-title") ?? "").trim(),
       eventDateFrom: String(form.get("event-date-from") ?? ""),
       eventDateTo: String(form.get("event-date-to") ?? ""),
@@ -136,6 +160,35 @@ export default function AppreciationCertificate({ user }: { user: User }) {
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       setError(code ? `Could not save the Appreciation certificate (${code}).` : "Could not save the Appreciation certificate. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveSpeakerCorrections(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (!db || !editingRecord) { setError("The Appreciation certificate could not be updated."); return; }
+    const form = new FormData(event.currentTarget);
+    const names = form.getAll("speaker-name").map((value) => String(value).trim());
+    const genders = form.getAll("speaker-gender").map((value) => String(value) as AppreciationGender);
+    const positions = form.getAll("speaker-position").map((value) => String(value).trim());
+    const offices = form.getAll("speaker-office").map((value) => String(value).trim());
+    if (!names.length || names.length > MAX_SPEAKERS || names.some((name) => !name) || genders.length !== names.length || genders.some((gender) => !gender) || positions.length !== names.length || positions.some((position) => !position) || offices.length !== names.length || offices.some((office) => !office)) {
+      setError(`Enter complete details for each resource speaker (up to ${MAX_SPEAKERS}).`);
+      return;
+    }
+    const speakers = names.map((name, index) => ({ name, gender: genders[index], position: positions[index], office: offices[index] }));
+    const speakerFields = { speakers, ...primarySpeakerFields(speakers) };
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "appreciationCertificates", editingRecord.id), speakerFields);
+      setRecords((current) => current.map((record) => record.id === editingRecord.id ? { ...record, ...speakerFields } : record));
+      setEditingRecord(null);
+      setView("list");
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not update the resource speaker details (${code}).` : "Could not update the resource speaker details. Try again.");
     } finally {
       setSaving(false);
     }
@@ -177,44 +230,49 @@ export default function AppreciationCertificate({ user }: { user: User }) {
   }
 
   async function waitForBlank() {
-    const image = pagesRef.current?.querySelector<HTMLImageElement>(".appreciation-blank");
-    if (!image) throw new Error("The Appreciation certificate preview is unavailable.");
-    if (!image.complete) await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error("The DRRM Appreciation blank could not be loaded."));
-    });
-    if (!image.naturalWidth) throw new Error("The DRRM Appreciation blank could not be loaded.");
-    if (image.decode) await image.decode();
+    const images = Array.from(pagesRef.current?.querySelectorAll<HTMLImageElement>(".appreciation-blank") ?? []);
+    if (!images.length) throw new Error("The Appreciation certificate preview is unavailable.");
+    await Promise.all(images.map(async (image) => {
+      if (!image.complete) await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("The DRRM Appreciation blank could not be loaded."));
+      });
+      if (!image.naturalWidth) throw new Error("The DRRM Appreciation blank could not be loaded.");
+      if (image.decode) await image.decode();
+    }));
     if (document.fonts?.ready) await document.fonts.ready;
   }
 
   async function downloadPdf() {
     setDownloading(true);
     setError("");
-    let paper: HTMLElement | null = null;
-    let originalPaperWidth = "";
-    let originalPaperMaxWidth = "";
+    let papers: HTMLElement[] = [];
+    let originalPaperSizes: Array<[string, string]> = [];
     try {
       await waitForBlank();
-      paper = pagesRef.current?.querySelector<HTMLElement>(".appreciation-print-sheet") ?? null;
-      if (!paper) throw new Error("The Appreciation certificate preview is unavailable.");
-      originalPaperWidth = paper.style.width;
-      originalPaperMaxWidth = paper.style.maxWidth;
-      paper.style.width = "11in";
-      paper.style.maxWidth = "none";
+      papers = Array.from(pagesRef.current?.querySelectorAll<HTMLElement>(".appreciation-print-sheet") ?? []);
+      if (!papers.length) throw new Error("The Appreciation certificate preview is unavailable.");
+      originalPaperSizes = papers.map((paper) => [paper.style.width, paper.style.maxWidth]);
+      papers.forEach((paper) => {
+        paper.style.width = "11in";
+        paper.style.maxWidth = "none";
+      });
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      const canvas = await html2canvas(paper, { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
       const pdf = new jsPDF({ orientation: "landscape", unit: "in", format: "letter" });
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.97), "JPEG", 0, 0, 11, 8.5);
-      const filename = preview!.speakerName.trim().replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "") || "speaker";
+      for (let index = 0; index < papers.length; index += 1) {
+        const canvas = await html2canvas(papers[index], { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
+        if (index > 0) pdf.addPage("letter", "landscape");
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.97), "JPEG", 0, 0, 11, 8.5);
+      }
+      const filename = recordSpeakers(preview!).slice(0, 3).map((speaker) => speaker.name).join("-").trim().replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "") || "speaker";
       pdf.save(`appreciation-certificate-${filename}.pdf`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to create the Appreciation certificate PDF.");
     } finally {
-      if (paper) {
-        paper.style.width = originalPaperWidth;
-        paper.style.maxWidth = originalPaperMaxWidth;
-      }
+      papers.forEach((paper, index) => {
+        paper.style.width = originalPaperSizes[index]?.[0] ?? "";
+        paper.style.maxWidth = originalPaperSizes[index]?.[1] ?? "";
+      });
       setDownloading(false);
     }
   }
@@ -236,36 +294,37 @@ export default function AppreciationCertificate({ user }: { user: User }) {
   if (preview) return <div className="preview-backdrop appreciation-preview-backdrop">
     <div className="preview-toolbar appreciation-preview-toolbar"><span>Appreciation certificate preview</span><button type="button" className="ghost-button" onClick={() => { setPreview(null); setError(""); }}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={() => void downloadPdf()}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={() => void printCertificate()}>{printing ? "Preparing print..." : "Print"}</button></div>
     {error && <p className="appreciation-error" role="alert">{error}</p>}
-    <div className="appreciation-preview-pages" ref={pagesRef}><section className="appreciation-print-sheet" aria-label={`Letter landscape Appreciation certificate for ${preview.speakerName}`}><AppreciationPaper record={preview} /></section></div>
+    <div className="appreciation-preview-pages" ref={pagesRef}>{recordSpeakers(preview).map((speaker, index) => <section className="appreciation-print-sheet" key={`${preview.id}-${index}`} aria-label={`Letter landscape Appreciation certificate for ${speaker.name}`}><AppreciationPaper record={preview} speaker={speaker} /></section>)}</div>
   </div>;
 
   if (view === "new") return <AppreciationForm onCancel={() => { setView("list"); setError(""); }} onSubmit={saveAppreciation} saving={saving} error={error} />;
+  if (view === "edit" && editingRecord) return <AppreciationSpeakerForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveSpeakerCorrections} saving={saving} error={error} />;
 
   return <section className="content-section appreciation-section">
-    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Certificate of Appreciation Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="appreciation-template-link" href={importTemplate} download="Appreciation_Importing_Template.xlsx">Appreciation_Importing_Template.xlsx</a>.</p></div><div className="appreciation-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
+    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Appreciation Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="appreciation-template-link" href={importTemplate} download="Appreciation_Importing_Template.xlsx">Appreciation_Importing_Template.xlsx</a>.</p></div><div className="appreciation-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
     <input ref={importInputRef} className="appreciation-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importAppreciations(event)} aria-label="Import Appreciation certificate workbook" />
     {error && <p className="appreciation-error" role="alert">{error}</p>}
     {importMessage && <p className="appreciation-success" role="status">{importMessage}</p>}
-    {loading ? <p className="muted">Loading Appreciation certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Appreciation certificates yet</h3><p>Add the speaker and event details manually or import the completed Appreciation_Importing_Template.xlsx workbook.</p><div className="appreciation-empty-actions"><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add an Appreciation Certificate</button><button type="button" className="text-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import certificates"}</button></div></div> : <div className="appreciation-record-list"><div className="appreciation-record-head"><span>Unit</span><span>Resource Speaker</span><span>Event&apos;s Title</span><span>Event Dates</span><span></span></div>{records.map((record) => <div className="appreciation-record-row" key={record.id}><span><span className="appreciation-unit-tag">{record.unit}</span></span><strong>{record.speakerName}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="appreciation-record-actions"><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
+    {loading ? <p className="muted">Loading Appreciation certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Appreciation certificates yet</h3><p>Add the speaker and event details manually or import the completed Appreciation_Importing_Template.xlsx workbook.</p><div className="appreciation-empty-actions"><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add an Appreciation Certificate</button><button type="button" className="text-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import certificates"}</button></div></div> : <div className="appreciation-record-list"><div className="appreciation-record-head"><span>Unit</span><span>Resource Speaker(s)</span><span>Event&apos;s Title</span><span>Event Dates</span><span></span></div>{records.map((record) => <div className="appreciation-record-row" key={record.id}><span><span className="appreciation-unit-tag">{record.unit}</span></span><strong>{recordSpeakers(record).map((speaker) => speaker.name).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="appreciation-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
+    <p className="appreciation-hold-note">AMIA and AGRISTAT appreciation templates are on hold.</p>
   </section>;
 }
 
 function AppreciationForm({ onCancel, onSubmit, saving, error }: { onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
+  const [speakers, setSpeakers] = useState<AppreciationSpeakerDraft[]>([{ name: "", gender: "", position: "", office: "" }]);
   const [eventDateFrom, setEventDateFrom] = useState("");
   const [eventDateTo, setEventDateTo] = useState("");
   const [eventDestination, setEventDestination] = useState("");
   const [sameLocation, setSameLocation] = useState(false);
   const [distributionPlace, setDistributionPlace] = useState("");
+  const updateSpeaker = (index: number, values: Partial<AppreciationSpeakerDraft>) => setSpeakers((current) => current.map((speaker, row) => row === index ? { ...speaker, ...values } : speaker));
 
   return <section className="content-section appreciation-section appreciation-form-section">
-    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Appreciation</h2><p className="muted">Enter the resource speaker and event details. The certificate prints on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Appreciation</h2><p className="muted">Enter one or more resource speakers and the event details. Each speaker gets a separate landscape Letter certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="appreciation-error" role="alert">{error}</p>}
     <form className="permit-form appreciation-form" onSubmit={onSubmit}>
       <label className="wide-field">Unit<select name="unit" defaultValue="DRRM"><option value="AMIA" disabled>AMIA</option><option value="AGRISTAT" disabled>AGRISTAT</option><option value="DRRM">DRRM</option></select><small>AMIA and AGRISTAT templates are on hold for now.</small></label>
-      <label>Resource Speaker&apos;s Name<input name="speaker-name" maxLength={180} required /></label>
-      <label>Resource Speaker&apos;s Gender<select name="speaker-gender" defaultValue="" required><option value="" disabled>Select gender</option><option value="female">Female</option><option value="male">Male</option></select></label>
-      <label>Resource Speaker&apos;s Position<input name="speaker-position" maxLength={180} required /></label>
-      <label>Resource Speaker&apos;s Office<input name="speaker-office" maxLength={240} required /></label>
+      <AppreciationSpeakersFieldset speakers={speakers} onChange={updateSpeaker} onAdd={() => setSpeakers((current) => [...current, { name: "", gender: "", position: "", office: "" }])} onRemove={(index) => setSpeakers((current) => current.filter((_, row) => row !== index))} />
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field appreciation-schedule">
         <div className="appreciation-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => { setEventDateFrom(event.target.value); if (eventDateTo && eventDateTo < event.target.value) setEventDateTo(""); }} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} value={eventDateTo} onChange={(event) => setEventDateTo(event.target.value)} required /></label></div>
@@ -280,9 +339,39 @@ function AppreciationForm({ onCancel, onSubmit, saving, error }: { onCancel: () 
   </section>;
 }
 
-function AppreciationPaper({ record }: { record: AppreciationRecord }) {
+function AppreciationSpeakerForm({ record, onCancel, onSubmit, saving, error }: { record: AppreciationRecord; onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
+  const [speakers, setSpeakers] = useState<AppreciationSpeakerDraft[]>(() => recordSpeakers(record).map((speaker) => ({ ...speaker })));
+  const updateSpeaker = (index: number, values: Partial<AppreciationSpeakerDraft>) => setSpeakers((current) => current.map((speaker, row) => row === index ? { ...speaker, ...values } : speaker));
+
+  return <section className="content-section appreciation-section appreciation-form-section">
+    <div className="section-heading"><div><p className="eyebrow">Correct record</p><h2>Edit resource speaker{speakers.length === 1 ? "" : "s"}</h2><p className="muted">Correct names or add speakers for {record.eventTitle}. Event details will stay the same.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    {error && <p className="appreciation-error" role="alert">{error}</p>}
+    <form className="permit-form appreciation-form" onSubmit={onSubmit}>
+      <AppreciationSpeakersFieldset speakers={speakers} onChange={updateSpeaker} onAdd={() => setSpeakers((current) => [...current, { name: "", gender: "", position: "", office: "" }])} onRemove={(index) => setSpeakers((current) => current.filter((_, row) => row !== index))} />
+      <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
+    </form>
+  </section>;
+}
+
+function AppreciationSpeakersFieldset({ speakers, onChange, onAdd, onRemove }: { speakers: AppreciationSpeakerDraft[]; onChange: (index: number, values: Partial<AppreciationSpeakerDraft>) => void; onAdd: () => void; onRemove: (index: number) => void }) {
+  return <fieldset className="wide-field appreciation-speakers-fieldset">
+    <legend>Resource Speaker&apos;s Details</legend>
+    <p className="appreciation-speakers-hint">Each speaker will receive a separate Appreciation certificate.</p>
+    {speakers.map((speaker, index) => <div className="appreciation-speaker-card" key={index}>
+      <h3>Speaker {index + 1}</h3>
+      <label>Name<input name="speaker-name" maxLength={180} value={speaker.name} onChange={(event) => onChange(index, { name: event.target.value })} required /></label>
+      <label>Gender<select name="speaker-gender" value={speaker.gender} onChange={(event) => onChange(index, { gender: event.target.value as AppreciationSpeakerDraft["gender"] })} required><option value="" disabled>Select gender</option><option value="female">Female</option><option value="male">Male</option></select></label>
+      <label>Position<input name="speaker-position" maxLength={180} value={speaker.position} onChange={(event) => onChange(index, { position: event.target.value })} required /></label>
+      <label>Office<input name="speaker-office" maxLength={240} value={speaker.office} onChange={(event) => onChange(index, { office: event.target.value })} required /></label>
+      {speakers.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove speaker ${index + 1}`} onClick={() => onRemove(index)}>Remove</button>}
+    </div>)}
+    <button type="button" className="text-button" disabled={speakers.length >= MAX_SPEAKERS} onClick={onAdd}>+ Add speaker</button>
+  </fieldset>;
+}
+
+function AppreciationPaper({ record, speaker }: { record: AppreciationRecord; speaker: AppreciationSpeaker }) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  const objectPronoun = record.speakerGender === "female" ? "her" : "his";
+  const objectPronoun = speaker.gender === "female" ? "her" : "his";
 
   useLayoutEffect(() => {
     const body = bodyRef.current;
@@ -327,10 +416,10 @@ function AppreciationPaper({ record }: { record: AppreciationRecord }) {
 
   return <article className="appreciation-paper">
     <img className="appreciation-blank" src={blankAppreciation} alt="" />
-    <div className="appreciation-speaker-name">{record.speakerName}</div>
-    <div className="appreciation-speaker-role"><em>{record.speakerPosition}</em>, {record.speakerOffice}</div>
+    <div className="appreciation-speaker-name">{speaker.name}</div>
+    <div className="appreciation-speaker-role"><em>{speaker.position}</em>, {speaker.office}</div>
     <div className="appreciation-body" ref={bodyRef}>
-      <p>For {objectPronoun} exemplary service, commitment, and valuable shared insights as <strong>RESOURCE SPEAKER</strong> for <strong>{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at <strong>{countryLocation(record.eventDestination)}</strong>.</p>
+      <p>For {objectPronoun} exemplary service, commitment, and valuable shared insights as <strong>RESOURCE SPEAKER</strong> for <strong>{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at <strong>{record.eventDestination}</strong>.</p>
       <p>Given this <strong>{ordinalDate(record.eventDateTo)}</strong> at <strong>{countryLocation(record.distributionPlace)}</strong>.</p>
       <footer className="appreciation-signatory"><strong>ENGR. RICARDO M. O&#209;ATE JR.</strong><em>Regional Executive Director</em></footer>
     </div>
