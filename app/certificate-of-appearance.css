@@ -1,12 +1,15 @@
 .coa-list-section,.coa-form-section{max-width:980px}
 .coa-record-list{border-top:1px solid var(--line)}
-.coa-record-head,.coa-record-row{align-items:center;display:grid;gap:16px;grid-template-columns:minmax(180px,1.4fr) minmax(125px,.8fr) minmax(200px,1.4fr) 90px;padding:15px 8px}
+.coa-record-head,.coa-record-row{align-items:center;display:grid;gap:16px;grid-template-columns:minmax(180px,1.4fr) minmax(125px,.8fr) minmax(200px,1.4fr) 140px;padding:15px 8px}
 .coa-record-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
 .coa-record-row{border-top:1px solid var(--line);font-size:13px}
 .coa-record-row strong,.coa-record-row>span{overflow-wrap:anywhere}
-.coa-record-row .row-action{text-align:center}
+.coa-record-actions{display:flex;gap:10px;justify-content:flex-end}
+.coa-record-actions .row-action{white-space:nowrap}
 .coa-error{background:#fff0eb;border-left:3px solid var(--accent);color:#9e3824;font-size:13px;margin:0 0 20px;padding:13px 16px}
 .coa-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+.coa-name-edit-form{grid-template-columns:minmax(0,1fr)}
+.coa-name-edit-form>.wide-field,.coa-name-edit-form>.form-actions{grid-column:1/-1}
 .coa-date-range{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
 .coa-date-range>span{color:var(--muted);font-size:12px;padding-bottom:13px}
 .coa-date-range label,.coa-date-range input{min-width:0}
@@ -32,7 +35,7 @@
 .coa-signatory em{font-style:italic}
 .coa-signatory span{font-style:normal}
 .coa-signatory-role{white-space:nowrap}
-@media(max-width:720px){.coa-record-head{display:none}.coa-record-row{align-items:start;gap:6px;grid-template-columns:1fr auto}.coa-record-row>span{grid-column:1}.coa-record-row .row-action{grid-column:2;grid-row:1/4}.coa-form{grid-template-columns:minmax(0,1fr)}.coa-form>*{min-width:0}.coa-form>label,.coa-form>.coa-date-range,.coa-form>.coa-people-fieldset,.coa-form>.form-actions{grid-column:1/-1}.coa-date-range{grid-template-columns:minmax(0,1fr);gap:8px}.coa-date-range>span{padding:0}.coa-person-row{grid-template-columns:minmax(0,1fr)}.coa-person-row .remove-participant{justify-self:start}.coa-preview-toolbar{justify-content:flex-start}.coa-preview-toolbar>span{flex-basis:100%}.coa-print-sheet{width:96vw}}
+@media(max-width:720px){.coa-record-head{display:none}.coa-record-row{align-items:start;gap:6px;grid-template-columns:1fr auto}.coa-record-row>span{grid-column:1}.coa-record-actions{align-content:start;display:grid;gap:8px;grid-column:2;grid-row:1/4}.coa-form{grid-template-columns:minmax(0,1fr)}.coa-form>*{min-width:0}.coa-form>label,.coa-form>.coa-date-range,.coa-form>.coa-people-fieldset,.coa-form>.form-actions{grid-column:1/-1}.coa-date-range{grid-template-columns:minmax(0,1fr);gap:8px}.coa-date-range>span{padding:0}.coa-person-row{grid-template-columns:minmax(0,1fr)}.coa-person-row .remove-participant{justify-self:start}.coa-preview-toolbar{justify-content:flex-start}.coa-preview-toolbar>span{flex-basis:100%}.coa-print-sheet{width:96vw}}
 @media print{
   @page{size:A4 portrait;margin:0}
   .coa-preview-backdrop{background:#fff!important;display:block!important;inset:auto!important;overflow:visible!important;padding:0!important;position:static!important;width:100%!important}

@@ -1,0 +1,91 @@
+.completion-section{margin-inline:auto;max-width:1120px;min-width:0;width:100%}
+.content-section.completion-form-section{margin-left:auto;margin-right:auto;max-width:1120px;min-width:0;width:100%}
+.completion-error{background:#fff0eb;border-left:3px solid var(--accent);color:#9e3824;font-size:13px;margin:0 0 20px;padding:13px 16px}
+.completion-form-section .completion-form{align-items:start;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 20px;min-width:0;width:100%}
+.completion-form-section .completion-form>*{min-width:0}
+.completion-form-section .completion-form>label{align-content:start;align-self:start}
+.completion-form-section .completion-form>.wide-field,.completion-form-section .completion-form>.completion-checkbox,.completion-form-section .completion-form>.form-actions{grid-column:1/-1}
+.completion-form-section .completion-name-form{grid-template-columns:minmax(0,1fr)}
+.completion-form-section .completion-name-form>.wide-field,.completion-form-section .completion-name-form>.form-actions{grid-column:1/-1}
+.completion-form-section .completion-form>label:not(.completion-checkbox)>input,.completion-form-section .completion-form>label:not(.completion-checkbox)>select{max-width:100%;min-width:0;width:100%}
+.completion-form-section .completion-form>.completion-schedule,.completion-form-section .completion-form>.completion-participants-fieldset{min-width:0}
+.completion-form-section .section-heading{gap:18px;min-width:0}
+.completion-form-section .section-heading>div{min-width:0}
+.completion-form-section .section-heading h2{font-size:clamp(22px,2.5vw,30px);overflow-wrap:anywhere}
+.completion-form-section .section-heading>.ghost-button{flex:0 0 auto}
+.completion-form label small{color:var(--muted);font-size:11px;font-weight:400;letter-spacing:0;line-height:1.45}
+.completion-participants-fieldset{border:1px solid var(--line);display:grid;gap:12px;margin:0;min-width:0;padding:14px}
+.completion-participants-fieldset legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:12px;padding:0 8px}
+.completion-participants-hint{color:var(--muted);font-size:12px;line-height:1.45;margin:0}
+.completion-name-row{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) auto;min-width:0}
+.completion-name-row label,.completion-name-row input{min-width:0}
+.completion-name-row .remove-participant{padding:10px 4px}
+.completion-participants-fieldset>.text-button{justify-self:start}
+.completion-schedule{display:grid;gap:18px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.completion-date-range,.completion-time-range{align-items:end;display:grid;gap:9px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);min-width:0}
+.completion-date-range label,.completion-time-range label,.completion-date-range input,.completion-time-range input{max-width:100%;min-width:0}
+.completion-date-range>span,.completion-time-range>span{color:var(--muted);font-size:12px;padding-bottom:13px}
+.completion-checkbox{align-items:center;display:flex;gap:10px;grid-column:1/-1;line-height:1.45}
+.completion-checkbox input{accent-color:var(--accent);flex:0 0 18px;height:18px;margin:0;padding:0;width:18px}
+.completion-hold-note{color:var(--muted);font-size:11px;margin:18px 0 0}
+.completion-record-list{border-top:1px solid var(--line)}
+.completion-record-head,.completion-record-row{align-items:center;display:grid;gap:14px;grid-template-columns:90px minmax(140px,.9fr) minmax(180px,1.3fr) minmax(150px,1fr) 140px;padding:15px 8px}
+.completion-record-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.completion-record-row{border-top:1px solid var(--line);font-size:13px}
+.completion-record-row>strong,.completion-record-row>span{overflow-wrap:anywhere}
+.completion-unit-tag{background:var(--mint);display:inline-block;font-size:10px;font-weight:700;padding:5px 7px}
+.completion-record-actions{display:flex;gap:10px;justify-content:flex-end}
+.completion-record-actions .row-action{white-space:nowrap}
+.completion-preview-backdrop{z-index:32}
+.completion-preview-toolbar{max-width:11in}
+.completion-preview-pages{display:grid;gap:18px;justify-items:center;margin:0 auto}
+.completion-print-sheet{aspect-ratio:11 / 8.5;background:#fff;box-shadow:0 18px 50px #18211f24;container-type:inline-size;height:auto;overflow:hidden;page:completion;position:relative;width:min(96vw,11in)}
+.completion-paper{background:#fff;color:#101614;font-family:Arial,Helvetica,sans-serif;height:100%;overflow:hidden;position:relative;width:100%}
+.completion-template{height:100%;inset:0;object-fit:fill;pointer-events:none;position:absolute;width:100%;z-index:0}
+.completion-heading{display:none!important}
+.completion-participant,.completion-body,.completion-signatory{position:absolute;z-index:1}
+.completion-participant{align-items:center;background:transparent;color:#fff;display:flex;font-size:clamp(16px,3.4cqi,39px);font-weight:700;justify-content:flex-start;left:16.5%;line-height:1.08;margin:0;min-height:11.9%;overflow-wrap:anywhere;padding:1% 2% 1% 3.3%;text-align:left;text-transform:uppercase;top:35.1%;width:75.5%}
+.completion-body{font-size:2.05cqi;left:19.8%;line-height:1.15;overflow-wrap:anywhere;right:9.3%;top:47.8%}
+.completion-body p{margin:0 0 1.8cqi}
+.completion-ordinal-suffix{font-size:.65em;line-height:0;vertical-align:super}
+.completion-event-title{text-transform:uppercase}
+.completion-signatory{display:grid;gap:.6cqi;left:19.8%;line-height:1.15;padding-bottom:1px;top:77.7%}
+.completion-signatory::before{content:"";display:block;height:5.2cqi}
+.completion-signatory strong,.completion-signatory em{font-size:2.05cqi}
+.completion-signatory strong{font-weight:700}
+.completion-signatory em{font-style:italic}
+@media(max-width:900px){
+  .completion-form-section .completion-form{grid-template-columns:minmax(0,1fr)}
+  .completion-form-section .completion-form>.wide-field,.completion-form-section .completion-form>.completion-checkbox,.completion-form-section .completion-form>.form-actions{grid-column:1/-1}
+  .completion-schedule{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:720px){
+  .completion-form-section{padding:22px 16px}
+  .completion-form-section .section-heading{align-items:flex-start;gap:12px}
+  .completion-form-section .section-heading h2{font-size:clamp(21px,6vw,26px);line-height:1.12}
+  .completion-form input,.completion-form select,.completion-name-form input{font-size:16px;max-width:100%;min-width:0}
+  .completion-form-section .completion-form{grid-template-columns:minmax(0,1fr)}
+  .completion-form-section .completion-form>.wide-field,.completion-form-section .completion-form>.completion-checkbox,.completion-form-section .completion-form>.form-actions{grid-column:1/-1}
+  .completion-form-section .completion-form .form-actions .primary-button{width:100%}
+  .completion-schedule{grid-template-columns:minmax(0,1fr);gap:18px}
+  .completion-date-range,.completion-time-range{grid-template-columns:minmax(0,1fr);gap:8px}
+  .completion-date-range>span,.completion-time-range>span{padding:0;text-align:center}
+  .completion-name-row{grid-template-columns:minmax(0,1fr) auto}
+  .completion-preview-backdrop{padding:12px}
+  .completion-record-head{display:none}
+  .completion-record-row{align-items:start;gap:7px;grid-template-columns:minmax(0,1fr) auto;padding:15px 4px}
+  .completion-record-row>strong,.completion-record-row>span:nth-of-type(n+2){grid-column:1/-1}
+  .completion-record-actions{align-content:start;display:grid;gap:8px;grid-column:2;grid-row:1/5}
+  .completion-record-actions .row-action{text-align:right}
+  .completion-preview-toolbar{justify-content:flex-start}
+  .completion-preview-toolbar>span{flex-basis:100%;margin-bottom:2px}
+  .completion-print-sheet{width:96vw}
+}
+@media print{
+  @page completion{size:letter landscape;margin:0}
+  .completion-preview-toolbar,.completion-error{display:none!important}
+  .completion-preview-pages{display:block!important;margin:0!important}
+  .completion-print-sheet{aspect-ratio:auto!important;box-shadow:none!important;height:8.5in!important;margin:0 auto!important;width:11in!important}
+  .completion-print-sheet:not(:last-child){break-after:page!important;page-break-after:always!important}
+  .completion-paper,.completion-paper *{print-color-adjust:exact!important;-webkit-print-color-adjust:exact!important}
+}

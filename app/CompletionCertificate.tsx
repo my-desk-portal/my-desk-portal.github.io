@@ -1,0 +1,313 @@
+"use client";
+
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import type { User } from "firebase/auth";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
+import { db } from "@/lib/firebase";
+import "./completion.css";
+
+type CompletionUnit = "AMIA" | "AGRISTAT" | "DRRM";
+type CompletionRecord = {
+  id: string;
+  unit: CompletionUnit;
+  participantNames?: string[];
+  participantName?: string;
+  eventTitle: string;
+  eventDateFrom: string;
+  eventDateTo: string;
+  eventTimeFrom: string;
+  eventTimeTo: string;
+  eventDestination: string;
+  distributionSameAsDestination: boolean;
+  distributionPlace: string;
+  ownerId: string;
+  createdAt?: { toMillis?: () => number };
+};
+
+const blankTemplate = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/completion-drrm-blank.jpg`;
+const MAX_PARTICIPANTS = 100;
+
+function participantNames(record: CompletionRecord) {
+  const names = record.participantNames?.map((name) => String(name).trim()).filter(Boolean) ?? [];
+  if (names.length) return names;
+  return record.participantName?.trim() ? [record.participantName.trim()] : [];
+}
+
+function displayDate(value: string) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-PH", { month: "long", day: "numeric", year: "numeric" }).format(date);
+}
+
+function displayDateRange(from: string, to: string) {
+  if (!from) return displayDate(to);
+  if (!to || from === to) return displayDate(from);
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return `${displayDate(from)} - ${displayDate(to)}`;
+  const month = new Intl.DateTimeFormat("en-PH", { month: "long" });
+  const startMonth = month.format(start);
+  const endMonth = month.format(end);
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    return `${startMonth} ${start.getDate()} - ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  if (start.getFullYear() === end.getFullYear()) {
+    return `${displayDate(from)} - ${endMonth} ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  return `${displayDate(from)} - ${displayDate(to)}`;
+}
+
+function displayTime(value: string) {
+  const [hourText, minutes] = value.split(":");
+  const hourValue = Number(hourText);
+  if (!Number.isFinite(hourValue) || !minutes) return value;
+  const hour = hourValue % 12 || 12;
+  return `${hour}:${minutes} ${hourValue >= 12 ? "PM" : "AM"}`;
+}
+
+function ordinalDay(value: string) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return displayDate(value);
+  const day = date.getDate();
+  const suffix = day % 100 >= 11 && day % 100 <= 13 ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th";
+  const month = new Intl.DateTimeFormat("en-PH", { month: "long" }).format(date);
+  return <>{day}<sup className="completion-ordinal-suffix">{suffix}</sup> day of {month} {date.getFullYear()}</>;
+}
+
+function dateLabel(value: string) {
+  return value ? displayDate(value) : "Set the event end date";
+}
+
+export default function CompletionCertificate({ user }: { user: User }) {
+  const [records, setRecords] = useState<CompletionRecord[]>([]);
+  const [view, setView] = useState<"list" | "new" | "edit">("list");
+  const [editingRecord, setEditingRecord] = useState<CompletionRecord | null>(null);
+  const [preview, setPreview] = useState<CompletionRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [error, setError] = useState("");
+  const pageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!db) {
+      setLoading(false);
+      setError("Completion certificate storage is unavailable.");
+      return;
+    }
+    getDocs(query(collection(db, "completionCertificates"), where("ownerId", "==", user.uid)))
+      .then((snapshot) => {
+        const loaded = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as CompletionRecord));
+        loaded.sort((first, second) => (second.createdAt?.toMillis?.() ?? 0) - (first.createdAt?.toMillis?.() ?? 0));
+        setRecords(loaded);
+      })
+      .catch((cause) => {
+        const code = (cause as { code?: string }).code;
+        setError(code ? `Could not load completion certificates (${code}).` : "Could not load completion certificates. Refresh and try again.");
+      })
+      .finally(() => setLoading(false));
+  }, [user.uid]);
+
+  async function saveCompletion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (!db) {
+      setError("Completion certificate storage is unavailable.");
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    const eventDestination = String(form.get("event-destination") ?? "").trim();
+    const sameAsDestination = form.get("distribution-same") === "yes";
+    const unit = String(form.get("unit") ?? "") as CompletionUnit;
+    if (unit !== "DRRM") {
+      setError("Only the DRRM completion certificate is available right now.");
+      return;
+    }
+    const names = form.getAll("participant-name").map((value) => String(value).trim());
+    if (!names.length || names.length > MAX_PARTICIPANTS || names.some((name) => !name)) {
+      setError(`Enter a name for each participant (up to ${MAX_PARTICIPANTS}).`);
+      return;
+    }
+    const recordData = {
+      unit,
+      participantNames: names,
+      eventTitle: String(form.get("event-title") ?? "").trim(),
+      eventDateFrom: String(form.get("event-date-from") ?? ""),
+      eventDateTo: String(form.get("event-date-to") ?? ""),
+      eventTimeFrom: String(form.get("event-time-from") ?? ""),
+      eventTimeTo: String(form.get("event-time-to") ?? ""),
+      eventDestination,
+      distributionSameAsDestination: sameAsDestination,
+      distributionPlace: sameAsDestination ? eventDestination : String(form.get("distribution-place") ?? "").trim(),
+      ownerId: user.uid,
+      createdAt: serverTimestamp(),
+    };
+    setSaving(true);
+    try {
+      const reference = await addDoc(collection(db, "completionCertificates"), recordData);
+      setRecords((current) => [{ ...recordData, id: reference.id, createdAt: undefined } as CompletionRecord, ...current]);
+      setView("list");
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not save the completion certificate (${code}).` : "Could not save the completion certificate. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveNameCorrection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (!db || !editingRecord) {
+      setError("The completion certificate could not be updated.");
+      return;
+    }
+    const names = new FormData(event.currentTarget).getAll("participant-name").map((value) => String(value).trim());
+    if (!names.length || names.length > MAX_PARTICIPANTS || names.some((name) => !name)) {
+      setError(`Enter a name for each participant (up to ${MAX_PARTICIPANTS}).`);
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "completionCertificates", editingRecord.id), { participantNames: names });
+      setRecords((current) => current.map((record) => record.id === editingRecord.id ? { ...record, participantNames: names } : record));
+      setEditingRecord(null);
+      setView("list");
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not update the participant name (${code}).` : "Could not update the participant name. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function waitForTemplate() {
+    const images = Array.from(pageRef.current?.querySelectorAll<HTMLImageElement>(".completion-template") ?? []);
+    if (!images.length) throw new Error("The completion certificate preview is unavailable.");
+    await Promise.all(images.map(async (image) => {
+      if (!image.complete) {
+        await new Promise<void>((resolve, reject) => {
+          image.onload = () => resolve();
+          image.onerror = () => reject(new Error("The DRRM completion certificate blank could not be loaded."));
+        });
+      }
+      if (!image.naturalWidth) throw new Error("The DRRM completion certificate blank could not be loaded.");
+      if (image.decode) await image.decode();
+    }));
+    if (document.fonts?.ready) await document.fonts.ready;
+  }
+
+  async function downloadPdf() {
+    setDownloading(true);
+    setError("");
+    try {
+      await waitForTemplate();
+      const sheets = Array.from(pageRef.current!.querySelectorAll<HTMLElement>(".completion-print-sheet"));
+      const pdf = new jsPDF({ orientation: "landscape", unit: "in", format: "letter" });
+      for (let index = 0; index < sheets.length; index += 1) {
+        const canvas = await html2canvas(sheets[index], { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
+        if (index > 0) pdf.addPage("letter", "landscape");
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.97), "JPEG", 0, 0, 11, 8.5);
+      }
+      const filename = participantNames(preview!).slice(0, 3).join("-").replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "") || "participant";
+      pdf.save(`completion-certificate-${filename}.pdf`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to create the completion certificate PDF.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function printCertificate() {
+    setPrinting(true);
+    setError("");
+    try {
+      await waitForTemplate();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      window.print();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to prepare the completion certificate for printing.");
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  if (preview) {
+    return <div className="preview-backdrop completion-preview-backdrop">
+      <div className="preview-toolbar completion-preview-toolbar"><span>Completion certificate preview</span><button type="button" className="ghost-button" onClick={() => { setPreview(null); setError(""); }}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={() => void downloadPdf()}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={() => void printCertificate()}>{printing ? "Preparing print..." : "Print"}</button></div>
+      {error && <p className="completion-error" role="alert">{error}</p>}
+      <div className="completion-preview-pages" ref={pageRef}>{participantNames(preview).map((name, index) => <section className="completion-print-sheet" key={`${preview.id}-${index}`} aria-label={`Letter landscape completion certificate for ${name}`}><CompletionPaper record={preview} participantName={name} /></section>)}</div>
+    </div>;
+  }
+
+  if (view === "new") {
+    return <CompletionForm onCancel={() => { setView("list"); setError(""); }} onSubmit={saveCompletion} saving={saving} error={error} />;
+  }
+  if (view === "edit" && editingRecord) {
+    return <CompletionNameForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveNameCorrection} saving={saving} error={error} />;
+  }
+
+  return <section className="content-section completion-section">
+    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Completion Generated Reports</h2><p className="muted">Create and print a DRRM certificate of completion.</p></div><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button></div>
+    {error && <p className="completion-error" role="alert">{error}</p>}
+    {loading ? <p className="muted">Loading completion certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No completion certificates yet</h3><p>Add the event and participant details to create one.</p><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add a Completion Certificate</button></div> : <div className="completion-record-list"><div className="completion-record-head"><span>Unit</span><span>Participant(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="completion-record-row" key={record.id}><span><span className="completion-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="completion-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit name{participantNames(record).length === 1 ? "" : "s"}</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
+    <p className="completion-hold-note">AMIA and AGRISTAT completion templates are on hold.</p>
+  </section>;
+}
+
+function CompletionForm({ onCancel, onSubmit, saving, error }: { onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
+  const [names, setNames] = useState([""]);
+  const [eventDateFrom, setEventDateFrom] = useState("");
+  const [eventDateTo, setEventDateTo] = useState("");
+  const [eventDestination, setEventDestination] = useState("");
+  const [sameLocation, setSameLocation] = useState(false);
+  const [distributionPlace, setDistributionPlace] = useState("");
+
+  return <section className="content-section completion-section completion-form-section">
+    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Completion Certificate</h2><p className="muted">Enter the event and participant details. The certificate prints on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    {error && <p className="completion-error" role="alert">{error}</p>}
+    <form className="permit-form completion-form" onSubmit={onSubmit}>
+      <label className="wide-field">Unit<select name="unit" defaultValue="DRRM"><option value="AMIA" disabled>AMIA</option><option value="AGRISTAT" disabled>AGRISTAT</option><option value="DRRM">DRRM</option></select><small>AMIA and AGRISTAT templates are on hold for now.</small></label>
+      <fieldset className="wide-field completion-participants-fieldset"><legend>Participant&apos;s Name</legend><p className="completion-participants-hint">Enter one or more names. A separate certificate will be created for each participant.</p>{names.map((name, index) => <div className="completion-name-row" key={index}><label>Participant {index + 1}<input name="participant-name" maxLength={180} value={name} onChange={(event) => setNames((current) => current.map((person, personIndex) => personIndex === index ? event.target.value : person))} required /></label>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove participant ${index + 1}`} onClick={() => setNames((current) => current.filter((_, personIndex) => personIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button" disabled={names.length >= MAX_PARTICIPANTS} onClick={() => setNames((current) => [...current, ""])}>+ Add participant</button></fieldset>
+      <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
+      <div className="wide-field completion-schedule">
+        <div className="completion-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => { setEventDateFrom(event.target.value); if (eventDateTo && eventDateTo < event.target.value) setEventDateTo(""); }} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} value={eventDateTo} onChange={(event) => setEventDateTo(event.target.value)} required /></label></div>
+        <div className="completion-time-range"><label>Time Conducted (From)<input name="event-time-from" type="time" required /></label><span>to</span><label>Time Conducted (To)<input name="event-time-to" type="time" required /></label></div>
+      </div>
+      <label className="wide-field">Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
+      <label className="wide-field completion-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event destination is also the certificate distribution place</label>
+      <label>Certificate Distribution Place<input name="distribution-place" maxLength={240} value={sameLocation ? eventDestination : distributionPlace} onChange={(event) => setDistributionPlace(event.target.value)} readOnly={sameLocation} required={!sameLocation} placeholder={sameLocation ? "Same as event destination" : "Enter distribution place"} /></label>
+      <label>Certificate Distribution Date<input type="text" value={dateLabel(eventDateTo)} readOnly /><small>Automatically set to the last day of the event.</small></label>
+      <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
+    </form>
+  </section>;
+}
+
+function CompletionNameForm({ record, onCancel, onSubmit, saving, error }: { record: CompletionRecord; onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
+  const [names, setNames] = useState(() => participantNames(record));
+  return <section className="content-section completion-section completion-form-section">
+    <div className="section-heading"><div><p className="eyebrow">Correct record</p><h2>Edit participant name{names.length === 1 ? "" : "s"}</h2><p className="muted">Update the name{names.length === 1 ? "" : "s"} for {record.eventTitle}. Other certificate details will stay the same.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    {error && <p className="completion-error" role="alert">{error}</p>}
+    <form className="permit-form completion-name-form" onSubmit={onSubmit}>
+      <fieldset className="wide-field completion-participants-fieldset"><legend>Participant&apos;s Name</legend>{names.map((name, index) => <div className="completion-name-row" key={index}><label>Participant {index + 1}<input name="participant-name" maxLength={180} value={name} onChange={(event) => setNames((current) => current.map((person, personIndex) => personIndex === index ? event.target.value : person))} required /></label>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove participant ${index + 1}`} onClick={() => setNames((current) => current.filter((_, personIndex) => personIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button" disabled={names.length >= MAX_PARTICIPANTS} onClick={() => setNames((current) => [...current, ""])}>+ Add participant</button></fieldset>
+      <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
+    </form>
+  </section>;
+}
+
+function CompletionPaper({ record, participantName }: { record: CompletionRecord; participantName: string }) {
+  return <article className="completion-paper">
+    <img className="completion-template" src={blankTemplate} alt="" />
+    <h1 className="completion-participant">{participantName}</h1>
+    <div className="completion-body">
+      <p>has completed the <strong className="completion-event-title">{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at {record.eventDestination}.</p>
+      <p>Given this <strong>{ordinalDay(record.eventDateTo)}</strong> at <strong>{record.distributionPlace}</strong>.</p>
+    </div>
+    <footer className="completion-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
+  </article>;
+}

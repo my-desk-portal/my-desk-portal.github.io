@@ -74,6 +74,41 @@ service cloud.firestore {
         && request.resource.data.division is string
         && request.resource.data.createdAt is timestamp;
     }
+    match /completionCertificates/{certificateId} {
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.keys().hasAll(["unit", "participantNames", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasOnly(["unit", "participantNames", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.unit == "DRRM"
+        && request.resource.data.participantNames is list
+        && request.resource.data.participantNames.size() > 0
+        && request.resource.data.participantNames.size() <= 100
+        && request.resource.data.eventTitle is string
+        && request.resource.data.eventTitle.size() > 0
+        && request.resource.data.eventTitle.size() <= 240
+        && request.resource.data.eventDateFrom is string
+        && request.resource.data.eventDateTo is string
+        && request.resource.data.eventTimeFrom is string
+        && request.resource.data.eventTimeTo is string
+        && request.resource.data.eventDestination is string
+        && request.resource.data.eventDestination.size() > 0
+        && request.resource.data.eventDestination.size() <= 240
+        && request.resource.data.distributionSameAsDestination is bool
+        && request.resource.data.distributionPlace is string
+        && request.resource.data.distributionPlace.size() > 0
+        && request.resource.data.distributionPlace.size() <= 240
+        && (!request.resource.data.distributionSameAsDestination || request.resource.data.distributionPlace == request.resource.data.eventDestination)
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasAny(["participantNames"])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["participantNames"])
+        && request.resource.data.participantNames is list
+        && request.resource.data.participantNames.size() > 0
+        && request.resource.data.participantNames.size() <= 100;
+      allow delete: if false;
+    }
     match /travelOrders/{travelOrderId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || resource.data.status == "Approved");
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;

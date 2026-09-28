@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -66,7 +66,8 @@ function pronoun(gender: CertificateGender) {
 
 export default function CertificateOfAppearance({ user }: { user: User }) {
   const [records, setRecords] = useState<CertificateRecord[]>([]);
-  const [view, setView] = useState<"list" | "new">("list");
+  const [view, setView] = useState<"list" | "new" | "edit">("list");
+  const [editingRecord, setEditingRecord] = useState<CertificateRecord | null>(null);
   const [preview, setPreview] = useState<CertificateRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -117,6 +118,31 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       setError(code ? `Could not save the certificate (${code}).` : "Could not save the certificate. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveNameCorrections(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (!db || !editingRecord) { setError("The certificate could not be updated."); return; }
+    const form = new FormData(event.currentTarget);
+    const correctedNames = form.getAll("person-name").map((value) => String(value).trim());
+    if (correctedNames.length !== editingRecord.people.length || correctedNames.some((name) => !name)) {
+      setError("Enter a name for every attendee.");
+      return;
+    }
+    const people = editingRecord.people.map((person, index) => ({ ...person, name: correctedNames[index] }));
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "certificatesOfAppearance", editingRecord.id), { people });
+      setRecords((current) => current.map((record) => record.id === editingRecord.id ? { ...record, people } : record));
+      setEditingRecord(null);
+      setView("list");
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not update the attendee names (${code}).` : "Could not update the attendee names. Try again.");
     } finally {
       setSaving(false);
     }
@@ -182,11 +208,12 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
   }
 
   if (view === "new") return <CertificateForm onCancel={() => { setView("list"); setError(""); }} onSubmit={saveCertificate} saving={saving} error={error} />;
+  if (view === "edit" && editingRecord) return <CertificateNamesForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveNameCorrections} saving={saving} error={error} />;
 
   return <section className="content-section form-section coa-list-section">
     <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Certificate of Appearance Generated Reports</h2><p className="muted">Create a certificate for one person or a group.</p></div><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button></div>
     {error && <p className="coa-error" role="alert">{error}</p>}
-    {loading ? <p className="muted">Loading certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates yet</h3><p>Add the appearance details to create your first certificate.</p><button type="button" className="text-button" onClick={() => setView("new")}>Add a Certificate of Appearance</button></div> : <div className="coa-record-list"><div className="coa-record-head"><span>Event&apos;s Title</span><span>Event&apos;s Destination</span><span>Event&apos;s Date</span><span></span></div>{records.map((record) => <div className="coa-record-row" key={record.id}><strong>{record.eventTitle}</strong><span>{record.destination}</span><span>{displayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</span><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div>)}</div>}
+    {loading ? <p className="muted">Loading certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates yet</h3><p>Add the appearance details to create your first certificate.</p><button type="button" className="text-button" onClick={() => setView("new")}>Add a Certificate of Appearance</button></div> : <div className="coa-record-list"><div className="coa-record-head"><span>Event&apos;s Title</span><span>Event&apos;s Destination</span><span>Event&apos;s Date</span><span></span></div>{records.map((record) => <div className="coa-record-row" key={record.id}><strong>{record.eventTitle}</strong><span>{record.destination}</span><span>{displayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</span><div className="coa-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit name</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
   </section>;
 }
 
@@ -210,6 +237,17 @@ function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () =
       <label>Designation<input name="designation" maxLength={160} required /></label>
       <label className="wide-field">Division<input name="division" maxLength={180} required /></label>
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save certificate"}</button></div>
+    </form>
+  </section>;
+}
+
+function CertificateNamesForm({ record, onCancel, onSubmit, saving, error }: { record: CertificateRecord; onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
+  return <section className="content-section form-section coa-form-section">
+    <div className="section-heading"><div><p className="eyebrow">Correct record</p><h2>Edit attendee name{record.people.length === 1 ? "" : "s"}</h2><p className="muted">Update the name{record.people.length === 1 ? "" : "s"} for {record.eventTitle}. Other certificate details will stay the same.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    {error && <p className="coa-error" role="alert">{error}</p>}
+    <form className="permit-form coa-name-edit-form" onSubmit={onSubmit}>
+      {record.people.map((person, index) => <label className="wide-field" key={`${record.id}-${index}`}>Attendee {index + 1} Name<input name="person-name" maxLength={160} defaultValue={person.name} required /></label>)}
+      <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save name correction"}</button></div>
     </form>
   </section>;
 }
