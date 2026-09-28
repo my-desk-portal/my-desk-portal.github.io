@@ -74,6 +74,45 @@ service cloud.firestore {
         && request.resource.data.division is string
         && request.resource.data.createdAt is timestamp;
     }
+    match /appreciationCertificates/{certificateId} {
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.keys().hasAll(["unit", "speakerName", "speakerGender", "speakerPosition", "speakerOffice", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasOnly(["unit", "speakerName", "speakerGender", "speakerPosition", "speakerOffice", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.unit == "DRRM"
+        && request.resource.data.speakerName is string
+        && request.resource.data.speakerName.size() > 0
+        && request.resource.data.speakerName.size() <= 180
+        && request.resource.data.speakerGender in ["female", "male"]
+        && request.resource.data.speakerPosition is string
+        && request.resource.data.speakerPosition.size() > 0
+        && request.resource.data.speakerPosition.size() <= 180
+        && request.resource.data.speakerOffice is string
+        && request.resource.data.speakerOffice.size() > 0
+        && request.resource.data.speakerOffice.size() <= 240
+        && request.resource.data.eventTitle is string
+        && request.resource.data.eventTitle.size() > 0
+        && request.resource.data.eventTitle.size() <= 240
+        && request.resource.data.eventDateFrom is string
+        && request.resource.data.eventDateFrom.size() > 0
+        && request.resource.data.eventDateTo is string
+        && request.resource.data.eventDateTo.size() > 0
+        && request.resource.data.eventTimeFrom is string
+        && request.resource.data.eventTimeFrom.size() > 0
+        && request.resource.data.eventTimeTo is string
+        && request.resource.data.eventTimeTo.size() > 0
+        && request.resource.data.eventDestination is string
+        && request.resource.data.eventDestination.size() > 0
+        && request.resource.data.eventDestination.size() <= 240
+        && request.resource.data.distributionSameAsDestination is bool
+        && request.resource.data.distributionPlace is string
+        && request.resource.data.distributionPlace.size() > 0
+        && request.resource.data.distributionPlace.size() <= 240
+        && (!request.resource.data.distributionSameAsDestination || request.resource.data.distributionPlace == request.resource.data.eventDestination)
+        && request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+    }
     match /completionCertificates/{certificateId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
       allow create: if isVerifiedUser()
