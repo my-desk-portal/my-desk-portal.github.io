@@ -56,6 +56,24 @@ service cloud.firestore {
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
+    match /certificatesOfAppearance/{certificateId} {
+      allow read, update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.keys().hasAll(["eventTitle", "destination", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasOnly(["eventTitle", "destination", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt"])
+        && request.resource.data.eventTitle is string
+        && request.resource.data.destination is string
+        && request.resource.data.eventDateFrom is string
+        && request.resource.data.eventDateTo is string
+        && request.resource.data.people is list
+        && request.resource.data.people.size() > 0
+        && request.resource.data.people.size() <= 100
+        && request.resource.data.signatoryName is string
+        && request.resource.data.designation is string
+        && request.resource.data.division is string
+        && request.resource.data.createdAt is timestamp;
+    }
     match /travelOrders/{travelOrderId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || resource.data.status == "Approved");
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
