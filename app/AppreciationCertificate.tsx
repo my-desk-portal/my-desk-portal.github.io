@@ -280,13 +280,18 @@ export default function AppreciationCertificate({ user }: { user: User }) {
   async function printCertificate() {
     setPrinting(true);
     setError("");
+    let printPageStyle: HTMLStyleElement | null = null;
     try {
       await waitForBlank();
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      printPageStyle = document.createElement("style");
+      printPageStyle.textContent = "@media print{@page{size:11in 8.5in;margin:0}}";
+      document.head.appendChild(printPageStyle);
       window.print();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to prepare the Appreciation certificate for printing.");
     } finally {
+      printPageStyle?.remove();
       setPrinting(false);
     }
   }
