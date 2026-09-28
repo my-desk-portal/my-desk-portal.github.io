@@ -1,5 +1,8 @@
 .travel-order-form-section,.travel-order-list-section{max-width:1100px}
 .travel-order-form{align-items:start}
+.travel-order-form>.travel-order-office-field,.travel-order-form>.travel-order-date-range{grid-column:1/-1;max-width:1100px;width:100%}
+.travel-order-date-range>div{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);width:100%}
+.travel-order-date-range>div>input{min-width:0;width:100%}
 .travel-order-people{display:grid;gap:12px}
 .travel-order-people-heading{display:grid;gap:4px}
 .travel-order-people-heading strong{color:var(--ink);font-size:13px}

@@ -128,7 +128,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
   return <section className="content-section form-section travel-order-form-section">
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Travel Order</h2><p className="muted">One A4 Travel Order page will be generated for each person. The date and TO No. are entered when approving.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     <form className="permit-form travel-order-form" onSubmit={save}>
-      <label>Office Station<input value={officeStation} readOnly /></label>
+      <label className="travel-order-office-field">Office Station<input value={officeStation} readOnly /></label>
       <div className="travel-order-people wide-field">
         <div className="travel-order-people-heading"><strong>Persons traveling</strong><span>Add each person who needs a separate Travel Order page.</span></div>
         {personnelStatus === "error" && <p className="travel-order-number-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</p>}
@@ -141,7 +141,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
         </fieldset>)}
         <button type="button" className="text-button" onClick={() => setPeople((current) => [...current, { name: "", position: "", salary: "" }])}>+ Add a Person</button>
       </div>
-      <div className="date-range-field"><span>Departure Date to Return Date</span><div><input aria-label="Departure date" type="date" value={departureDate} onChange={(event) => setDepartureDate(event.target.value)} required /><span>to</span><input aria-label="Return date" type="date" min={departureDate} value={returnDate} onChange={(event) => setReturnDate(event.target.value)} required /></div></div>
+      <div className="date-range-field wide-field travel-order-date-range"><span>Departure Date to Return Date</span><div><input aria-label="Departure date" type="date" value={departureDate} onChange={(event) => setDepartureDate(event.target.value)} required /><span>to</span><input aria-label="Return date" type="date" min={departureDate} value={returnDate} onChange={(event) => setReturnDate(event.target.value)} required /></div></div>
       <label className="wide-field">Place of Travel<input value={placeOfTravel} onChange={(event) => setPlaceOfTravel(event.target.value)} required /></label>
       <label className="wide-field">Specific Purpose of the Trip<textarea rows={2} value={purpose} onChange={(event) => setPurpose(event.target.value)} required /></label>
       <label className="wide-field">Objective(s)<textarea rows={2} value={objective} onChange={(event) => setObjective(event.target.value)} required /></label>
