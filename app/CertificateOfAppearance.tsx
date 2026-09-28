@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
+import { parseCertificateImportWorkbook } from "@/lib/certificate-import";
 import "./certificate-of-appearance.css";
 
 type CertificateGender = "female" | "male" | "unspecified" | "";
@@ -73,8 +74,11 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
   const [error, setError] = useState("");
   const pagesRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!db) { setLoading(false); setError("Certificate storage is unavailable."); return; }
@@ -129,11 +133,17 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     if (!db || !editingRecord) { setError("The certificate could not be updated."); return; }
     const form = new FormData(event.currentTarget);
     const correctedNames = form.getAll("person-name").map((value) => String(value).trim());
-    if (correctedNames.length !== editingRecord.people.length || correctedNames.some((name) => !name)) {
-      setError("Enter a name for every attendee.");
+    const genders = form.getAll("person-gender").map((value) => String(value) as CertificateGender);
+    const offices = form.getAll("person-office").map((value) => String(value).trim());
+    if (!correctedNames.length || correctedNames.length > 100 || correctedNames.some((name) => !name) || offices.some((office) => !office)) {
+      setError("Enter a name and office for every attendee (up to 100 attendees).");
       return;
     }
-    const people = editingRecord.people.map((person, index) => ({ ...person, name: correctedNames[index] }));
+    const people: CertificatePerson[] = correctedNames.map((name, index) => ({
+      name,
+      gender: genders[index] || editingRecord.people[index]?.gender || "unspecified",
+      office: offices[index],
+    }));
     setSaving(true);
     try {
       await updateDoc(doc(db, "certificatesOfAppearance", editingRecord.id), { people });
@@ -142,9 +152,49 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
       setView("list");
     } catch (cause) {
       const code = (cause as { code?: string }).code;
-      setError(code ? `Could not update the attendee names (${code}).` : "Could not update the attendee names. Try again.");
+      setError(code ? `Could not update the attendees (${code}).` : "Could not update the attendees. Try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function importCertificates(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    setError("");
+    setImportMessage("");
+    if (!db) { setError("Certificate storage is unavailable."); return; }
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setError("Choose the CA_Importing_Template.xlsx workbook (.xlsx).");
+      return;
+    }
+
+    setImporting(true);
+    let imported: CertificateRecord[] = [];
+    try {
+      const parsed = parseCertificateImportWorkbook(new Uint8Array(await file.arrayBuffer()));
+      const certificateCollection = collection(db, "certificatesOfAppearance");
+      for (let offset = 0; offset < parsed.length; offset += 450) {
+        const batch = writeBatch(db);
+        const chunk: CertificateRecord[] = parsed.slice(offset, offset + 450).map((record) => {
+          const reference = doc(certificateCollection);
+          const data = { ...record, ownerId: user.uid, createdAt: serverTimestamp() };
+          batch.set(reference, data);
+          return { ...data, id: reference.id, createdAt: undefined } as CertificateRecord;
+        });
+        await batch.commit();
+        imported = [...imported, ...chunk];
+        setRecords((current) => [...chunk, ...current]);
+      }
+      setImportMessage(`Imported ${imported.length} certificate ${imported.length === 1 ? "report" : "reports"}.`);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : "Check the template and try again.";
+      setError(imported.length
+        ? `${detail} ${imported.length} ${imported.length === 1 ? "report was" : "reports were"} imported before the error.`
+        : detail);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -211,9 +261,11 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
   if (view === "edit" && editingRecord) return <CertificateNamesForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveNameCorrections} saving={saving} error={error} />;
 
   return <section className="content-section form-section coa-list-section">
-    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Certificate of Appearance Generated Reports</h2><p className="muted">Create a certificate for one person or a group.</p></div><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button></div>
+    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Certificate of Appearance Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="coa-template-link" href={publicAsset("/CA_Importing_Template.xlsx")} download="CA_Importing_Template.xlsx">CA_Importing_Template.xlsx</a>.</p></div><div className="coa-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
+    <input ref={importInputRef} className="coa-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importCertificates(event)} aria-label="Import Certificate of Appearance workbook" />
     {error && <p className="coa-error" role="alert">{error}</p>}
-    {loading ? <p className="muted">Loading certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates yet</h3><p>Add the appearance details to create your first certificate.</p><button type="button" className="text-button" onClick={() => setView("new")}>Add a Certificate of Appearance</button></div> : <div className="coa-record-list"><div className="coa-record-head"><span>Event&apos;s Title</span><span>Event&apos;s Destination</span><span>Event&apos;s Date</span><span></span></div>{records.map((record) => <div className="coa-record-row" key={record.id}><strong>{record.eventTitle}</strong><span>{record.destination}</span><span>{displayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</span><div className="coa-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit name</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
+    {importMessage && <p className="coa-success" role="status">{importMessage}</p>}
+    {loading ? <p className="muted">Loading certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates yet</h3><p>Add appearance details manually or import the completed CA_Importing_Template.xlsx workbook.</p><div className="coa-empty-actions"><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add a Certificate of Appearance</button><button type="button" className="text-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import certificates"}</button></div></div> : <div className="coa-record-list"><div className="coa-record-head"><span>Event&apos;s Title</span><span>Event&apos;s Destination</span><span>Event&apos;s Date</span><span></span></div>{records.map((record) => <div className="coa-record-row" key={record.id}><strong>{record.eventTitle}</strong><span>{record.destination}</span><span>{displayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</span><div className="coa-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
   </section>;
 }
 
@@ -242,11 +294,17 @@ function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () =
 }
 
 function CertificateNamesForm({ record, onCancel, onSubmit, saving, error }: { record: CertificateRecord; onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
+  const [people, setPeople] = useState<CertificatePerson[]>(() => record.people.map((person) => ({ ...person, gender: person.gender || "unspecified", office: person.office ?? record.office ?? "" })));
   return <section className="content-section form-section coa-form-section">
-    <div className="section-heading"><div><p className="eyebrow">Correct record</p><h2>Edit attendee name{record.people.length === 1 ? "" : "s"}</h2><p className="muted">Update the name{record.people.length === 1 ? "" : "s"} for {record.eventTitle}. Other certificate details will stay the same.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">Edit record</p><h2>Edit attendees</h2><p className="muted">Update or add attendees for {record.eventTitle}.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="coa-error" role="alert">{error}</p>}
     <form className="permit-form coa-name-edit-form" onSubmit={onSubmit}>
-      {record.people.map((person, index) => <label className="wide-field" key={`${record.id}-${index}`}>Attendee {index + 1} Name<input name="person-name" maxLength={160} defaultValue={person.name} required /></label>)}
+      <fieldset className="wide-field coa-people-fieldset"><legend>Attendees</legend>{people.map((person, index) => <div className="coa-person-row" key={`${record.id}-${index}`}>
+        <label>Name<input name="person-name" maxLength={160} value={person.name} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} required /></label>
+        <label>Gender<select name="person-gender" value={person.gender || "unspecified"} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, gender: event.target.value as CertificateGender } : item))}><option value="unspecified">Unspecified</option><option value="female">Female</option><option value="male">Male</option></select></label>
+        <label>Office<input name="person-office" maxLength={180} value={person.office ?? ""} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, office: event.target.value } : item))} required /></label>
+        {people.length > 1 && <button type="button" className="remove-participant" onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
+      </div>)}<button type="button" className="text-button" disabled={people.length >= 100} onClick={() => setPeople((current) => [...current, { ...newPerson(), gender: "unspecified", office: record.people[0]?.office ?? record.office ?? "" }])}>+ Add attendee</button></fieldset>
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;

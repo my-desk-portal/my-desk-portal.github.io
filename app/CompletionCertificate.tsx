@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
+import { parseCompletionImportWorkbook } from "@/lib/completion-import";
 import "./completion.css";
 
 type CompletionUnit = "AMIA" | "AGRISTAT" | "DRRM";
@@ -27,6 +28,7 @@ type CompletionRecord = {
 };
 
 const blankTemplate = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/completion-drrm-blank.jpg`;
+const importTemplate = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/Completion_Importing_Template.xlsx`;
 const MAX_PARTICIPANTS = 100;
 
 function participantNames(record: CompletionRecord) {
@@ -91,8 +93,11 @@ export default function CompletionCertificate({ user }: { user: User }) {
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
   const [error, setError] = useState("");
   const pageRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!db) {
@@ -186,6 +191,49 @@ export default function CompletionCertificate({ user }: { user: User }) {
     }
   }
 
+  async function importCompletions(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    setError("");
+    setImportMessage("");
+    if (!db) {
+      setError("Completion certificate storage is unavailable.");
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setError("Choose the Completion_Importing_Template.xlsx workbook (.xlsx).");
+      return;
+    }
+
+    setImporting(true);
+    let imported: CompletionRecord[] = [];
+    try {
+      const parsed = parseCompletionImportWorkbook(new Uint8Array(await file.arrayBuffer()));
+      const certificateCollection = collection(db, "completionCertificates");
+      for (let offset = 0; offset < parsed.length; offset += 450) {
+        const batch = writeBatch(db);
+        const chunk: CompletionRecord[] = parsed.slice(offset, offset + 450).map((record) => {
+          const reference = doc(certificateCollection);
+          const data = { ...record, ownerId: user.uid, createdAt: serverTimestamp() };
+          batch.set(reference, data);
+          return { ...data, id: reference.id, createdAt: undefined } as CompletionRecord;
+        });
+        await batch.commit();
+        imported = [...imported, ...chunk];
+        setRecords((current) => [...chunk, ...current]);
+      }
+      setImportMessage(`Imported ${imported.length} completion ${imported.length === 1 ? "report" : "reports"}. Distribution dates use the event end date.`);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : "Check the template and try again.";
+      setError(imported.length
+        ? `${detail} ${imported.length} ${imported.length === 1 ? "report was" : "reports were"} imported before the error.`
+        : detail);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function waitForTemplate() {
     const images = Array.from(pageRef.current?.querySelectorAll<HTMLImageElement>(".completion-template") ?? []);
     if (!images.length) throw new Error("The completion certificate preview is unavailable.");
@@ -253,9 +301,11 @@ export default function CompletionCertificate({ user }: { user: User }) {
   }
 
   return <section className="content-section completion-section">
-    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Completion Generated Reports</h2><p className="muted">Create and print a DRRM certificate of completion.</p></div><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button></div>
+    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Completion Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="completion-template-link" href={importTemplate} download="Completion_Importing_Template.xlsx">Completion_Importing_Template.xlsx</a>.</p></div><div className="completion-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
+    <input ref={importInputRef} className="completion-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importCompletions(event)} aria-label="Import Completion certificate workbook" />
     {error && <p className="completion-error" role="alert">{error}</p>}
-    {loading ? <p className="muted">Loading completion certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No completion certificates yet</h3><p>Add the event and completer details to create one.</p><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add a Completion Certificate</button></div> : <div className="completion-record-list"><div className="completion-record-head"><span>Unit</span><span>Completer(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="completion-record-row" key={record.id}><span><span className="completion-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="completion-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
+    {importMessage && <p className="completion-success" role="status">{importMessage}</p>}
+    {loading ? <p className="muted">Loading completion certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No completion certificates yet</h3><p>Add completion details manually or import the completed Completion_Importing_Template.xlsx workbook.</p><div className="completion-empty-actions"><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add a Completion Certificate</button><button type="button" className="text-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import completions"}</button></div></div> : <div className="completion-record-list"><div className="completion-record-head"><span>Unit</span><span>Completer(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="completion-record-row" key={record.id}><span><span className="completion-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="completion-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
     <p className="completion-hold-note">AMIA and AGRISTAT completion templates are on hold.</p>
   </section>;
 }
