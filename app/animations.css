@@ -29,8 +29,12 @@
 
 .system-background-video::-webkit-media-controls,
 .system-background-video::-webkit-media-controls-enclosure,
-.system-background-video::-webkit-media-controls-start-playback-button {
+.system-background-video::-webkit-media-controls-start-playback-button,
+.system-background-video::-webkit-media-controls-play-button,
+.system-background-video::-webkit-media-controls-overlay-play-button {
   display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
   -webkit-appearance: none;
 }
 

@@ -12,6 +12,12 @@ export default function SystemBackground() {
     video.muted = true;
     video.defaultMuted = true;
     video.playsInline = true;
+    video.autoplay = true;
+    video.controls = false;
+    video.setAttribute("muted", "");
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
+    video.removeAttribute("controls");
 
     const startPlayback = () => {
       if (!video.paused) return;
@@ -27,12 +33,14 @@ export default function SystemBackground() {
     startPlayback();
     video.addEventListener("loadeddata", startPlayback);
     video.addEventListener("canplay", startPlayback);
+    video.addEventListener("pause", retryWhenVisible);
     window.addEventListener("pageshow", startPlayback);
     document.addEventListener("visibilitychange", retryWhenVisible);
 
     return () => {
       video.removeEventListener("loadeddata", startPlayback);
       video.removeEventListener("canplay", startPlayback);
+      video.removeEventListener("pause", retryWhenVisible);
       window.removeEventListener("pageshow", startPlayback);
       document.removeEventListener("visibilitychange", retryWhenVisible);
     };
@@ -50,6 +58,7 @@ export default function SystemBackground() {
         preload="auto"
         controls={false}
         disablePictureInPicture
+        disableRemotePlayback
         draggable={false}
         tabIndex={-1}
         src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/bg.mp4`}
