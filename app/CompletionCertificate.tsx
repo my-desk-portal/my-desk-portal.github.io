@@ -130,7 +130,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
     }
     const names = form.getAll("participant-name").map((value) => String(value).trim());
     if (!names.length || names.length > MAX_PARTICIPANTS || names.some((name) => !name)) {
-      setError(`Enter a name for each participant (up to ${MAX_PARTICIPANTS}).`);
+      setError(`Enter a name for each completer (up to ${MAX_PARTICIPANTS}).`);
       return;
     }
     const recordData = {
@@ -169,7 +169,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
     }
     const names = new FormData(event.currentTarget).getAll("participant-name").map((value) => String(value).trim());
     if (!names.length || names.length > MAX_PARTICIPANTS || names.some((name) => !name)) {
-      setError(`Enter a name for each participant (up to ${MAX_PARTICIPANTS}).`);
+      setError(`Enter a name for each completer (up to ${MAX_PARTICIPANTS}).`);
       return;
     }
     setSaving(true);
@@ -180,7 +180,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
       setView("list");
     } catch (cause) {
       const code = (cause as { code?: string }).code;
-      setError(code ? `Could not update the participant name (${code}).` : "Could not update the participant name. Try again.");
+      setError(code ? `Could not update the completer name (${code}).` : "Could not update the completer name. Try again.");
     } finally {
       setSaving(false);
     }
@@ -214,7 +214,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
         if (index > 0) pdf.addPage("letter", "landscape");
         pdf.addImage(canvas.toDataURL("image/jpeg", 0.97), "JPEG", 0, 0, 11, 8.5);
       }
-      const filename = participantNames(preview!).slice(0, 3).join("-").replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "") || "participant";
+      const filename = participantNames(preview!).slice(0, 3).join("-").replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "") || "completer";
       pdf.save(`completion-certificate-${filename}.pdf`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to create the completion certificate PDF.");
@@ -255,7 +255,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
   return <section className="content-section completion-section">
     <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Completion Generated Reports</h2><p className="muted">Create and print a DRRM certificate of completion.</p></div><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button></div>
     {error && <p className="completion-error" role="alert">{error}</p>}
-    {loading ? <p className="muted">Loading completion certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No completion certificates yet</h3><p>Add the event and participant details to create one.</p><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add a Completion Certificate</button></div> : <div className="completion-record-list"><div className="completion-record-head"><span>Unit</span><span>Participant(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="completion-record-row" key={record.id}><span><span className="completion-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="completion-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit name{participantNames(record).length === 1 ? "" : "s"}</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
+    {loading ? <p className="muted">Loading completion certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No completion certificates yet</h3><p>Add the event and completer details to create one.</p><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add a Completion Certificate</button></div> : <div className="completion-record-list"><div className="completion-record-head"><span>Unit</span><span>Completer(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="completion-record-row" key={record.id}><span><span className="completion-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="completion-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
     <p className="completion-hold-note">AMIA and AGRISTAT completion templates are on hold.</p>
   </section>;
 }
@@ -269,11 +269,11 @@ function CompletionForm({ onCancel, onSubmit, saving, error }: { onCancel: () =>
   const [distributionPlace, setDistributionPlace] = useState("");
 
   return <section className="content-section completion-section completion-form-section">
-    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Completion Certificate</h2><p className="muted">Enter the event and participant details. The certificate prints on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Completion Certificate</h2><p className="muted">Enter the event and completer details. The certificate prints on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="completion-error" role="alert">{error}</p>}
     <form className="permit-form completion-form" onSubmit={onSubmit}>
       <label className="wide-field">Unit<select name="unit" defaultValue="DRRM"><option value="AMIA" disabled>AMIA</option><option value="AGRISTAT" disabled>AGRISTAT</option><option value="DRRM">DRRM</option></select><small>AMIA and AGRISTAT templates are on hold for now.</small></label>
-      <fieldset className="wide-field completion-participants-fieldset"><legend>Participant&apos;s Name</legend><p className="completion-participants-hint">Enter one or more names. A separate certificate will be created for each participant.</p>{names.map((name, index) => <div className="completion-name-row" key={index}><label>Participant {index + 1}<input name="participant-name" maxLength={180} value={name} onChange={(event) => setNames((current) => current.map((person, personIndex) => personIndex === index ? event.target.value : person))} required /></label>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove participant ${index + 1}`} onClick={() => setNames((current) => current.filter((_, personIndex) => personIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button" disabled={names.length >= MAX_PARTICIPANTS} onClick={() => setNames((current) => [...current, ""])}>+ Add participant</button></fieldset>
+      <fieldset className="wide-field completion-participants-fieldset"><legend>Completer&apos;s Name</legend><p className="completion-participants-hint">Enter one or more names. A separate certificate will be created for each completer.</p>{names.map((name, index) => <div className="completion-name-row" key={index}><label>Completer {index + 1}<input name="participant-name" maxLength={180} value={name} onChange={(event) => setNames((current) => current.map((person, personIndex) => personIndex === index ? event.target.value : person))} required /></label>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove completer ${index + 1}`} onClick={() => setNames((current) => current.filter((_, personIndex) => personIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button" disabled={names.length >= MAX_PARTICIPANTS} onClick={() => setNames((current) => [...current, ""])}>+ Add completer</button></fieldset>
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field completion-schedule">
         <div className="completion-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => { setEventDateFrom(event.target.value); if (eventDateTo && eventDateTo < event.target.value) setEventDateTo(""); }} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} value={eventDateTo} onChange={(event) => setEventDateTo(event.target.value)} required /></label></div>
@@ -291,10 +291,10 @@ function CompletionForm({ onCancel, onSubmit, saving, error }: { onCancel: () =>
 function CompletionNameForm({ record, onCancel, onSubmit, saving, error }: { record: CompletionRecord; onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
   const [names, setNames] = useState(() => participantNames(record));
   return <section className="content-section completion-section completion-form-section">
-    <div className="section-heading"><div><p className="eyebrow">Correct record</p><h2>Edit participant name{names.length === 1 ? "" : "s"}</h2><p className="muted">Update the name{names.length === 1 ? "" : "s"} for {record.eventTitle}. Other certificate details will stay the same.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">Correct record</p><h2>Edit completer name{names.length === 1 ? "" : "s"}</h2><p className="muted">Update the name{names.length === 1 ? "" : "s"} for {record.eventTitle}. Other certificate details will stay the same.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="completion-error" role="alert">{error}</p>}
     <form className="permit-form completion-name-form" onSubmit={onSubmit}>
-      <fieldset className="wide-field completion-participants-fieldset"><legend>Participant&apos;s Name</legend>{names.map((name, index) => <div className="completion-name-row" key={index}><label>Participant {index + 1}<input name="participant-name" maxLength={180} value={name} onChange={(event) => setNames((current) => current.map((person, personIndex) => personIndex === index ? event.target.value : person))} required /></label>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove participant ${index + 1}`} onClick={() => setNames((current) => current.filter((_, personIndex) => personIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button" disabled={names.length >= MAX_PARTICIPANTS} onClick={() => setNames((current) => [...current, ""])}>+ Add participant</button></fieldset>
+      <fieldset className="wide-field completion-participants-fieldset"><legend>Completer&apos;s Name</legend>{names.map((name, index) => <div className="completion-name-row" key={index}><label>Completer {index + 1}<input name="participant-name" maxLength={180} value={name} onChange={(event) => setNames((current) => current.map((person, personIndex) => personIndex === index ? event.target.value : person))} required /></label>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove completer ${index + 1}`} onClick={() => setNames((current) => current.filter((_, personIndex) => personIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button" disabled={names.length >= MAX_PARTICIPANTS} onClick={() => setNames((current) => [...current, ""])}>+ Add completer</button></fieldset>
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
