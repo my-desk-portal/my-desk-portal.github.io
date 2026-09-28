@@ -8,7 +8,7 @@ import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
 import "./certificate-of-appearance.css";
 
-type CertificateGender = "female" | "male" | "unspecified";
+type CertificateGender = "female" | "male" | "unspecified" | "";
 type CertificatePerson = { name: string; gender: CertificateGender; office?: string };
 type CertificateRecord = {
   id: string;
@@ -28,7 +28,7 @@ type CertificateRecord = {
 
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const blankCertificateAsset = publicAsset("/certificate-of-appearance-blank.jpg");
-const newPerson = (): CertificatePerson => ({ name: "", gender: "unspecified", office: "" });
+const newPerson = (): CertificatePerson => ({ name: "", gender: "", office: "" });
 
 function displayDate(value: string) {
   if (!value) return "";
@@ -102,7 +102,7 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
       destination: String(form.get("destination") ?? "").trim(),
       eventDateFrom: String(form.get("event-date-from") ?? ""),
       eventDateTo: String(form.get("event-date-to") ?? ""),
-      people: personNames.map((name, index) => ({ name, gender: genders[index] ?? "unspecified", office: String(form.getAll("person-office")[index] ?? "").trim() })),
+      people: personNames.map((name, index) => ({ name, gender: genders[index] || "unspecified", office: String(form.getAll("person-office")[index] ?? "").trim() })),
       signatoryName: String(form.get("signatory-name") ?? "").trim(),
       designation: String(form.get("designation") ?? "").trim(),
       division: String(form.get("division") ?? "").trim(),
@@ -202,7 +202,7 @@ function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () =
       <div className="wide-field coa-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => setEventDateFrom(event.target.value)} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} required /></label></div>
       <fieldset className="wide-field coa-people-fieldset"><legend>Attendees</legend>{people.map((person, index) => <div className="coa-person-row" key={index}>
         <label>Name<input name="person-name" maxLength={160} value={person.name} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} placeholder={`Person ${index + 1}`} required /></label>
-        <label>Gender<select name="person-gender" value={person.gender} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, gender: event.target.value as CertificateGender } : item))}><option value="unspecified">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option></select></label>
+        <label>Gender<select name="person-gender" value={person.gender} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, gender: event.target.value as CertificateGender } : item))}><option value="" disabled>Select gender</option><option value="female">Female</option><option value="male">Male</option></select></label>
         <label>Office<input name="person-office" maxLength={180} value={person.office ?? ""} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, office: event.target.value } : item))} required /></label>
         {people.length > 1 && <button type="button" className="remove-participant" onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
       </div>)}<button type="button" className="text-button" onClick={() => setPeople((current) => [...current, newPerson()])}>+ Add person</button></fieldset>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./animations.css";
 import "./permit-standalone.css";
+import SystemBackground from "./SystemBackground";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://my-desk-portal.github.io"),
@@ -26,5 +27,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body suppressHydrationWarning><div className="system-background" aria-hidden="true"><video className="system-background-video" autoPlay muted loop playsInline preload="auto" disablePictureInPicture draggable={false} tabIndex={-1} src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/bg.mp4`} /></div>{children}</body></html>;
+  return <html lang="en"><body suppressHydrationWarning><SystemBackground />{children}</body></html>;
 }
