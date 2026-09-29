@@ -261,7 +261,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       const unsubscribeProfile = onSnapshot(doc(db, "users", user.uid), (profileSnapshot) => {
         if (!current) return;
         const data = profileSnapshot.data();
-        if (profileSnapshot.exists() && typeof data.name === "string" && typeof data.position === "string" && ["AMIA", "AGRISTAT", "DRRM"].includes(data.unit)) {
+        if (profileSnapshot.exists() && data && typeof data.name === "string" && typeof data.position === "string" && typeof data.unit === "string" && ["AMIA", "AGRISTAT", "DRRM"].includes(data.unit)) {
           setProfile({ name: data.name, position: data.position, unit: data.unit as Unit });
         } else {
           setProfile(null);
