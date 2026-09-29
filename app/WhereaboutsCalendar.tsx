@@ -7,7 +7,7 @@ import { db } from "@/lib/firebase";
 import { isPermitAdmin } from "./PermitSlipAdmin";
 import "./whereabouts-calendar.css";
 
-type ApprovedTravelOrder = {
+type CalendarTravelOrder = {
   id: string;
   status: string;
   people: { name: string; position?: string; salary?: string; toNumber?: string }[];
@@ -122,14 +122,14 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       initialSources.delete(source);
       if (active && initialSources.size === 0) setLoading(false);
     };
-    const unsubscribeTravel = onSnapshot(query(collection(firestore, "travelOrders"), where("status", "==", "Approved")), (snapshot) => {
-      const approved = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as ApprovedTravelOrder))
-        .filter((order) => order.status === "Approved" && order.departureDate && order.returnDate);
-      if (active) setOrders(approved);
+    const unsubscribeTravel = onSnapshot(query(collection(firestore, "travelOrders"), where("status", "in", ["Approved", "Processing"])), (snapshot) => {
+      const calendarOrders = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as CalendarTravelOrder))
+        .filter((order) => (order.status === "Approved" || order.status === "Processing") && order.departureDate && order.returnDate);
+      if (active) setOrders(calendarOrders);
       finishInitialLoad("travel");
     }, (cause) => {
       const code = (cause as { code?: string }).code;
-      if (active) setError(code ? `Could not load approved travel (${code}).` : "Could not load approved travel. Refresh and try again.");
+      if (active) setError(code ? `Could not load Travel Orders (${code}).` : "Could not load Travel Orders. Refresh and try again.");
       finishInitialLoad("travel");
     });
     const unsubscribePermits = onSnapshot(collection(firestore, "approvedPermitCalendar"), (snapshot) => {
@@ -165,6 +165,10 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       + permitSlips.filter((permit) => permit.date === key).length;
   }
 
+  function hasProcessingOrderOnDate(key: string) {
+    return orders.some((order) => order.status === "Processing" && order.departureDate <= key && order.returnDate >= key);
+  }
+
   function changeMonth(offset: number) {
     const next = new Date(year, monthIndex + offset, 1);
     setMonth(next);
@@ -178,10 +182,11 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const selectedPermitSlips = permitSlips.filter((permit) => permit.date === selectedDate);
   const selectedPeople = [
     ...selectedOrders.flatMap((order) => {
-      const people: ApprovedTravelOrder["people"] = order.people?.length ? order.people : [{ name: "Not specified" }];
+      const people: CalendarTravelOrder["people"] = order.people?.length ? order.people : [{ name: "Not specified" }];
       return people.map((person, index) => ({
         id: `travel-${order.id}-${index}`,
         type: "Travel Order",
+        status: order.status,
         name: person.name || "Not specified",
         number: person.toNumber || "",
         date: `${formatCalendarDate(order.departureDate)} – ${formatCalendarDate(order.returnDate)}`,
@@ -192,6 +197,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     ...selectedPermitSlips.map((permit) => ({
       id: `permit-${permit.id}`,
       type: "Permit Slip",
+      status: permit.status,
       name: permit.name,
       number: "",
       date: formatCalendarDate(permit.date),
@@ -213,6 +219,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     .filter((permit) => unitFilter === "All" || normalizeUnit(permit.unit) === unitFilter)
     .sort((left, right) => right.date.localeCompare(left.date) || right.name.localeCompare(left.name));
   const annualOrders = orders
+    .filter((order) => order.status === "Approved")
     .filter((order) => order.departureDate <= yearEnd && order.returnDate >= yearStart)
     .filter((order) => !normalizedSearch || (order.people ?? []).some((person) => (person.name ?? "").toLocaleLowerCase().includes(normalizedSearch)))
     .filter((order) => unitFilter === "All" || normalizeUnit(order.chargeTo) === unitFilter)
@@ -224,9 +231,9 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const visibleAnnualPermits = annualPermits.slice(currentPermitPage * 10, currentPermitPage * 10 + 10);
   const visibleAnnualOrders = annualOrders.slice(currentTravelPage * 10, currentTravelPage * 10 + 10);
   return <section className="content-section whereabouts-calendar-section">
-    <div className="section-heading whereabouts-heading"><div><p className="eyebrow">Approved travel and Permit Slips</p><h2>Whereabouts Calendar</h2><p className="muted">Select a shaded date to view approved Travel Orders and Permit Slips.</p></div></div>
+    <div className="section-heading whereabouts-heading"><div><p className="eyebrow">Travel Orders and Permit Slips</p><h2>Whereabouts Calendar</h2><p className="muted">Select a shaded date to view Travel Orders in processing or approved status and approved Permit Slips.</p></div></div>
     {error && <div className="error-message whereabouts-error">{error}</div>}
-    <section className="whereabouts-calendar" aria-label="Approved Travel Order and Permit Slip calendar">
+    <section className="whereabouts-calendar" aria-label="Travel Order and Permit Slip calendar">
       <header className="whereabouts-calendar-toolbar"><button type="button" className="whereabouts-month-arrow" aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button><h3>{monthName}</h3><button type="button" className="whereabouts-month-arrow" aria-label="Next month" onClick={() => changeMonth(1)}>›</button><button type="button" className="whereabouts-today-button" onClick={() => { setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(todayKey); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); }}>Today</button></header>
       <div className="whereabouts-weekdays" aria-hidden="true">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((name) => <span key={name}>{name}</span>)}</div>
       <div className="whereabouts-days">
@@ -236,24 +243,25 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
           const peopleCount = peopleOnDate(key);
           const selected = selectedDate === key;
           const level = peopleCount > 4 ? 3 : peopleCount > 1 ? 2 : peopleCount > 0 ? 1 : 0;
-          const classes = ["whereabouts-day", level ? `whereabouts-day-level-${level}` : "", selected ? "whereabouts-day-selected" : ""].filter(Boolean).join(" ");
-          const label = `${formatCalendarDate(key, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${peopleCount ? `, ${peopleCount} approved ${peopleCount === 1 ? "person or Permit Slip" : "people or Permit Slips"}` : ", no approved Travel or Permit Slips"}`;
-          return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className="whereabouts-day-number">{day}</span>{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
+          const hasProcessing = hasProcessingOrderOnDate(key);
+          const classes = ["whereabouts-day", level ? `whereabouts-day-level-${level}` : "", hasProcessing ? "whereabouts-day-processing" : "", selected ? "whereabouts-day-selected" : ""].filter(Boolean).join(" ");
+          const label = `${formatCalendarDate(key, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${peopleCount ? `, ${peopleCount} ${peopleCount === 1 ? "person or Permit Slip" : "people or Permit Slips"}` : ", no Travel Orders or Permit Slips"}${hasProcessing ? ", includes a Processing Travel Order" : ""}`;
+          return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className="whereabouts-day-number">{day}</span>{hasProcessing && <span className="whereabouts-day-status">Processing</span>}{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
         })}
       </div>
-      <div className="whereabouts-legend"><span><i className="whereabouts-legend-level-1" />1 person or Permit Slip</span><span><i className="whereabouts-legend-level-2" />2–4 people or Permit Slips</span><span><i className="whereabouts-legend-level-3" />5+ people or Permit Slips</span></div>
+      <div className="whereabouts-legend"><span><i className="whereabouts-legend-processing" />Processing Travel Order</span><span><i className="whereabouts-legend-level-1" />1 person or Permit Slip</span><span><i className="whereabouts-legend-level-2" />2–4 people or Permit Slips</span><span><i className="whereabouts-legend-level-3" />5+ people or Permit Slips</span></div>
     </section>
     <section className="whereabouts-date-details" aria-live="polite">
-      <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} approved ${selectedPeople.length === 1 ? "person" : "people"}`}</span></div>
-      {loading ? <p className="muted">Loading approved Travel Orders and Permit Slips...</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No approved Travel or Permit Slips on this date.</p> : <>
+      <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>
+      {loading ? <p className="muted">Loading Travel Orders and approved Permit Slips...</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No Travel Orders or Permit Slips on this date.</p> : <>
         <div className="whereabouts-date-table-wrap"><table className="whereabouts-date-table"><thead><tr><th>Person</th><th>Date</th><th>Purpose / Destination</th></tr></thead><tbody>
-          {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span><strong>{person.name}{person.number && ` (${person.number})`}</strong></td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
+          {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span>{person.status === "Processing" && <span className="whereabouts-processing-label">Processing</span>}<strong>{person.name}{person.number && ` (${person.number})`}</strong></td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
         </tbody></table></div>
         {selectedPeoplePageCount > 1 && <nav className="whereabouts-pagination" aria-label="Selected date people pages"><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.max(0, page - 1))} disabled={currentSelectedPeoplePage === 0}>Previous</button><span aria-live="polite">Page {currentSelectedPeoplePage + 1} of {selectedPeoplePageCount}</span><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.min(selectedPeoplePageCount - 1, page + 1))} disabled={currentSelectedPeoplePage >= selectedPeoplePageCount - 1}>Next</button></nav>}
       </>}
     </section>
-    <section className="whereabouts-annual-summary" aria-label={`Approved Permit Slip and Travel Order summaries for ${summaryYear}`}>
-      <header className="whereabouts-summary-heading"><div><p className="eyebrow">Annual summary</p><h2>Approved Records — {summaryYear}</h2><p className="muted">Search by name and filter by unit. Tables show 10 records per page, newest first.</p></div></header>
+    <section className="whereabouts-annual-summary" aria-label={`Whereabouts records for ${summaryYear}`}>
+      <header className="whereabouts-summary-heading"><div><p className="eyebrow">Annual summary</p><h2>Approved Records — {summaryYear}</h2><p className="muted">Approved Travel Orders and Permit Slips. Search by name and filter by unit; tables show 10 records per page, newest first.</p></div></header>
       <div className="whereabouts-summary-filters">
         <label>Name search<input type="search" value={nameSearch} onChange={(event) => { setNameSearch(event.target.value); setPermitPage(0); setTravelPage(0); }} placeholder="Search by name" /></label>
         <label>Unit<select value={unitFilter} onChange={(event) => { setUnitFilter(event.target.value as PermitUnitFilter); setPermitPage(0); setTravelPage(0); }}><option value="All">All units</option><option value="AGRISTAT">Agricultural Statistics</option><option value="AMIA">AMIA</option><option value="DRRM">DRRM</option></select></label>
@@ -268,13 +276,13 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
         {permitPageCount > 1 && <nav className="whereabouts-pagination" aria-label="Approved Permit Slip pages"><button type="button" onClick={() => setPermitPage((page) => Math.max(0, page - 1))} disabled={currentPermitPage === 0}>Previous</button><span aria-live="polite">Page {currentPermitPage + 1} of {permitPageCount}</span><button type="button" onClick={() => setPermitPage((page) => Math.min(permitPageCount - 1, page + 1))} disabled={currentPermitPage >= permitPageCount - 1}>Next</button></nav>}
       </section>
       <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-travel-summary-title">
-        <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-travel-summary-title">Approved Travel Order</h3><span>{annualOrders.length === 0 ? "0 records" : `${currentTravelPage * 10 + 1}–${Math.min(currentTravelPage * 10 + visibleAnnualOrders.length, annualOrders.length)} of ${annualOrders.length}`}</span></div>
-        <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Name</th><th>Departure From To</th><th>Destination</th><th>Purpose</th></tr></thead><tbody>
-          {visibleAnnualOrders.map((order) => <tr key={`annual-travel-${order.id}`}><td>{(order.people ?? []).map((person) => person.name).filter(Boolean).join(", ") || "Not specified"}</td><td>{formatCalendarDate(order.departureDate)} – {formatCalendarDate(order.returnDate)}</td><td>{order.placeOfTravel || "—"}</td><td>{order.purpose || "—"}</td></tr>)}
-          {!loading && visibleAnnualOrders.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={4}>No approved Travel Orders match this year and filter.</td></tr>}
-          {loading && <tr><td className="whereabouts-summary-empty" colSpan={4}>Loading approved Travel Orders…</td></tr>}
+        <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-travel-summary-title">Travel Orders</h3><span>{annualOrders.length === 0 ? "0 records" : `${currentTravelPage * 10 + 1}–${Math.min(currentTravelPage * 10 + visibleAnnualOrders.length, annualOrders.length)} of ${annualOrders.length}`}</span></div>
+        <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Name</th><th>Departure From To</th><th>Destination</th><th>Purpose</th><th>Status</th></tr></thead><tbody>
+          {visibleAnnualOrders.map((order) => <tr key={`annual-travel-${order.id}`}><td>{(order.people ?? []).map((person) => person.name).filter(Boolean).join(", ") || "Not specified"}</td><td>{formatCalendarDate(order.departureDate)} – {formatCalendarDate(order.returnDate)}</td><td>{order.placeOfTravel || "—"}</td><td>{order.purpose || "—"}</td><td><span className={`whereabouts-summary-status whereabouts-summary-status-${order.status.toLowerCase()}`}>{order.status}</span></td></tr>)}
+          {!loading && visibleAnnualOrders.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={5}>No Travel Orders match this year and filter.</td></tr>}
+          {loading && <tr><td className="whereabouts-summary-empty" colSpan={5}>Loading Travel Orders…</td></tr>}
         </tbody></table></div>
-        {travelPageCount > 1 && <nav className="whereabouts-pagination" aria-label="Approved Travel Order pages"><button type="button" onClick={() => setTravelPage((page) => Math.max(0, page - 1))} disabled={currentTravelPage === 0}>Previous</button><span aria-live="polite">Page {currentTravelPage + 1} of {travelPageCount}</span><button type="button" onClick={() => setTravelPage((page) => Math.min(travelPageCount - 1, page + 1))} disabled={currentTravelPage >= travelPageCount - 1}>Next</button></nav>}
+        {travelPageCount > 1 && <nav className="whereabouts-pagination" aria-label="Travel Order pages"><button type="button" onClick={() => setTravelPage((page) => Math.max(0, page - 1))} disabled={currentTravelPage === 0}>Previous</button><span aria-live="polite">Page {currentTravelPage + 1} of {travelPageCount}</span><button type="button" onClick={() => setTravelPage((page) => Math.min(travelPageCount - 1, page + 1))} disabled={currentTravelPage >= travelPageCount - 1}>Next</button></nav>}
       </section>
     </section>
   </section>;
