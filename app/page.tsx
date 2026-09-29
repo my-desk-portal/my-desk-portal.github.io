@@ -442,6 +442,7 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
         </div>
       </div>
       <h1 className="permit-heading">PERMIT SLIP</h1>
+      <img src={publicAsset("/maunlad_na_ekonomiya_logo.jpg")} alt="Masaganang Agrikultura, Maunlad na Ekonomiya" className="permit-logo-economy" />
     </header>
 
     <section className="permit-metadata">
@@ -457,31 +458,34 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
       </div>
     </section>
 
-    <h3 className="permit-banner">PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h3>
-    <p className="permit-blank-line permit-blank-line-lg permit-name-line">{name}</p>
+    <div className="permit-body-watermarked">
+      <img className="permit-body-watermark" src={publicAsset("/maunlad_na_ekonomiya_logo.jpg")} alt="" aria-hidden="true" />
+      <h3 className="permit-banner">PERMIT TO LEAVE THE OFFICE IS GRANTED TO:</h3>
+      <p className="permit-blank-line permit-blank-line-lg permit-name-line">{name}</p>
 
-    <section className="permit-purpose-block">
-      <h3>PURPOSE:</h3>
-      <p className="permit-blank-line permit-filled-line">{permit.purpose}</p>
-      <div className="permit-blank-line" />
-    </section>
+      <section className="permit-purpose-block">
+        <h3>PURPOSE:</h3>
+        <p className="permit-blank-line permit-filled-line">{permit.purpose}</p>
+        <div className="permit-blank-line" />
+      </section>
 
-    <table className="permit-grid">
-      <thead>
-        <tr>
-          <th>VISITED PLACES</th>
-          <th>CERTIFYING OFFICER</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr><td /><td /></tr>
-        <tr><td /><td /></tr>
-        <tr><td /><td /></tr>
-        <tr><td /><td /></tr>
-        <tr><td /><td /></tr>
-        <tr><td /><td /></tr>
-      </tbody>
-    </table>
+      <div className="permit-grid-wrap">
+        <table className="permit-grid">
+          <thead>
+            <tr>
+              <th>PLACES TO BE VISITED</th>
+              <th>CERTIFYING OFFICER</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td /><td /></tr>
+            <tr><td /><td /></tr>
+            <tr><td /><td /></tr>
+            <tr><td /><td /></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <div className="permit-signature-row">
       <div className="permit-guard-signature">GUARD'S SIGNATURE</div>
@@ -509,6 +513,13 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
       {decision?.status === "Disapproved" && <div className="permit-disapproved-stamp"><strong>Disapproved</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div>}
       <div className="permit-approved-name">GERLIE B. ANTIPASO</div>
       <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>
+    </div>
+
+    <div className="permit-noted">
+      <div className="permit-approved-label">Noted:</div>
+      <div className="permit-noted-space" aria-hidden="true" />
+      <div className="permit-approved-name">CLARICE L. CALIBAYAN</div>
+      <div className="permit-approved-role permit-noted-role"><em>OIC</em>, Human Resource Section</div>
     </div>
   </article>;
 }

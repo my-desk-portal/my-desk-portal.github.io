@@ -7,7 +7,8 @@
 .permit-sheets-single .permit-header{gap:1.936cqi;margin-bottom:1.452cqi}
 .permit-sheets-single .permit-logos{gap:1.21cqi}
 .permit-sheets-single .permit-logo-left{height:10.16cqi;width:10.644cqi}
-.permit-sheets-single .permit-logo-right{height:9.676cqi;width:9.676cqi}
+.permit-sheets-single .permit-logo-right{height:10.16cqi;width:10.644cqi}
+.permit-sheets-single .permit-logo-economy{height:10.16cqi;width:10.644cqi}
 .permit-sheets-single .permit-heading{font-size:3.528cqi}
 .permit-sheets-single .permit-metadata{gap:.756cqi;margin:2.178cqi 0}
 .permit-sheets-single .permit-meta-row{gap:1.26cqi;grid-template-columns:15cqi 2.52cqi 1fr}
@@ -17,7 +18,8 @@
 .permit-sheets-single .permit-blank-line-lg{margin-top:2.016cqi}
 .permit-sheets-single .permit-name-line{font-size:4.536cqi;padding-top:.504cqi}
 .permit-sheets-single .permit-purpose-block h3{margin:2.178cqi 0 .756cqi}
-.permit-sheets-single .permit-grid{margin-top:1.936cqi}
+.permit-sheets-single .permit-grid-wrap{margin-top:1.936cqi}
+.permit-sheets-single .permit-grid{margin-top:0}
 .permit-sheets-single .permit-grid th,.permit-sheets-single .permit-grid td{height:4.032cqi;padding:.504cqi .756cqi}
 .permit-sheets-single .permit-signature-row{gap:.756cqi;margin-top:2.178cqi}
 .permit-sheets-single .permit-time-block{gap:.756cqi}
