@@ -40,6 +40,15 @@ type StoredPermit = {
 };
 
 type PermitUnitFilter = "All" | "AGRISTAT" | "AMIA" | "DRRM";
+type SelectedCalendarEntry = {
+  id: string;
+  type: "Travel Order" | "Permit Slip";
+  statuses: string[];
+  names: string[];
+  date: string;
+  purpose: string;
+  destination: string;
+};
 
 function normalizeUnit(value?: string): Exclude<PermitUnitFilter, "All"> | "" {
   const unit = value?.trim().toUpperCase();
@@ -203,7 +212,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
 
   const selectedOrders = ordersOnDate(selectedDate);
   const selectedPermitSlips = permitSlips.filter((permit) => permit.date === selectedDate);
-  const selectedPeople = [
+  const selectedPeopleEntries = [
     ...selectedOrders.flatMap((order) => {
       const people: CalendarTravelOrder["people"] = order.people?.length ? order.people : [{ name: "Not specified" }];
       return people.map((person, index) => ({
@@ -228,6 +237,27 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       destination: "",
     })),
   ];
+  const selectedPeopleByDetails = new Map<string, SelectedCalendarEntry>();
+  selectedPeopleEntries.forEach((person) => {
+    const entry: SelectedCalendarEntry = {
+      id: person.id,
+      type: person.type as SelectedCalendarEntry["type"],
+      statuses: [person.status],
+      names: [`${person.name}${person.number ? ` (${person.number})` : ""}`],
+      date: person.date,
+      purpose: person.purpose,
+      destination: person.destination,
+    };
+    const key = JSON.stringify([entry.type, entry.date, entry.purpose, entry.destination]);
+    const existing = selectedPeopleByDetails.get(key);
+    if (existing) {
+      existing.names.push(...entry.names);
+      existing.statuses = [...new Set([...existing.statuses, ...entry.statuses])];
+    } else {
+      selectedPeopleByDetails.set(key, entry);
+    }
+  });
+  const selectedPeople = [...selectedPeopleByDetails.values()];
   const selectedPeoplePageSize = 8;
   const selectedPeoplePageCount = Math.max(1, Math.ceil(selectedPeople.length / selectedPeoplePageSize));
   const currentSelectedPeoplePage = Math.min(selectedPeoplePage, selectedPeoplePageCount - 1);
@@ -280,7 +310,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>
       {loading ? <p className="muted">Loading Travel Orders and approved Permit Slips...</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No Travel Orders or Permit Slips on this date.</p> : <>
         <div className="whereabouts-date-table-wrap"><table className="whereabouts-date-table"><thead><tr><th>Person</th><th>Date</th><th>Purpose / Destination</th></tr></thead><tbody>
-          {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span>{person.status === "Pending" && <span className="whereabouts-pending-label">Pending</span>}<strong>{person.name}{person.number && ` (${person.number})`}</strong></td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
+          {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span>{person.statuses.length > 1 ? <span className="whereabouts-pending-label">{person.statuses.join(" / ")}</span> : person.statuses[0] === "Pending" && <span className="whereabouts-pending-label">Pending</span>}<strong>{person.names.join(", ")}</strong></td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
         </tbody></table></div>
         {selectedPeoplePageCount > 1 && <nav className="whereabouts-pagination" aria-label="Selected date people pages"><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.max(0, page - 1))} disabled={currentSelectedPeoplePage === 0}>Previous</button><span aria-live="polite">Page {currentSelectedPeoplePage + 1} of {selectedPeoplePageCount}</span><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.min(selectedPeoplePageCount - 1, page + 1))} disabled={currentSelectedPeoplePage >= selectedPeoplePageCount - 1}>Next</button></nav>}
       </>}
