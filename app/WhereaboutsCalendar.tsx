@@ -86,6 +86,22 @@ function formatCalendarDate(value: string, options: Intl.DateTimeFormatOptions =
   return new Intl.DateTimeFormat("en-PH", options).format(new Date(year, month - 1, day));
 }
 
+function formatCalendarDateRange(from: string, to: string) {
+  if (!from || !to) return [formatCalendarDate(from), formatCalendarDate(to)].filter(Boolean).join(" - ");
+  if (from === to) return formatCalendarDate(from);
+
+  const [startYear, startMonth, startDay] = from.split("-").map(Number);
+  const [endYear, endMonth, endDay] = to.split("-").map(Number);
+  const startMonthName = formatCalendarDate(from, { month: "long" });
+  const endMonthName = formatCalendarDate(to, { month: "long" });
+  if (startYear === endYear && startMonth === endMonth) {
+    return `${startMonthName} ${startDay}-${endDay}, ${startYear}`;
+  }
+
+  const startDate = `${startMonthName} ${startDay}${startYear === endYear ? "" : `, ${startYear}`}`;
+  return `${startDate} - ${endMonthName} ${endDay}, ${endYear}`;
+}
+
 export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const today = new Date();
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
@@ -193,7 +209,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
         status: order.status,
         name: person.name || "Not specified",
         number: person.toNumber || "",
-        date: `${formatCalendarDate(order.departureDate)} – ${formatCalendarDate(order.returnDate)}`,
+        date: formatCalendarDateRange(order.departureDate, order.returnDate),
         purpose: order.purpose || "—",
         destination: order.placeOfTravel || "—",
       }));
@@ -284,7 +300,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-travel-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-travel-summary-title">Travel Orders</h3><span>{annualOrders.length === 0 ? "0 records" : `${currentTravelPage * 10 + 1}–${Math.min(currentTravelPage * 10 + visibleAnnualOrders.length, annualOrders.length)} of ${annualOrders.length}`}</span></div>
         <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Name</th><th>Departure From To</th><th>Destination</th><th>Purpose</th><th>Status</th></tr></thead><tbody>
-          {visibleAnnualOrders.map((order) => <tr key={`annual-travel-${order.id}`}><td>{(order.people ?? []).map((person) => person.name).filter(Boolean).join(", ") || "Not specified"}</td><td>{formatCalendarDate(order.departureDate)} – {formatCalendarDate(order.returnDate)}</td><td>{order.placeOfTravel || "—"}</td><td>{order.purpose || "—"}</td><td><span className={`whereabouts-summary-status whereabouts-summary-status-${order.status.toLowerCase()}`}>{order.status}</span></td></tr>)}
+          {visibleAnnualOrders.map((order) => <tr key={`annual-travel-${order.id}`}><td>{(order.people ?? []).map((person) => person.name).filter(Boolean).join(", ") || "Not specified"}</td><td>{formatCalendarDateRange(order.departureDate, order.returnDate)}</td><td>{order.placeOfTravel || "—"}</td><td>{order.purpose || "—"}</td><td><span className={`whereabouts-summary-status whereabouts-summary-status-${order.status.toLowerCase()}`}>{order.status}</span></td></tr>)}
           {!loading && visibleAnnualOrders.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={5}>No Travel Orders match this year and filter.</td></tr>}
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={5}>Loading Travel Orders…</td></tr>}
         </tbody></table></div>

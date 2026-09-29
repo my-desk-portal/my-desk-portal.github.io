@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import type { User } from "firebase/auth";
-import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import "./myar.css";
 
@@ -81,6 +81,15 @@ function reportUnit(unit: Unit) {
     DRRM: "Disaster Risk Reduction and Management",
   };
   return unitNames[unit];
+}
+
+function applyCurrentProfile(report: Report, profile: Profile | null): Report {
+  return profile ? {
+    ...report,
+    unit: profile.unit,
+    preparedName: profile.name,
+    preparedPosition: profile.position,
+  } : report;
 }
 
 function createdTime(value: unknown) {
@@ -171,11 +180,8 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   const lastDay = lastDayOfMonth(month);
   const startDay = cycle === 1 ? 1 : 16;
   const endDay = cycle === 1 ? 15 : lastDay;
-  const preparedProfile = editingReport ? {
-    name: editingReport.preparedName,
-    position: editingReport.preparedPosition,
-    unit: editingReport.unit,
-  } : profile;
+  const preparedProfile = profile;
+  const previewReport = selectedReport ? applyCurrentProfile(selectedReport, profile) : null;
   const duplicateReport = !editingReport && reports.some((report) => report.month === month && report.cycle === cycle);
 
   useEffect(() => {
@@ -234,41 +240,63 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       setMessage({ kind: "error", text: "Add at least one activity before previewing the report." });
       return;
     }
-    setSelectedReport({ ...editingReport, activities: updatedActivities });
+    setSelectedReport(applyCurrentProfile({ ...editingReport, activities: updatedActivities }, profile));
   }
 
   useEffect(() => {
     let current = true;
-    async function load() {
+    let profileLoaded = false;
+    let reportsLoaded = false;
+    const updateLoading = () => {
+      if (current) setLoading(!(profileLoaded && reportsLoaded));
+    };
+
+    function load() {
       if (!db) {
         setMessage({ kind: "error", text: "Database is not configured." });
         setLoading(false);
-        return;
+        return () => { current = false; };
       }
       setLoading(true);
-      try {
-        const [profileSnapshot, reportSnapshot] = await Promise.all([
-          getDoc(doc(db, "users", user.uid)),
-          getDocs(query(collection(db, "accomplishmentReports"), where("ownerId", "==", user.uid))),
-        ]);
+      const unsubscribeProfile = onSnapshot(doc(db, "users", user.uid), (profileSnapshot) => {
         if (!current) return;
-        if (profileSnapshot.exists()) {
-          const data = profileSnapshot.data();
-          if (typeof data.name === "string" && typeof data.position === "string" && ["AMIA", "AGRISTAT", "DRRM"].includes(data.unit)) {
-            setProfile({ name: data.name, position: data.position, unit: data.unit as Unit });
-          }
+        const data = profileSnapshot.data();
+        if (profileSnapshot.exists() && typeof data.name === "string" && typeof data.position === "string" && ["AMIA", "AGRISTAT", "DRRM"].includes(data.unit)) {
+          setProfile({ name: data.name, position: data.position, unit: data.unit as Unit });
+        } else {
+          setProfile(null);
         }
+        profileLoaded = true;
+        updateLoading();
+      }, (cause) => {
+        if (!current) return;
+        setProfile(null);
+        profileLoaded = true;
+        setMessage({ kind: "error", text: cause instanceof Error ? `Could not load your profile. ${cause.message}` : "Could not load your profile. Try again." });
+        updateLoading();
+      });
+
+      getDocs(query(collection(db, "accomplishmentReports"), where("ownerId", "==", user.uid))).then((reportSnapshot) => {
+        if (!current) return;
         const ownReports = reportSnapshot.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() } as Report));
         ownReports.sort((left, right) => right.month.localeCompare(left.month) || right.cycle - left.cycle || createdTime(right.createdAt) - createdTime(left.createdAt));
         setReports(ownReports);
-      } catch (cause) {
-        if (current) setMessage({ kind: "error", text: cause instanceof Error ? `Could not load your reports. ${cause.message}` : "Could not load your reports. Try again." });
-      } finally {
-        if (current) setLoading(false);
-      }
+        reportsLoaded = true;
+        updateLoading();
+      }).catch((cause) => {
+        if (!current) return;
+        setMessage({ kind: "error", text: cause instanceof Error ? `Could not load your reports. ${cause.message}` : "Could not load your reports. Try again." });
+        reportsLoaded = true;
+        updateLoading();
+      });
+
+      return () => unsubscribeProfile();
     }
-    void load();
-    return () => { current = false; };
+    const unsubscribe = load();
+    return () => {
+      current = false;
+      unsubscribe?.();
+    };
   }, [user.uid]);
 
   async function saveReport(event: FormEvent<HTMLFormElement>) {
@@ -360,6 +388,6 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       {loading ? <p className="muted">Loading reports...</p> : reports.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No accomplishment reports yet</h3><p>Saved reports will appear here.</p></div> : <div className="permit-table ar-saved-table"><div className="table-head"><span>Month</span><span>Half-month Cycle</span><span aria-hidden="true" /></div>{reports.map((report) => <div className="table-row" key={report.id}><strong>{reportMonth(report.month)}</strong><span>{report.startDay}-{report.endDay}</span><div className="ar-record-actions">{isReportEditingLocked(report, today) ? <span className="row-action ar-record-closed" title={`Editing closed on ${reportEditDeadlineLabel(report)}.`}>Edit closed</span> : <button type="button" className="row-action" onClick={() => editActivities(report)}>Edit</button>}<button type="button" className="row-action" onClick={() => setSelectedReport(report)}>View</button></div></div>)}</div>}
     </section>}
 
-    {selectedReport && <AccomplishmentReportPreview report={selectedReport} onClose={() => setSelectedReport(null)} />}
+    {previewReport && <AccomplishmentReportPreview report={previewReport} onClose={() => setSelectedReport(null)} />}
   </div>;
 }
