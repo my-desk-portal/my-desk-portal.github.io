@@ -28,6 +28,7 @@
 .ar-saved-table .table-head,.ar-saved-table .table-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 180px}
 .ar-record-actions{align-items:center;display:flex;gap:16px;justify-content:flex-end;min-width:0}
 .ar-record-actions .row-action{white-space:nowrap}
+.ar-record-closed{color:var(--muted);cursor:not-allowed;display:inline-block;white-space:nowrap}
 .ar-record-actions .primary-button{padding:9px 12px}
 .ar-preview-backdrop{align-items:flex-start;background:rgba(24,33,31,.85);inset:0;overflow:auto;padding:24px;position:fixed;z-index:30}
 .ar-preview-window{display:grid;gap:18px;justify-items:center;margin:0 auto;max-width:100%}

@@ -32,9 +32,30 @@ function currentMonth() {
   return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}`;
 }
 
+function manilaDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}-${parts.find((part) => part.type === "day")?.value}`;
+}
+
 function lastDayOfMonth(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);
   return year && monthNumber ? new Date(year, monthNumber, 0).getDate() : 31;
+}
+
+function reportEditDeadline(report: Pick<Report, "month" | "cycle">) {
+  const [year, monthNumber] = report.month.split("-").map(Number);
+  if (!year || !monthNumber || monthNumber < 1 || monthNumber > 12) return "0000-00-00";
+  const cycleEndDay = report.cycle === 1 ? 15 : lastDayOfMonth(report.month);
+  return new Date(Date.UTC(year, monthNumber - 1, cycleEndDay + 6)).toISOString().slice(0, 10);
+}
+
+function isReportEditingLocked(report: Pick<Report, "month" | "cycle">, today = manilaDateKey()) {
+  return today >= reportEditDeadline(report);
+}
+
+function reportEditDeadlineLabel(report: Pick<Report, "month" | "cycle">) {
+  const [year, month, day] = reportEditDeadline(report).split("-").map(Number);
+  return new Intl.DateTimeFormat("en-PH", { dateStyle: "long", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
 function monthName(month: string) {
@@ -144,6 +165,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [editingReport, setEditingReport] = useState<Report | null>(null);
+  const [today, setToday] = useState(manilaDateKey);
   const lastDay = lastDayOfMonth(month);
   const startDay = cycle === 1 ? 1 : 16;
   const endDay = cycle === 1 ? 15 : lastDay;
@@ -153,6 +175,12 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
     unit: editingReport.unit,
   } : profile;
   const duplicateReport = !editingReport && reports.some((report) => report.month === month && report.cycle === cycle);
+
+  useEffect(() => {
+    const refreshDate = () => setToday(manilaDateKey());
+    const interval = window.setInterval(refreshDate, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   function startNewReport() {
     setEditingReport(null);
@@ -165,6 +193,10 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   }
 
   function editActivities(report: Report) {
+    if (isReportEditingLocked(report)) {
+      setMessage({ kind: "error", text: `Editing closed on ${reportEditDeadlineLabel(report)}. This report's activities can no longer be changed.` });
+      return;
+    }
     setEditingReport(report);
     setMonth(report.month);
     setCycle(report.cycle);
@@ -230,6 +262,13 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   async function saveReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
+    if (editingReport && isReportEditingLocked(editingReport)) {
+      setEditingReport(null);
+      setActivities([""]);
+      setShowForm(false);
+      setMessage({ kind: "error", text: `Editing closed on ${reportEditDeadlineLabel(editingReport)}. This report's activities can no longer be changed.` });
+      return;
+    }
     if (!db) {
       setMessage({ kind: "error", text: "Database is not configured." });
       return;
@@ -306,7 +345,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
     {!showForm && <section className="content-section ar-records-section">
       <div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Saved Reports</h2><p className="muted">{reports.length} {reports.length === 1 ? "report" : "reports"} saved to your account.</p></div><button type="button" className="primary-button ar-add-report-button" onClick={startNewReport}>Add</button></div>
       {message && <p className={`auth-message auth-message-${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
-      {loading ? <p className="muted">Loading reports...</p> : reports.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No accomplishment reports yet</h3><p>Saved reports will appear here.</p></div> : <div className="permit-table ar-saved-table"><div className="table-head"><span>Month</span><span>Half-month Cycle</span><span aria-hidden="true" /></div>{reports.map((report) => <div className="table-row" key={report.id}><strong>{reportMonth(report.month)}</strong><span>{report.startDay}-{report.endDay}</span><div className="ar-record-actions"><button type="button" className="row-action" onClick={() => editActivities(report)}>Edit</button><button type="button" className="row-action" onClick={() => setSelectedReport(report)}>View</button></div></div>)}</div>}
+      {loading ? <p className="muted">Loading reports...</p> : reports.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No accomplishment reports yet</h3><p>Saved reports will appear here.</p></div> : <div className="permit-table ar-saved-table"><div className="table-head"><span>Month</span><span>Half-month Cycle</span><span aria-hidden="true" /></div>{reports.map((report) => <div className="table-row" key={report.id}><strong>{reportMonth(report.month)}</strong><span>{report.startDay}-{report.endDay}</span><div className="ar-record-actions">{isReportEditingLocked(report, today) ? <span className="row-action ar-record-closed" title={`Editing closed on ${reportEditDeadlineLabel(report)}.`}>Edit closed</span> : <button type="button" className="row-action" onClick={() => editActivities(report)}>Edit</button>}<button type="button" className="row-action" onClick={() => setSelectedReport(report)}>View</button></div></div>)}</div>}
     </section>}
 
     {selectedReport && <AccomplishmentReportPreview report={selectedReport} onClose={() => setSelectedReport(null)} />}
