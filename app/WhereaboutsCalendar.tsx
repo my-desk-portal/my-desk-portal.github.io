@@ -89,7 +89,7 @@ function formatCalendarDate(value: string, options: Intl.DateTimeFormatOptions =
 export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const today = new Date();
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
-  const [orders, setOrders] = useState<ApprovedTravelOrder[]>([]);
+  const [orders, setOrders] = useState<CalendarTravelOrder[]>([]);
   const [permitSlips, setPermitSlips] = useState<ApprovedPermitSlip[]>([]);
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(todayKey);
