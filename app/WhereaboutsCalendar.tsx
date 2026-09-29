@@ -169,6 +169,10 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     return orders.some((order) => order.status === "Processing" && order.departureDate <= key && order.returnDate >= key);
   }
 
+  function hasApprovedOrderOnDate(key: string) {
+    return orders.some((order) => order.status === "Approved" && order.departureDate <= key && order.returnDate >= key);
+  }
+
   function changeMonth(offset: number) {
     const next = new Date(year, monthIndex + offset, 1);
     setMonth(next);
@@ -244,12 +248,14 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
           const selected = selectedDate === key;
           const level = peopleCount > 4 ? 3 : peopleCount > 1 ? 2 : peopleCount > 0 ? 1 : 0;
           const hasProcessing = hasProcessingOrderOnDate(key);
-          const classes = ["whereabouts-day", level ? `whereabouts-day-level-${level}` : "", hasProcessing ? "whereabouts-day-processing" : "", selected ? "whereabouts-day-selected" : ""].filter(Boolean).join(" ");
+          const hasApproved = hasApprovedOrderOnDate(key);
+          const statusClass = hasProcessing ? (hasApproved ? "whereabouts-day-mixed-status" : "whereabouts-day-processing") : "";
+          const classes = ["whereabouts-day", level ? `whereabouts-day-level-${level}` : "", statusClass, selected ? "whereabouts-day-selected" : ""].filter(Boolean).join(" ");
           const label = `${formatCalendarDate(key, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${peopleCount ? `, ${peopleCount} ${peopleCount === 1 ? "person or Permit Slip" : "people or Permit Slips"}` : ", no Travel Orders or Permit Slips"}${hasProcessing ? ", includes a Processing Travel Order" : ""}`;
-          return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className="whereabouts-day-number">{day}</span>{hasProcessing && <span className="whereabouts-day-status">Processing</span>}{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
+          return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className="whereabouts-day-number">{day}</span>{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
         })}
       </div>
-      <div className="whereabouts-legend"><span><i className="whereabouts-legend-processing" />Processing Travel Order</span><span><i className="whereabouts-legend-level-1" />1 person or Permit Slip</span><span><i className="whereabouts-legend-level-2" />2–4 people or Permit Slips</span><span><i className="whereabouts-legend-level-3" />5+ people or Permit Slips</span></div>
+      <div className="whereabouts-legend"><span><i className="whereabouts-legend-processing" />Processing Travel Order</span><span><i className="whereabouts-legend-mixed" />Approved and Processing</span><span><i className="whereabouts-legend-level-1" />1 person or Permit Slip</span><span><i className="whereabouts-legend-level-2" />2–4 people or Permit Slips</span><span><i className="whereabouts-legend-level-3" />5+ people or Permit Slips</span></div>
     </section>
     <section className="whereabouts-date-details" aria-live="polite">
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>

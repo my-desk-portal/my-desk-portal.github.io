@@ -23,7 +23,8 @@
 .whereabouts-day-level-3,.whereabouts-legend-level-3{background:#398052;color:#fff}
 .whereabouts-day-processing,.whereabouts-legend-processing{background:#ffe58a}
 .whereabouts-day-processing{border-color:#e8c34d;color:#594500}
-.whereabouts-day-status{background:#ffdc63;border-radius:2px;color:#594500;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;line-height:1.3;padding:2px 4px;text-transform:uppercase}
+.whereabouts-day-mixed-status,.whereabouts-legend-mixed{background:linear-gradient(90deg,#9dccaa 0 50%,#ffe58a 50% 100%)}
+.whereabouts-day-mixed-status{border-color:#c7ba72;color:var(--ink)}
 .whereabouts-day-level-3 .whereabouts-day-count{color:var(--ink)}
 .whereabouts-day-selected{box-shadow:inset 0 0 0 2px var(--accent-dark);border-color:var(--accent-dark)}
 .whereabouts-day:focus-visible,.whereabouts-month-arrow:focus-visible,.whereabouts-today-button:focus-visible{outline:3px solid #df603c;outline-offset:2px;z-index:1}
