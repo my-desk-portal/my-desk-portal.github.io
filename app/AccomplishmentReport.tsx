@@ -160,6 +160,8 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   const [month, setMonth] = useState(currentMonth);
   const [cycle, setCycle] = useState<1 | 2>(1);
   const [activities, setActivities] = useState([""]);
+  const [draggedActivityIndex, setDraggedActivityIndex] = useState<number | null>(null);
+  const [dropActivityIndex, setDropActivityIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
@@ -213,6 +215,16 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
     setActivities([""]);
     setMessage(null);
     setShowForm(false);
+  }
+
+  function reorderActivity(sourceIndex: number, targetIndex: number) {
+    setActivities((current) => {
+      if (sourceIndex < 0 || sourceIndex >= current.length || targetIndex < 0 || targetIndex >= current.length || sourceIndex === targetIndex) return current;
+      const reordered = [...current];
+      const [activity] = reordered.splice(sourceIndex, 1);
+      reordered.splice(targetIndex, 0, activity);
+      return reordered;
+    });
   }
 
   function previewEditedReport() {
@@ -336,7 +348,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
           </div>
           {duplicateReport && <p className="auth-message auth-message-error" role="status">A report for {reportPeriod({ month, startDay, endDay })} is already saved. Edit it from Saved Reports.</p>}
           <div className="ar-auto-details" aria-label={editingReport ? "Saved report details" : "Automatically filled from your Profile"}><p><span>Unit</span><strong>{reportUnit(preparedProfile.unit)}</strong></p><p><span>Prepared</span><strong>{preparedProfile.name.toLocaleUpperCase("en-PH")}</strong><em>{preparedProfile.position}</em></p></div>
-          <fieldset className="ar-activities-entry"><legend>Activities</legend><div className="ar-activity-list">{activities.map((activity, index) => <div className="ar-activity-entry" key={index}><label htmlFor={`ar-activity-${index}`}>Activity {index + 1}<textarea id={`ar-activity-${index}`} value={activity} maxLength={1200} rows={2} onChange={(event) => setActivities((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder="Describe the activity or accomplishment" required /></label>{activities.length > 1 && <button type="button" className="ar-remove-activity" onClick={() => setActivities((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div>)}</div>{activities.length < MAX_ACTIVITIES && <button type="button" className="text-button ar-add-activity" onClick={() => setActivities((current) => [...current, ""])}>+ Add activity</button>}</fieldset>
+          <fieldset className="ar-activities-entry"><legend>Activities</legend><p id="ar-reorder-hint" className="ar-reorder-hint">Drag the grip to rearrange activities, or focus a grip and press Alt + Up or Alt + Down.</p><div className="ar-activity-list">{activities.map((activity, index) => <div className={`ar-activity-entry${draggedActivityIndex === index ? " is-dragging" : ""}${dropActivityIndex === index ? " is-drop-target" : ""}`} key={index} onDragOver={(event) => { event.preventDefault(); setDropActivityIndex(index); }} onDragLeave={() => setDropActivityIndex((current) => current === index ? null : current)} onDrop={(event) => { event.preventDefault(); const draggedValue = event.dataTransfer.getData("text/plain"); setDraggedActivityIndex(null); setDropActivityIndex(null); if (!/^\d+$/.test(draggedValue)) return; const draggedIndex = Number(draggedValue); const bounds = event.currentTarget.getBoundingClientRect(); const insertAfter = event.clientY >= bounds.top + bounds.height / 2; const insertionIndex = index + (insertAfter ? 1 : 0); reorderActivity(draggedIndex, draggedIndex < insertionIndex ? insertionIndex - 1 : insertionIndex); }}><button type="button" className="ar-drag-activity" draggable aria-label={`Reorder activity ${index + 1}`} aria-describedby="ar-reorder-hint" onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", String(index)); setDraggedActivityIndex(index); }} onDragEnd={() => { setDraggedActivityIndex(null); setDropActivityIndex(null); }} onKeyDown={(event) => { if (event.altKey && event.key === "ArrowUp" && index > 0) { event.preventDefault(); reorderActivity(index, index - 1); } else if (event.altKey && event.key === "ArrowDown" && index < activities.length - 1) { event.preventDefault(); reorderActivity(index, index + 1); } }}><svg className="ar-drag-grip" viewBox="0 0 12 20" aria-hidden="true"><circle cx="3" cy="3" r="1.7"/><circle cx="9" cy="3" r="1.7"/><circle cx="3" cy="10" r="1.7"/><circle cx="9" cy="10" r="1.7"/><circle cx="3" cy="17" r="1.7"/><circle cx="9" cy="17" r="1.7"/></svg></button><label htmlFor={`ar-activity-${index}`}>Activity {index + 1}<textarea id={`ar-activity-${index}`} value={activity} maxLength={1200} rows={2} onChange={(event) => setActivities((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder="Describe the activity or accomplishment" required /></label><div className="ar-activity-actions">{activities.length > 1 && <button type="button" className="ar-remove-activity" aria-label={`Remove activity ${index + 1}`} onClick={() => setActivities((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div></div>)}</div>{activities.length < MAX_ACTIVITIES && <button type="button" className="text-button ar-add-activity" onClick={() => setActivities((current) => [...current, ""])}>+ Add activity</button>}</fieldset>
           <div className="form-actions ar-form-actions">{editingReport && <button type="button" className="ghost-button" disabled={saving} onClick={previewEditedReport}>Preview / Print</button>}<button className="primary-button" disabled={saving || duplicateReport}>{saving ? "Saving..." : editingReport ? "Update" : "Save"}</button></div>
         </form>
       </>}
