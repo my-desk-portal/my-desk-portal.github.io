@@ -67,10 +67,11 @@ function displayTime(value: string) {
 
 function ordinalDate(value: string) {
   const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return displayDate(value);
+  if (Number.isNaN(date.getTime())) return <strong>{displayDate(value)}</strong>;
   const day = date.getDate();
   const suffix = day % 100 >= 11 && day % 100 <= 13 ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th";
-  return <>{day}<sup className="appreciation-ordinal">{suffix}</sup> day of {new Intl.DateTimeFormat("en-PH", { month: "long" }).format(date)} {date.getFullYear()}</>;
+  const month = new Intl.DateTimeFormat("en-PH", { month: "long" }).format(date);
+  return <><strong>{day}<sup className="appreciation-ordinal">{suffix}</sup></strong> day of <strong>{month} {date.getFullYear()}</strong></>;
 }
 
 function countryLocation(value: string) {
@@ -212,7 +213,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
         const batch = writeBatch(db);
         const chunk: AppreciationRecord[] = parsed.slice(offset, offset + 450).map((record) => {
           const reference = doc(target);
-          const data = { ...record, ownerId: user.uid, createdAt: serverTimestamp() };
+          const data = { ...record, ...primarySpeakerFields(record.speakers), ownerId: user.uid, createdAt: serverTimestamp() };
           batch.set(reference, data);
           return { ...data, id: reference.id, createdAt: undefined } as AppreciationRecord;
         });
@@ -220,10 +221,11 @@ export default function AppreciationCertificate({ user }: { user: User }) {
         imported = [...imported, ...chunk];
         setRecords((current) => [...chunk, ...current]);
       }
-      setImportMessage(`Imported ${imported.length} Appreciation ${imported.length === 1 ? "certificate" : "certificates"}. Distribution dates use the event end date.`);
+      const speakerCount = imported.reduce((total, record) => total + recordSpeakers(record).length, 0);
+      setImportMessage(`Imported ${imported.length} Appreciation ${imported.length === 1 ? "report" : "reports"} containing ${speakerCount} ${speakerCount === 1 ? "speaker" : "speakers"}. Distribution dates use the event end date.`);
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : "Check the template and try again.";
-      setError(imported.length ? `${detail} ${imported.length} ${imported.length === 1 ? "certificate was" : "certificates were"} imported before the error.` : detail);
+      setError(imported.length ? `${detail} ${imported.length} ${imported.length === 1 ? "report was" : "reports were"} imported before the error.` : detail);
     } finally {
       setImporting(false);
     }
@@ -306,7 +308,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
   if (view === "edit" && editingRecord) return <AppreciationSpeakerForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveSpeakerCorrections} saving={saving} error={error} />;
 
   return <section className="content-section appreciation-section">
-    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Appreciation Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="appreciation-template-link" href={importTemplate} download="Appreciation_Importing_Template.xlsx">Appreciation_Importing_Template.xlsx</a>.</p></div><div className="appreciation-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
+    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Appreciation Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="appreciation-template-link" href={importTemplate} download="Appreciation_Importing_Template.xlsx">Appreciation_Importing_Template.xlsx</a>. Matching event rows are grouped into one editable report.</p></div><div className="appreciation-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
     <input ref={importInputRef} className="appreciation-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importAppreciations(event)} aria-label="Import Appreciation certificate workbook" />
     {error && <p className="appreciation-error" role="alert">{error}</p>}
     {importMessage && <p className="appreciation-success" role="status">{importMessage}</p>}
@@ -425,7 +427,7 @@ function AppreciationPaper({ record, speaker }: { record: AppreciationRecord; sp
     <div className="appreciation-speaker-role"><em>{speaker.position}</em>, {speaker.office}</div>
     <div className="appreciation-body" ref={bodyRef}>
       <p>For {objectPronoun} exemplary service, commitment, and valuable shared insights as <strong>RESOURCE SPEAKER</strong> for <strong>{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at <strong>{record.eventDestination}</strong>.</p>
-      <p>Given this <strong>{ordinalDate(record.eventDateTo)}</strong> at <strong>{countryLocation(record.distributionPlace)}</strong>.</p>
+      <p>Given this {ordinalDate(record.eventDateTo)} at <strong>{countryLocation(record.distributionPlace)}</strong>.</p>
       <footer className="appreciation-signatory"><strong>ENGR. RICARDO M. O&#209;ATE JR.</strong><em>Regional Executive Director</em></footer>
     </div>
 

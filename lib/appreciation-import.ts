@@ -1,11 +1,15 @@
 import { unzipSync } from "fflate";
 
+export type ImportedAppreciationSpeaker = {
+  name: string;
+  gender: "female" | "male";
+  position: string;
+  office: string;
+};
+
 export type ImportedAppreciationRecord = {
   unit: "DRRM";
-  speakerName: string;
-  speakerGender: "female" | "male";
-  speakerPosition: string;
-  speakerOffice: string;
+  speakers: ImportedAppreciationSpeaker[];
   eventTitle: string;
   eventDateFrom: string;
   eventDateTo: string;
@@ -19,6 +23,7 @@ export type ImportedAppreciationRecord = {
 const requiredColumns = [
   "unit", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "name", "gender", "position", "office", "distributionplace", "distributiondate",
 ] as const;
+const MAX_IMPORTED_SPEAKERS = 100;
 
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -116,7 +121,9 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
   }
 
   const valueFor = (values: Map<number, string>, column: typeof requiredColumns[number]) => values.get(columns.get(column)!)?.trim() ?? "";
-  const imported: ImportedAppreciationRecord[] = [];
+  const grouped = new Map<string, ImportedAppreciationRecord>();
+  const groupCounts = new Map<string, number>();
+  const lastGroupKeys = new Map<string, string>();
   rows.slice(1).forEach((row, index) => {
     const rowNumber = index + 2;
     const values = readRow(row);
@@ -144,14 +151,34 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
       throw new Error(`Row ${rowNumber}: speaker, event, destination, and distribution fields exceed their allowed lengths.`);
     }
     const distributionSameAsDestination = rawDistributionPlace.trim().toLowerCase() === eventDestination.trim().toLowerCase() || !rawDistributionPlace;
-    imported.push({
-      unit: "DRRM", speakerName, speakerGender, speakerPosition, speakerOffice, eventTitle,
-      eventDateFrom, eventDateTo, eventTimeFrom, eventTimeTo, eventDestination,
-      distributionSameAsDestination,
-      distributionPlace: distributionSameAsDestination ? eventDestination : distributionPlace,
-    });
+    const eventKey = JSON.stringify([eventTitle, eventDateFrom, eventDateTo, eventTimeFrom, eventTimeTo, eventDestination, distributionPlace]);
+    let groupKey = lastGroupKeys.get(eventKey) ?? eventKey;
+    let existing = grouped.get(groupKey);
+    if (existing && existing.speakers.length >= MAX_IMPORTED_SPEAKERS) {
+      const nextGroup = (groupCounts.get(eventKey) ?? 0) + 1;
+      groupCounts.set(eventKey, nextGroup);
+      groupKey = `${eventKey}:${nextGroup}`;
+      existing = grouped.get(groupKey);
+    }
+    if (existing) {
+      existing.speakers.push({ name: speakerName, gender: speakerGender, position: speakerPosition, office: speakerOffice });
+    } else {
+      grouped.set(groupKey, {
+        unit: "DRRM",
+        speakers: [{ name: speakerName, gender: speakerGender, position: speakerPosition, office: speakerOffice }],
+        eventTitle,
+        eventDateFrom,
+        eventDateTo,
+        eventTimeFrom,
+        eventTimeTo,
+        eventDestination,
+        distributionSameAsDestination,
+        distributionPlace: distributionSameAsDestination ? eventDestination : distributionPlace,
+      });
+    }
+    lastGroupKeys.set(eventKey, groupKey);
   });
 
-  if (!imported.length) throw new Error("The workbook has no completed speaker rows to import.");
-  return imported;
+  if (!grouped.size) throw new Error("The workbook has no completed speaker rows to import.");
+  return [...grouped.values()];
 }
