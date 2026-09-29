@@ -25,7 +25,7 @@
 .travel-order-number-actions{align-items:center;display:flex;gap:10px;justify-content:flex-end}
 .travel-order-status{align-items:start;display:grid;gap:3px}
 .travel-order-status select{background:#fff;border:1px solid var(--line);border-radius:0;color:var(--ink);font-size:12px;font-weight:700;padding:7px 8px;width:100%}
-.travel-order-status-processing select{background:#fff5e8;color:#8e5712}
+.travel-order-status-pending select{background:#fff5e8;color:#8e5712}
 .travel-order-status-approved select{background:#eaf5ed;color:#21603a}
 .travel-order-status-disapproved select{background:#fff0ed;color:#a23d2d}
 .travel-order-status small{color:var(--muted);font-size:10px}

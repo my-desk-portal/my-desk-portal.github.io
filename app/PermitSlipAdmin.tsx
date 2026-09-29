@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, serverTimestamp, writeBatch, type Timestamp } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import "./permit-slip-admin.css";
 
-type PermitStatus = "Processing" | "Approved" | "Disapproved";
+type PermitStatus = WorkflowStatus;
 type PermitUnitFilter = "All" | "AGRISTAT" | "AMIA" | "DRRM";
 type PersonDecision = { status?: PermitStatus; decidedAt?: Timestamp | Date | string; signerName?: string; decidedBy?: string };
 export type AdminPermit = {
@@ -36,7 +37,7 @@ function decisionKey(permit: AdminPermit, index: number) {
 }
 
 function personStatus(permit: AdminPermit, index: number): PermitStatus {
-  return permit.personStatuses?.[decisionKey(permit, index)]?.status ?? "Processing";
+  return normalizeWorkflowStatus(permit.personStatuses?.[decisionKey(permit, index)]?.status);
 }
 
 function monthString(date: Date) {
@@ -172,7 +173,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
       {monthlyStats.length === 0 ? <p className="permit-admin-empty">No Permit Slips were created this month.</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table"><thead><tr><th>Name</th><th>Purpose</th><th>No. of Approved Permit Slips</th><th>No. of Disapproved Permit Slips</th></tr></thead><tbody>{monthlyStats.map((row) => <tr key={row.name}><td data-label="Name">{row.name}</td><td data-label="Purpose">{[...row.purposes].join("; ") || "—"}</td><td data-label="No. of Approved Permit Slips">{row.approved}</td><td data-label="No. of Disapproved Permit Slips">{row.disapproved}</td></tr>)}</tbody></table></div>}
     </> : statusEntries.length === 0 ? <p className="permit-admin-empty">{permits.length === 0 ? "No Permit Slips have been submitted." : "No Permit Slips match this unit."}</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table permit-status-table"><thead><tr><th>PS No.</th><th>Date</th><th>Name</th><th>Purpose</th><th>Status</th></tr></thead><tbody>{statusEntries.map(({ permit, index, name, permitNo, status }) => {
       const key = `${permit.id}:${decisionKey(permit, index)}`;
-      return <tr id={`permit-status-${encodeURIComponent(key)}`} className={key === focusNotificationKey ? "permit-admin-notification-target" : undefined} key={key}><td data-label="PS No.">{permitNo}</td><td data-label="Date">{displayDate(permit.date)}</td><td data-label="Name">{name}</td><td data-label="Purpose">{permit.purpose || "—"}</td><td data-label="Status"><select className={`permit-admin-status permit-admin-status-${status.toLowerCase()}`} value={status} disabled={savingKey === key} aria-label={`Status for ${name}, ${permitNo}`} onChange={(event) => void changeStatus(permit, index, event.target.value as PermitStatus)}><option>Processing</option><option>Approved</option><option>Disapproved</option></select>{savingKey === key && <small className="permit-admin-saving">Saving…</small>}</td></tr>;
+      return <tr id={`permit-status-${encodeURIComponent(key)}`} className={key === focusNotificationKey ? "permit-admin-notification-target" : undefined} key={key}><td data-label="PS No.">{permitNo}</td><td data-label="Date">{displayDate(permit.date)}</td><td data-label="Name">{name}</td><td data-label="Purpose">{permit.purpose || "—"}</td><td data-label="Status"><select className={`permit-admin-status permit-admin-status-${status.toLowerCase()}`} value={status} disabled={savingKey === key} aria-label={`Status for ${name}, ${permitNo}`} onChange={(event) => void changeStatus(permit, index, event.target.value as PermitStatus)}><option>Pending</option><option>Approved</option><option>Disapproved</option></select>{savingKey === key && <small className="permit-admin-saving">Saving…</small>}</td></tr>;
     })}</tbody></table></div>}
   </section>;
 }

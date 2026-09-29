@@ -236,7 +236,7 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /travelOrders/{travelOrderId} {
-      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || resource.data.status in ["Approved", "Processing"]);
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || resource.data.status in ["Approved", "Pending", "Processing"]);
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }

@@ -8,9 +8,10 @@ import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestam
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { parsePersonnelWorkbook, type PersonnelEntry } from "@/lib/personnel";
+import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import "./travel-order.css";
 
-type TravelOrderStatus = "Processing" | "Approved" | "Disapproved";
+type TravelOrderStatus = WorkflowStatus;
 type TravelOrderPerson = { name: string; position: string; salary: string; toNumber?: string };
 type TravelOrder = {
   id: string;
@@ -34,7 +35,7 @@ type TravelOrder = {
 
 const officeStation = "DA-RFO XIII";
 const chargeOptions = ["Agricultural Statistics", "AMIA", "DRRM"];
-const statuses: TravelOrderStatus[] = ["Processing", "Approved", "Disapproved"];
+const statuses: TravelOrderStatus[] = ["Pending", "Approved", "Disapproved"];
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 
 function travelOrderNumberKey(value: string) {
@@ -112,7 +113,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
       chargeTo,
       transportation: transportation.trim(),
       remarks: remarks.trim(),
-      status: "Processing" as const,
+      status: "Pending" as const,
       ownerId: user.uid,
       createdAt: serverTimestamp(),
     };
@@ -309,7 +310,10 @@ export default function TravelOrderModule({ user }: { user: User }) {
   useEffect(() => {
     if (!db) { setLoading(false); setError("Firebase is not configured."); return; }
     getDocs(query(collection(db, "travelOrders"), where("ownerId", "==", user.uid))).then((snapshot) => {
-      const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as TravelOrder));
+      const rows = snapshot.docs.map((item) => {
+        const data = item.data();
+        return { id: item.id, ...data, status: normalizeWorkflowStatus(data.status) } as TravelOrder;
+      });
       rows.sort((left, right) => ((right.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0) - ((left.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0));
       setOrders(rows);
     }).catch((cause) => {

@@ -40,9 +40,10 @@ import CertificateOfAppearance from "./CertificateOfAppearance";
 import CompletionCertificate from "./CompletionCertificate";
 import AppreciationCertificate from "./AppreciationCertificate";
 import ParticipationCertificate from "./ParticipationCertificate";
+import { normalizeWorkflowStatus } from "./workflow-status";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
-type PermitDecision = { status?: "Processing" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string };
+type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string };
 type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; unit: Unit; purpose: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; createdAt?: unknown };
 
@@ -1089,7 +1090,7 @@ export default function Home() {
         const names = Array.isArray(data.names) ? data.names as string[] : typeof data.name === "string" ? [data.name] : [];
         const permit = { ...data, id: item.id, names } as Permit;
         return names.flatMap((name, index) => {
-          if ((permit.personStatuses?.[permitDecisionKey(permit, index)]?.status ?? "Processing") !== "Processing") return [];
+          if (normalizeWorkflowStatus(permit.personStatuses?.[permitDecisionKey(permit, index)]?.status) !== "Pending") return [];
           return [{ permitId: item.id, statusKey: permitDecisionKey(permit, index), permitNo: permitPersonNumber(permit, index), name, date: permit.date, purpose: permit.purpose, submittedAt: timestampMillis(permit.createdAt) }];
         });
       }).sort((left, right) => right.submittedAt - left.submittedAt || right.permitNo.localeCompare(left.permitNo, "en", { numeric: true }));
