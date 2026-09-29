@@ -8,6 +8,7 @@ import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
 import { parseCompletionImportWorkbook } from "@/lib/completion-import";
 import "./completion.css";
+import "./completion-amia.css";
 
 type CompletionUnit = "AMIA" | "AGRISTAT" | "DRRM";
 type CompletionRecord = {
@@ -27,8 +28,12 @@ type CompletionRecord = {
   createdAt?: { toMillis?: () => number };
 };
 
-const blankTemplate = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/completion-drrm-blank.jpg`;
-const importTemplate = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/Completion_Importing_Template.xlsx`;
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const blankTemplate = `${basePath}/completion-drrm-blank.jpg`;
+const amiaBlankTemplate = `${basePath}/AMIA%20Certificate%20-%20Blank.jpg`;
+const bagongPilipinasLogo = `${basePath}/bagong-pilipinas-logo.webp`;
+const daCaragaLogo = `${basePath}/da-caraga-logo.jpg`;
+const importTemplate = `${basePath}/Completion_Importing_Template.xlsx`;
 const MAX_PARTICIPANTS = 100;
 
 function participantNames(record: CompletionRecord) {
@@ -129,8 +134,8 @@ export default function CompletionCertificate({ user }: { user: User }) {
     const eventDestination = String(form.get("event-destination") ?? "").trim();
     const sameAsDestination = form.get("distribution-same") === "yes";
     const unit = String(form.get("unit") ?? "") as CompletionUnit;
-    if (unit !== "DRRM") {
-      setError("Only the DRRM completion certificate is available right now.");
+    if (unit !== "DRRM" && unit !== "AMIA") {
+      setError("AGRISTAT completion templates are on hold.");
       return;
     }
     const names = form.getAll("participant-name").map((value) => String(value).trim());
@@ -223,7 +228,15 @@ export default function CompletionCertificate({ user }: { user: User }) {
         imported = [...imported, ...chunk];
         setRecords((current) => [...chunk, ...current]);
       }
-      setImportMessage(`Imported ${imported.length} completion ${imported.length === 1 ? "report" : "reports"}. Distribution dates use the event end date.`);
+      const unitCounts = imported.reduce<Partial<Record<CompletionUnit, number>>>((counts, record) => {
+        counts[record.unit] = (counts[record.unit] ?? 0) + 1;
+        return counts;
+      }, {});
+      const importedUnits = (["AMIA", "DRRM"] as const)
+        .filter((unit) => unitCounts[unit])
+        .map((unit) => `${unit} (${unitCounts[unit]})`)
+        .join(", ");
+      setImportMessage(`Imported ${imported.length} completion ${imported.length === 1 ? "report" : "reports"}${importedUnits ? `: ${importedUnits}` : ""}. Each unit uses its own certificate template and sheet size. Distribution dates use the event end date.`);
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : "Check the template and try again.";
       setError(imported.length
@@ -235,16 +248,16 @@ export default function CompletionCertificate({ user }: { user: User }) {
   }
 
   async function waitForTemplate() {
-    const images = Array.from(pageRef.current?.querySelectorAll<HTMLImageElement>(".completion-template") ?? []);
+    const images = Array.from(pageRef.current?.querySelectorAll<HTMLImageElement>(".completion-paper img") ?? []);
     if (!images.length) throw new Error("The completion certificate preview is unavailable.");
     await Promise.all(images.map(async (image) => {
       if (!image.complete) {
         await new Promise<void>((resolve, reject) => {
           image.onload = () => resolve();
-          image.onerror = () => reject(new Error("The DRRM completion certificate blank could not be loaded."));
+          image.onerror = () => reject(new Error("The completion certificate blank could not be loaded."));
         });
       }
-      if (!image.naturalWidth) throw new Error("The DRRM completion certificate blank could not be loaded.");
+      if (!image.naturalWidth) throw new Error("The completion certificate blank could not be loaded.");
       if (image.decode) await image.decode();
     }));
     if (document.fonts?.ready) await document.fonts.ready;
@@ -253,20 +266,37 @@ export default function CompletionCertificate({ user }: { user: User }) {
   async function downloadPdf() {
     setDownloading(true);
     setError("");
+    let originalPaperSizes: Array<[string, string]> = [];
     try {
       await waitForTemplate();
       const sheets = Array.from(pageRef.current!.querySelectorAll<HTMLElement>(".completion-print-sheet"));
-      const pdf = new jsPDF({ orientation: "landscape", unit: "in", format: "letter" });
+      const paperFormat = preview!.unit === "AMIA" ? "a4" : "letter";
+      const paperSize = preview!.unit === "AMIA" ? "297mm" : "11in";
+      originalPaperSizes = sheets.map((sheet): [string, string] => [sheet.style.width, sheet.style.maxWidth]);
+      sheets.forEach((sheet) => {
+        sheet.style.width = paperSize;
+        sheet.style.maxWidth = "none";
+      });
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const pdf = new jsPDF({ orientation: "landscape", unit: "in", format: paperFormat });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
       for (let index = 0; index < sheets.length; index += 1) {
         const canvas = await html2canvas(sheets[index], { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
-        if (index > 0) pdf.addPage("letter", "landscape");
-        pdf.addImage(canvas.toDataURL("image/jpeg", 0.97), "JPEG", 0, 0, 11, 8.5);
+        if (index > 0) pdf.addPage(paperFormat, "landscape");
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.97), "JPEG", 0, 0, pageWidth, pageHeight);
       }
       const filename = participantNames(preview!).slice(0, 3).join("-").replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "") || "completer";
       pdf.save(`completion-certificate-${filename}.pdf`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to create the completion certificate PDF.");
     } finally {
+      if (pageRef.current) {
+        Array.from(pageRef.current.querySelectorAll<HTMLElement>(".completion-print-sheet")).forEach((sheet, index) => {
+          sheet.style.width = originalPaperSizes[index]?.[0] ?? "";
+          sheet.style.maxWidth = originalPaperSizes[index]?.[1] ?? "";
+        });
+      }
       setDownloading(false);
     }
   }
@@ -279,7 +309,9 @@ export default function CompletionCertificate({ user }: { user: User }) {
       await waitForTemplate();
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       printPageStyle = document.createElement("style");
-      printPageStyle.textContent = "@media print{@page{size:11in 8.5in;margin:0}}";
+      printPageStyle.textContent = preview!.unit === "AMIA"
+        ? "@media print{@page{size:A4 landscape;margin:0}}"
+        : "@media print{@page{size:11in 8.5in;margin:0}}";
       document.head.appendChild(printPageStyle);
       window.print();
     } catch (cause) {
@@ -294,7 +326,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
     return <div className="preview-backdrop completion-preview-backdrop">
       <div className="preview-toolbar completion-preview-toolbar"><span>Completion certificate preview</span><button type="button" className="ghost-button" onClick={() => { setPreview(null); setError(""); }}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={() => void downloadPdf()}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={() => void printCertificate()}>{printing ? "Preparing print..." : "Print"}</button></div>
       {error && <p className="completion-error" role="alert">{error}</p>}
-      <div className="completion-preview-pages" ref={pageRef}>{participantNames(preview).map((name, index) => <section className="completion-print-sheet" key={`${preview.id}-${index}`} aria-label={`Letter landscape completion certificate for ${name}`}><CompletionPaper record={preview} participantName={name} /></section>)}</div>
+      <div className="completion-preview-pages" ref={pageRef}>{participantNames(preview).map((name, index) => <section className={`completion-print-sheet${preview.unit === "AMIA" ? " completion-print-sheet-amia" : ""}`} key={`${preview.id}-${index}`} aria-label={`${preview.unit === "AMIA" ? "A4" : "Letter"} landscape completion certificate for ${name}`}><CompletionPaper record={preview} participantName={name} /></section>)}</div>
     </div>;
   }
 
@@ -311,7 +343,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
     {error && <p className="completion-error" role="alert">{error}</p>}
     {importMessage && <p className="completion-success" role="status">{importMessage}</p>}
     {loading ? <p className="muted">Loading completion certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No completion certificates yet</h3><p>Add completion details manually or import the completed Completion_Importing_Template.xlsx workbook.</p><div className="completion-empty-actions"><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add a Completion Certificate</button><button type="button" className="text-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="completion-record-list"><div className="completion-record-head"><span>Unit</span><span>Completer(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="completion-record-row" key={record.id}><span><span className="completion-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="completion-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
-    <p className="completion-hold-note">AMIA and AGRISTAT completion templates are on hold.</p>
+    <p className="completion-hold-note">AGRISTAT completion templates are on hold.</p>
   </section>;
 }
 
@@ -324,10 +356,10 @@ function CompletionForm({ onCancel, onSubmit, saving, error }: { onCancel: () =>
   const [distributionPlace, setDistributionPlace] = useState("");
 
   return <section className="content-section completion-section completion-form-section">
-    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Completion</h2><p className="muted">Enter the event and completer details. The certificate prints on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Completion</h2><p className="muted">Enter the event and completer details. AMIA certificates print on A4; DRRM certificates print on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="completion-error" role="alert">{error}</p>}
     <form className="permit-form completion-form" onSubmit={onSubmit}>
-      <label className="wide-field">Unit<select name="unit" defaultValue="DRRM"><option value="AMIA" disabled>AMIA</option><option value="AGRISTAT" disabled>AGRISTAT</option><option value="DRRM">DRRM</option></select><small>AMIA and AGRISTAT templates are on hold for now.</small></label>
+      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AMIA">AMIA</option><option value="AGRISTAT" disabled>AGRISTAT</option><option value="DRRM">DRRM</option></select><small>AGRISTAT completion templates are on hold.</small></label>
       <fieldset className="wide-field completion-participants-fieldset"><legend>Completer&apos;s Name</legend><p className="completion-participants-hint">Enter one or more names. A separate certificate will be created for each completer.</p>{names.map((name, index) => <div className="completion-name-row" key={index}><label>Completer {index + 1}<input name="participant-name" maxLength={180} value={name} onChange={(event) => setNames((current) => current.map((person, personIndex) => personIndex === index ? event.target.value : person))} required /></label>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove completer ${index + 1}`} onClick={() => setNames((current) => current.filter((_, personIndex) => personIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button" disabled={names.length >= MAX_PARTICIPANTS} onClick={() => setNames((current) => [...current, ""])}>+ Add completer</button></fieldset>
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field completion-schedule">
@@ -335,7 +367,7 @@ function CompletionForm({ onCancel, onSubmit, saving, error }: { onCancel: () =>
         <div className="completion-time-range"><label>Time Conducted (From)<input name="event-time-from" type="time" required /></label><span>to</span><label>Time Conducted (To)<input name="event-time-to" type="time" required /></label></div>
       </div>
       <label className="wide-field">Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
-      <label className="wide-field completion-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event destination is also the certificate distribution place</label>
+      <label className="wide-field completion-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event&apos;s Destination is the same as where the certificate will be awarded</label>
       <label>Certificate Distribution Place<input name="distribution-place" maxLength={240} value={sameLocation ? eventDestination : distributionPlace} onChange={(event) => setDistributionPlace(event.target.value)} readOnly={sameLocation} required={!sameLocation} placeholder={sameLocation ? "Same as event destination" : "Enter distribution place"} /></label>
       <label>Certificate Distribution Date<input type="text" value={dateLabel(eventDateTo)} readOnly /><small>Automatically set to the last day of the event.</small></label>
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
@@ -356,6 +388,30 @@ function CompletionNameForm({ record, onCancel, onSubmit, saving, error }: { rec
 }
 
 function CompletionPaper({ record, participantName }: { record: CompletionRecord; participantName: string }) {
+  if (record.unit === "AMIA") {
+    return <article className="completion-paper completion-paper-amia">
+      <img className="completion-template completion-template-amia" src={amiaBlankTemplate} alt="" />
+      <header className="completion-amia-letterhead">
+        <img src={bagongPilipinasLogo} alt="Bagong Pilipinas" />
+        <img src={daCaragaLogo} alt="Department of Agriculture Caraga Region" />
+        <div className="completion-amia-agency">
+          <span>Republic of the Philippines</span>
+          <strong>Department of Agriculture</strong>
+          <span>Regional Field Office – XIII</span>
+          <span>Capitol Site, Butuan City</span>
+        </div>
+      </header>
+      <p className="completion-amia-bestows">bestows this</p>
+      <h2 className="completion-amia-title">Certificate of Completion</h2>
+      <p className="completion-amia-to">to</p>
+      <h1 className="completion-participant completion-participant-amia">{participantName}</h1>
+      <div className="completion-body completion-body-amia">
+        <p>for having successfully completed the <strong className="completion-event-title">{record.eventTitle}</strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " – ")}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at <strong>{record.eventDestination}</strong>.</p>
+        <p>Given this {ordinalDay(record.eventDateTo)} in at <strong>{record.distributionPlace}</strong>, Philippines.</p>
+      </div>
+      <footer className="completion-signatory completion-signatory-amia"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
+    </article>;
+  }
   return <article className="completion-paper">
     <img className="completion-template" src={blankTemplate} alt="" />
     <h1 className="completion-participant">{participantName}</h1>

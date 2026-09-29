@@ -8,13 +8,14 @@ import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
 import { parseAppreciationImportWorkbook } from "@/lib/appreciation-import";
 import "./appreciation.css";
+import "./appreciation-amia.css";
 
 type AppreciationGender = "female" | "male";
 type AppreciationSpeaker = { name: string; gender: AppreciationGender; position: string; office: string };
 type AppreciationSpeakerDraft = { name: string; gender: AppreciationGender | ""; position: string; office: string };
 type AppreciationRecord = {
   id: string;
-  unit: "DRRM";
+  unit: "AMIA" | "DRRM";
   speakers?: AppreciationSpeaker[];
   speakerName: string;
   speakerGender: AppreciationGender;
@@ -36,6 +37,9 @@ const MAX_SPEAKERS = 100;
 
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const blankAppreciation = asset("/appreciation-drrm-blank.jpg");
+const blankAmiaAppreciation = asset("/AMIA%20Certificate%20-%20Blank.jpg");
+const bagongPilipinasLogo = asset("/bagong-pilipinas-logo.webp");
+const daCaragaLogo = asset("/da-caraga-logo.jpg");
 const importTemplate = asset("/Appreciation_Importing_Template.xlsx");
 
 function displayDate(value: string) {
@@ -127,7 +131,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
     const eventDestination = String(form.get("event-destination") ?? "").trim();
     const sameAsDestination = form.get("distribution-same") === "yes";
     const unit = String(form.get("unit") ?? "") as "AMIA" | "AGRISTAT" | "DRRM";
-    if (unit !== "DRRM") { setError("Only the DRRM appreciation certificate is available right now."); return; }
+    if (unit !== "AMIA" && unit !== "DRRM") { setError("AGRISTAT appreciation templates are on hold."); return; }
     const names = form.getAll("speaker-name").map((value) => String(value).trim());
     const genders = form.getAll("speaker-gender").map((value) => String(value) as AppreciationGender);
     const positions = form.getAll("speaker-position").map((value) => String(value).trim());
@@ -222,7 +226,15 @@ export default function AppreciationCertificate({ user }: { user: User }) {
         setRecords((current) => [...chunk, ...current]);
       }
       const speakerCount = imported.reduce((total, record) => total + recordSpeakers(record).length, 0);
-      setImportMessage(`Imported ${imported.length} Appreciation ${imported.length === 1 ? "report" : "reports"} containing ${speakerCount} ${speakerCount === 1 ? "speaker" : "speakers"}. Distribution dates use the event end date.`);
+      const unitCounts = imported.reduce<Partial<Record<"AMIA" | "DRRM", number>>>((counts, record) => {
+        counts[record.unit] = (counts[record.unit] ?? 0) + 1;
+        return counts;
+      }, {});
+      const importedUnits = (["AMIA", "DRRM"] as const)
+        .filter((unit) => unitCounts[unit])
+        .map((unit) => `${unit} (${unitCounts[unit]})`)
+        .join(", ");
+      setImportMessage(`Imported ${imported.length} Appreciation ${imported.length === 1 ? "report" : "reports"}${importedUnits ? `: ${importedUnits}` : ""}, containing ${speakerCount} ${speakerCount === 1 ? "speaker" : "speakers"}. Each unit uses its own certificate template and sheet size. Distribution dates use the event end date.`);
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : "Check the template and try again.";
       setError(imported.length ? `${detail} ${imported.length} ${imported.length === 1 ? "report was" : "reports were"} imported before the error.` : detail);
@@ -232,14 +244,14 @@ export default function AppreciationCertificate({ user }: { user: User }) {
   }
 
   async function waitForBlank() {
-    const images = Array.from(pagesRef.current?.querySelectorAll<HTMLImageElement>(".appreciation-blank") ?? []);
+    const images = Array.from(pagesRef.current?.querySelectorAll<HTMLImageElement>(".appreciation-paper img") ?? []);
     if (!images.length) throw new Error("The Appreciation certificate preview is unavailable.");
     await Promise.all(images.map(async (image) => {
       if (!image.complete) await new Promise<void>((resolve, reject) => {
         image.onload = () => resolve();
-        image.onerror = () => reject(new Error("The DRRM Appreciation blank could not be loaded."));
+        image.onerror = () => reject(new Error("The Appreciation certificate image could not be loaded."));
       });
-      if (!image.naturalWidth) throw new Error("The DRRM Appreciation blank could not be loaded.");
+      if (!image.naturalWidth) throw new Error("The Appreciation certificate image could not be loaded.");
       if (image.decode) await image.decode();
     }));
     if (document.fonts?.ready) await document.fonts.ready;
@@ -254,17 +266,21 @@ export default function AppreciationCertificate({ user }: { user: User }) {
       await waitForBlank();
       papers = Array.from(pagesRef.current?.querySelectorAll<HTMLElement>(".appreciation-print-sheet") ?? []);
       if (!papers.length) throw new Error("The Appreciation certificate preview is unavailable.");
-      originalPaperSizes = papers.map((paper) => [paper.style.width, paper.style.maxWidth]);
+      originalPaperSizes = papers.map((paper): [string, string] => [paper.style.width, paper.style.maxWidth]);
+      const paperFormat = preview!.unit === "AMIA" ? "a4" : "letter";
+      const paperWidth = preview!.unit === "AMIA" ? "297mm" : "11in";
       papers.forEach((paper) => {
-        paper.style.width = "11in";
+        paper.style.width = paperWidth;
         paper.style.maxWidth = "none";
       });
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      const pdf = new jsPDF({ orientation: "landscape", unit: "in", format: "letter" });
+      const pdf = new jsPDF({ orientation: "landscape", unit: "in", format: paperFormat });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
       for (let index = 0; index < papers.length; index += 1) {
         const canvas = await html2canvas(papers[index], { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
-        if (index > 0) pdf.addPage("letter", "landscape");
-        pdf.addImage(canvas.toDataURL("image/jpeg", 0.97), "JPEG", 0, 0, 11, 8.5);
+        if (index > 0) pdf.addPage(paperFormat, "landscape");
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.97), "JPEG", 0, 0, pageWidth, pageHeight);
       }
       const filename = recordSpeakers(preview!).slice(0, 3).map((speaker) => speaker.name).join("-").trim().replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "") || "speaker";
       pdf.save(`appreciation-certificate-${filename}.pdf`);
@@ -287,7 +303,9 @@ export default function AppreciationCertificate({ user }: { user: User }) {
       await waitForBlank();
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       printPageStyle = document.createElement("style");
-      printPageStyle.textContent = "@media print{@page{size:11in 8.5in;margin:0}}";
+      printPageStyle.textContent = preview!.unit === "AMIA"
+        ? "@media print{@page{size:A4 landscape;margin:0}}"
+        : "@media print{@page{size:11in 8.5in;margin:0}}";
       document.head.appendChild(printPageStyle);
       window.print();
     } catch (cause) {
@@ -301,19 +319,19 @@ export default function AppreciationCertificate({ user }: { user: User }) {
   if (preview) return <div className="preview-backdrop appreciation-preview-backdrop">
     <div className="preview-toolbar appreciation-preview-toolbar"><span>Appreciation certificate preview</span><button type="button" className="ghost-button" onClick={() => { setPreview(null); setError(""); }}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={() => void downloadPdf()}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={() => void printCertificate()}>{printing ? "Preparing print..." : "Print"}</button></div>
     {error && <p className="appreciation-error" role="alert">{error}</p>}
-    <div className="appreciation-preview-pages" ref={pagesRef}>{recordSpeakers(preview).map((speaker, index) => <section className="appreciation-print-sheet" key={`${preview.id}-${index}`} aria-label={`Letter landscape Appreciation certificate for ${speaker.name}`}><AppreciationPaper record={preview} speaker={speaker} /></section>)}</div>
+    <div className="appreciation-preview-pages" ref={pagesRef}>{recordSpeakers(preview).map((speaker, index) => <section className={`appreciation-print-sheet${preview.unit === "AMIA" ? " appreciation-print-sheet-amia" : ""}`} key={`${preview.id}-${index}`} aria-label={`${preview.unit === "AMIA" ? "A4" : "Letter"} landscape Appreciation certificate for ${speaker.name}`}><AppreciationPaper record={preview} speaker={speaker} /></section>)}</div>
   </div>;
 
   if (view === "new") return <AppreciationForm onCancel={() => { setView("list"); setError(""); }} onSubmit={saveAppreciation} saving={saving} error={error} />;
   if (view === "edit" && editingRecord) return <AppreciationSpeakerForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveSpeakerCorrections} saving={saving} error={error} />;
 
   return <section className="content-section appreciation-section">
-    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Appreciation Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="appreciation-template-link" href={importTemplate} download="Appreciation_Importing_Template.xlsx">Appreciation_Importing_Template.xlsx</a>. Matching event rows are grouped into one editable report.</p></div><div className="appreciation-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
+    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Appreciation Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="appreciation-template-link" href={importTemplate} download="Appreciation_Importing_Template.xlsx">Appreciation_Importing_Template.xlsx</a>.</p></div><div className="appreciation-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
     <input ref={importInputRef} className="appreciation-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importAppreciations(event)} aria-label="Import Appreciation certificate workbook" />
     {error && <p className="appreciation-error" role="alert">{error}</p>}
     {importMessage && <p className="appreciation-success" role="status">{importMessage}</p>}
     {loading ? <p className="muted">Loading Appreciation certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Appreciation certificates yet</h3><p>Add the speaker and event details manually or import the completed Appreciation_Importing_Template.xlsx workbook.</p><div className="appreciation-empty-actions"><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add an Appreciation Certificate</button><button type="button" className="text-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="appreciation-record-list"><div className="appreciation-record-head"><span>Unit</span><span>Resource Speaker(s)</span><span>Event&apos;s Title</span><span>Event Dates</span><span></span></div>{records.map((record) => <div className="appreciation-record-row" key={record.id}><span><span className="appreciation-unit-tag">{record.unit}</span></span><strong>{recordSpeakers(record).map((speaker) => speaker.name).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="appreciation-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
-    <p className="appreciation-hold-note">AMIA and AGRISTAT appreciation templates are on hold.</p>
+    <p className="appreciation-hold-note">AGRISTAT appreciation templates are on hold.</p>
   </section>;
 }
 
@@ -327,10 +345,10 @@ function AppreciationForm({ onCancel, onSubmit, saving, error }: { onCancel: () 
   const updateSpeaker = (index: number, values: Partial<AppreciationSpeakerDraft>) => setSpeakers((current) => current.map((speaker, row) => row === index ? { ...speaker, ...values } : speaker));
 
   return <section className="content-section appreciation-section appreciation-form-section">
-    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Appreciation</h2><p className="muted">Enter one or more resource speakers and the event details. Each speaker gets a separate landscape Letter certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Appreciation</h2><p className="muted">Enter one or more resource speakers and the event details. AMIA certificates print on A4; DRRM certificates print on landscape Letter paper. Each speaker gets a separate certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="appreciation-error" role="alert">{error}</p>}
     <form className="permit-form appreciation-form" onSubmit={onSubmit}>
-      <label className="wide-field">Unit<select name="unit" defaultValue="DRRM"><option value="AMIA" disabled>AMIA</option><option value="AGRISTAT" disabled>AGRISTAT</option><option value="DRRM">DRRM</option></select><small>AMIA and AGRISTAT templates are on hold for now.</small></label>
+      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AMIA">AMIA</option><option value="AGRISTAT" disabled>AGRISTAT</option><option value="DRRM">DRRM</option></select><small>AGRISTAT appreciation templates are on hold.</small></label>
       <AppreciationSpeakersFieldset speakers={speakers} onChange={updateSpeaker} onAdd={() => setSpeakers((current) => [...current, { name: "", gender: "", position: "", office: "" }])} onRemove={(index) => setSpeakers((current) => current.filter((_, row) => row !== index))} />
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field appreciation-schedule">
@@ -338,7 +356,7 @@ function AppreciationForm({ onCancel, onSubmit, saving, error }: { onCancel: () 
         <div className="appreciation-time-range"><label>Time Conducted (From)<input name="event-time-from" type="time" required /></label><span>to</span><label>Time Conducted (To)<input name="event-time-to" type="time" required /></label></div>
       </div>
       <label className="wide-field">Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
-      <label className="wide-field appreciation-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event destination is also the certificate distribution place</label>
+      <label className="wide-field appreciation-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event&apos;s Destination is the same as where the certificate will be awarded</label>
       {!sameLocation && <label className="wide-field">Certificate Distribution Place<input name="distribution-place" maxLength={240} value={distributionPlace} onChange={(event) => setDistributionPlace(event.target.value)} required placeholder="Enter distribution place" /></label>}
       <label className="wide-field">Certificate Distribution Date<input type="text" value={eventDateTo ? displayDate(eventDateTo) : "Set the event end date"} readOnly /><small>Automatically set to the last day of the event.</small></label>
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
@@ -420,6 +438,33 @@ function AppreciationPaper({ record, speaker }: { record: AppreciationRecord; sp
       observer.disconnect();
     };
   }, [record]);
+
+  if (record.unit === "AMIA") {
+    const possessive = speaker.gender === "female" ? "her" : "his";
+    return <article className="appreciation-paper appreciation-paper-amia">
+      <img className="appreciation-blank appreciation-blank-amia" src={blankAmiaAppreciation} alt="" />
+      <header className="appreciation-amia-letterhead">
+        <img src={bagongPilipinasLogo} alt="Bagong Pilipinas" />
+        <img src={daCaragaLogo} alt="Department of Agriculture Caraga Region" />
+        <div className="appreciation-amia-agency">
+          <span>Republic of the Philippines</span>
+          <strong>Department of Agriculture</strong>
+          <span>Regional Field Office – XIII</span>
+          <span>Capitol Site, Butuan City</span>
+        </div>
+      </header>
+      <p className="appreciation-amia-bestows">bestows this</p>
+      <h2 className="appreciation-amia-title">Certificate of Appreciation</h2>
+      <p className="appreciation-amia-to">to</p>
+      <div className="appreciation-speaker-name appreciation-speaker-name-amia">{speaker.name}</div>
+      <div className="appreciation-speaker-role appreciation-speaker-role-amia"><em>{speaker.position}</em>,{" "}<strong>{speaker.office}</strong></div>
+      <div className="appreciation-body appreciation-body-amia" ref={bodyRef}>
+        <p>in appreciation of {possessive} invaluable expertise and insight on {possessive} field as a <strong>RESOURCE SPEAKER</strong> in the <strong><em>{record.eventTitle}</em></strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at {record.eventDestination}.</p>
+        <p>Given this {ordinalDate(record.eventDateTo)} in at <strong>{countryLocation(record.distributionPlace)}</strong>.</p>
+        <footer className="appreciation-signatory appreciation-signatory-amia"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
+      </div>
+    </article>;
+  }
 
   return <article className="appreciation-paper">
     <img className="appreciation-blank" src={blankAppreciation} alt="" />

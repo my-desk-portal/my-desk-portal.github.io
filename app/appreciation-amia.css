@@ -1,0 +1,28 @@
+.appreciation-preview-toolbar{max-width:11.69in}
+.appreciation-print-sheet-amia{aspect-ratio:297 / 210;width:min(96vw,11.69in)}
+.appreciation-paper-amia{color:#111;font-family:Cambria,Georgia,serif;text-align:center}
+.appreciation-amia-letterhead,.appreciation-amia-bestows,.appreciation-amia-title,.appreciation-amia-to,.appreciation-speaker-name-amia,.appreciation-speaker-role-amia,.appreciation-body-amia{position:absolute;z-index:1}
+.appreciation-amia-letterhead{height:19%;inset:9.5% 4.2% auto}
+.appreciation-amia-letterhead>img{height:100%;object-fit:contain;position:absolute;top:0}
+.appreciation-amia-letterhead>img:first-child{height:78%;left:0;top:11%;width:10.8%}
+.appreciation-amia-letterhead>img:nth-child(2){left:14.2%;width:10%}
+.appreciation-amia-agency{display:grid;gap:.12cqi;left:27%;line-height:1.17;position:absolute;top:7%;width:46%}
+.appreciation-amia-agency span{font-size:2.05cqi;font-weight:400}
+.appreciation-amia-agency strong{font-size:2.55cqi;font-weight:700}
+.appreciation-amia-bestows{font-size:2.35cqi;left:0;line-height:1.1;margin:0;right:0;top:26.6%}
+.appreciation-amia-title{color:#355f27;font-size:4.4cqi;font-weight:700;left:3%;line-height:1.05;margin:0;right:3%;top:32.1%}
+.appreciation-amia-to{font-size:2.3cqi;left:0;line-height:1.1;margin:0;right:0;top:39.5%}
+.appreciation-speaker-name-amia{align-items:center;background:transparent;color:#090909;display:flex;font-size:clamp(18px,4.05cqi,56px);font-weight:700;height:8%;justify-content:center;left:4%;line-height:1.08;overflow-wrap:anywhere;padding:0 1%;text-align:center;text-transform:uppercase;top:43%;width:92%}
+.appreciation-speaker-role-amia{align-items:center;background:transparent;color:#355f27;display:flex;font-size:1.55cqi;font-weight:700;height:3.8%;justify-content:center;left:7%;line-height:1.12;overflow:hidden;padding:0 1%;text-align:center;text-overflow:ellipsis;top:51.7%;white-space:nowrap;width:86%}
+.appreciation-speaker-role-amia em{font-style:italic}
+.appreciation-speaker-role-amia strong{margin-left:.25em}
+.appreciation-body-amia{--appreciation-body-size:1.6cqi;bottom:6.5%;font-size:var(--appreciation-body-size);gap:1.8cqi;left:10%;line-height:1.16;right:10%;text-align:center;top:55.8%}
+.appreciation-body-amia p{margin:0}
+.appreciation-body-amia .appreciation-signatory-amia{gap:.45cqi;margin-top:0;padding-top:2.4cqi}
+.appreciation-signatory-amia strong,.appreciation-signatory-amia em{font-size:1.8cqi}
+@media(max-width:720px){
+  .appreciation-print-sheet-amia{width:100%}
+}
+@media print{
+  .appreciation-print-sheet-amia{aspect-ratio:auto!important;height:210mm!important;width:297mm!important}
+}

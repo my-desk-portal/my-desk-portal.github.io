@@ -1,0 +1,30 @@
+.participation-preview-toolbar{max-width:11.69in}
+.participation-print-sheet-amia{aspect-ratio:297 / 210;width:min(96vw,11.69in)}
+.participation-paper-amia{color:#111;font-family:Cambria,Georgia,serif;text-align:center}
+.participation-paper-amia .participation-template-amia{z-index:0}
+.participation-amia-letterhead,.participation-amia-bestows,.participation-amia-title,.participation-amia-to,.participation-participant-amia,.participation-body-amia,.participation-signatory-amia{position:absolute;z-index:1}
+.participation-amia-letterhead{height:19%;inset:9.5% 4.2% auto}
+.participation-amia-letterhead>img{height:100%;object-fit:contain;position:absolute;top:0}
+.participation-amia-letterhead>img:first-child{height:90%;left:0;width:11.5%}
+.participation-amia-letterhead>img:nth-child(2){left:14.2%;width:10%}
+.participation-amia-agency{display:grid;gap:.12cqi;left:27%;line-height:1.17;position:absolute;top:7%;width:46%}
+.participation-amia-agency span{font-size:2.05cqi;font-weight:400}
+.participation-amia-agency strong{font-size:2.55cqi;font-weight:700}
+.participation-amia-bestows{font-size:2.35cqi;left:0;line-height:1.1;margin:0;right:0;top:29.4%}
+.participation-amia-title{color:#355f27;font-size:4.4cqi;font-weight:700;left:2%;line-height:1.05;margin:0;right:2%;top:34.2%}
+.participation-amia-to{font-size:2.3cqi;left:0;line-height:1.1;margin:0;right:0;top:42.1%}
+.participation-participant-amia{align-items:center;background:transparent;color:#090909;display:flex;font-size:clamp(18px,4.05cqi,56px);font-weight:700;justify-content:center;left:4%;line-height:1.08;margin:0;min-height:8%;overflow-wrap:anywhere;padding:0 1%;text-align:center;text-transform:uppercase;top:46.1%;width:92%}
+.participation-body-amia{font-size:1.72cqi;left:10%;line-height:1.17;right:10%;text-align:center;top:56.4%}
+.participation-body-amia p{margin:0 auto 2.1cqi}
+.participation-body-amia em{font-weight:700;font-style:italic}
+.participation-signatory-amia{display:grid;gap:.45cqi;justify-items:center;left:10%;line-height:1.13;padding:0;right:10%;text-align:center;top:81.5%}
+.participation-signatory-amia::before{content:"";display:block;height:3.8cqi}
+.participation-signatory-amia strong,.participation-signatory-amia em{font-size:2.05cqi}
+.participation-signatory-amia strong{font-weight:700}
+.participation-signatory-amia em{font-style:italic}
+@media(max-width:720px){
+  .participation-print-sheet-amia{width:96vw}
+}
+@media print{
+  .participation-print-sheet-amia{aspect-ratio:auto!important;height:210mm!important;width:297mm!important}
+}

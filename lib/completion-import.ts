@@ -1,7 +1,7 @@
 import { unzipSync } from "fflate";
 
 export type ImportedCompletionRecord = {
-  unit: "DRRM";
+  unit: "AMIA" | "DRRM";
   participantNames: string[];
   eventTitle: string;
   eventDateFrom: string;
@@ -121,7 +121,8 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
     if (![...values.values()].some((value) => value.trim())) return;
 
     const unit = valueFor(values, "unit").toUpperCase();
-    if (unit !== "DRRM") throw new Error(`Row ${rowNumber}: only DRRM completion certificates can be imported right now.`);
+    if (unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT completion templates are on hold.`);
+    if (unit !== "DRRM" && unit !== "AMIA") throw new Error(`Row ${rowNumber}: Unit must be AMIA or DRRM.`);
     const eventTitle = valueFor(values, "title");
     const eventDestination = valueFor(values, "destination");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
@@ -151,7 +152,7 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
       existing.participantNames.push(name);
     } else {
       grouped.set(groupKey, {
-        unit: "DRRM",
+        unit,
         participantNames: [name],
         eventTitle,
         eventDateFrom,

@@ -1,15 +1,9 @@
-import { unzipSync } from "fflate";
+﻿import { unzipSync } from "fflate";
 
-export type ImportedAppreciationSpeaker = {
-  name: string;
-  gender: "female" | "male";
-  position: string;
-  office: string;
-};
-
-export type ImportedAppreciationRecord = {
-  unit: "AMIA" | "DRRM";
-  speakers: ImportedAppreciationSpeaker[];
+export type ImportedParticipationRecord = {
+  unit: "AMIA";
+  participantNames: string[];
+  participantGenders: ("female" | "male")[];
   eventTitle: string;
   eventDateFrom: string;
   eventDateTo: string;
@@ -21,9 +15,8 @@ export type ImportedAppreciationRecord = {
 };
 
 const requiredColumns = [
-  "unit", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "name", "gender", "position", "office", "distributionplace", "distributiondate",
+  "unit", "name", "gender", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "distributionplace", "distributiondate",
 ] as const;
-const MAX_IMPORTED_SPEAKERS = 100;
 
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -75,7 +68,7 @@ function parseTime(value: string) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppreciationRecord[] {
+export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedParticipationRecord[] {
   let files: Record<string, Uint8Array>;
   try {
     files = unzipSync(bytes);
@@ -117,69 +110,69 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
   const headers = readRow(rows[0]);
   const columns = new Map([...headers].map(([index, value]) => [normalizeHeader(value), index] as const));
   if (requiredColumns.some((column) => !columns.has(column))) {
-    throw new Error("Use the Appreciation_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Time Start, Time End, Name, Gender, Position, Office, Distribution Place, and Distribution Date.");
+    throw new Error("Use the Participation_Importing_Template.xlsx columns: Unit, Name, Gender, Title, Destination, Date From, Date To, Time Start, Time End, Distribution Place, and Distribution Date.");
   }
 
-  const valueFor = (values: Map<number, string>, column: typeof requiredColumns[number]) => values.get(columns.get(column)!)?.trim() ?? "";
-  const grouped = new Map<string, ImportedAppreciationRecord>();
+  const grouped = new Map<string, ImportedParticipationRecord>();
   const groupCounts = new Map<string, number>();
-  const lastGroupKeys = new Map<string, string>();
+  const valueFor = (values: Map<number, string>, column: typeof requiredColumns[number]) => values.get(columns.get(column)!)?.trim() ?? "";
   rows.slice(1).forEach((row, index) => {
     const rowNumber = index + 2;
     const values = readRow(row);
     if (![...values.values()].some((value) => value.trim())) return;
+
     const unit = valueFor(values, "unit").toUpperCase();
-    if (unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT appreciation templates are on hold.`);
-    if (unit !== "DRRM" && unit !== "AMIA") throw new Error(`Row ${rowNumber}: Unit must be AMIA or DRRM.`);
-    const rawGender = valueFor(values, "gender").trim().toLowerCase();
-    const speakerGender = rawGender === "f" || rawGender === "female" ? "female" : rawGender === "m" || rawGender === "male" ? "male" : "";
-    const speakerName = valueFor(values, "name");
-    const speakerPosition = valueFor(values, "position");
-    const speakerOffice = valueFor(values, "office");
+    if (unit === "DRRM" || unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: ${unit} participation templates are on hold.`);
+    if (unit !== "AMIA") throw new Error(`Row ${rowNumber}: Unit must be AMIA.`);
+    const rawGender = valueFor(values, "gender").toLowerCase();
+    const participantGender = rawGender === "f" || rawGender === "female" ? "female" : rawGender === "m" || rawGender === "male" ? "male" : "";
     const eventTitle = valueFor(values, "title");
     const eventDestination = valueFor(values, "destination");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
     const eventTimeFrom = parseTime(valueFor(values, "timestart"));
     const eventTimeTo = parseTime(valueFor(values, "timeend"));
-    const rawDistributionPlace = valueFor(values, "distributionplace");
-    const distributionPlace = rawDistributionPlace || eventDestination;
-    if (!speakerName || !speakerGender || !speakerPosition || !speakerOffice || !eventTitle || !eventDestination || !eventDateFrom || !eventDateTo || !eventTimeFrom || !eventTimeTo) {
-      throw new Error(`Row ${rowNumber}: complete the Unit, speaker details, event, date, time, and destination fields.`);
+    const name = valueFor(values, "name");
+    const distributionPlace = valueFor(values, "distributionplace") || eventDestination;
+    if (!eventTitle || !eventDestination || !name || !participantGender || !eventDateFrom || !eventDateTo || !eventTimeFrom || !eventTimeTo) {
+      throw new Error(`Row ${rowNumber}: complete the Unit, Name, Gender, event, date, time, and destination fields.`);
     }
+    if (name.length > 180) throw new Error(`Row ${rowNumber}: Name must be 180 characters or fewer.`);
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
-    if (speakerName.length > 180 || speakerPosition.length > 180 || speakerOffice.length > 240 || eventTitle.length > 240 || eventDestination.length > 240 || distributionPlace.length > 240) {
-      throw new Error(`Row ${rowNumber}: speaker, event, destination, and distribution fields exceed their allowed lengths.`);
+    if (!distributionPlace || distributionPlace.length > 240 || eventDestination.length > 240 || eventTitle.length > 240) {
+      throw new Error(`Row ${rowNumber}: Title, Destination, and Distribution Place must be 240 characters or fewer.`);
     }
-    const distributionSameAsDestination = rawDistributionPlace.trim().toLowerCase() === eventDestination.trim().toLowerCase() || !rawDistributionPlace;
-    const eventKey = JSON.stringify([unit, eventTitle, eventDateFrom, eventDateTo, eventTimeFrom, eventTimeTo, eventDestination, distributionPlace]);
-    let groupKey = lastGroupKeys.get(eventKey) ?? eventKey;
+
+    const eventKey = JSON.stringify([unit, eventTitle, eventDestination, eventDateFrom, eventDateTo, eventTimeFrom, eventTimeTo, distributionPlace]);
+    let groupKey = eventKey;
     let existing = grouped.get(groupKey);
-    if (existing && existing.speakers.length >= MAX_IMPORTED_SPEAKERS) {
+    if (existing && existing.participantNames.length >= 100) {
       const nextGroup = (groupCounts.get(eventKey) ?? 0) + 1;
       groupCounts.set(eventKey, nextGroup);
       groupKey = `${eventKey}:${nextGroup}`;
       existing = grouped.get(groupKey);
     }
     if (existing) {
-      existing.speakers.push({ name: speakerName, gender: speakerGender, position: speakerPosition, office: speakerOffice });
+      existing.participantNames.push(name);
+      existing.participantGenders.push(participantGender);
     } else {
       grouped.set(groupKey, {
-        unit,
-        speakers: [{ name: speakerName, gender: speakerGender, position: speakerPosition, office: speakerOffice }],
+        unit: "AMIA",
+        participantNames: [name],
+        participantGenders: [participantGender],
         eventTitle,
         eventDateFrom,
         eventDateTo,
         eventTimeFrom,
         eventTimeTo,
         eventDestination,
-        distributionSameAsDestination,
-        distributionPlace: distributionSameAsDestination ? eventDestination : distributionPlace,
+        distributionSameAsDestination: distributionPlace === eventDestination,
+        distributionPlace,
       });
     }
-    lastGroupKeys.set(eventKey, groupKey);
   });
 
-  if (!grouped.size) throw new Error("The workbook has no completed speaker rows to import.");
+  if (!grouped.size) throw new Error("The workbook has no completed participant rows to import.");
   return [...grouped.values()];
 }
+
