@@ -1,0 +1,154 @@
+.topbar{
+  align-items:center;
+  background:var(--accent);
+  border:6px solid #f8eae5;
+  border-radius:999px;
+  box-shadow:0 8px 22px #18211f10;
+  gap:12px;
+  margin:20px clamp(12px,2.2vw,34px) 0;
+  min-height:72px;
+  padding:6px 10px 6px 16px;
+  position:relative;
+  z-index:40;
+}
+.topbar .brand{
+  color:#fff;
+  flex:0 0 auto;
+  gap:0;
+}
+.topbar .brand>span{display:none}
+.topbar .brand-logo{
+  background:transparent;
+  filter:brightness(0) invert(1);
+  height:44px;
+  object-fit:contain;
+  width:44px;
+}
+.topbar .brand-home:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.topbar .main-nav{
+  flex:1 1 auto;
+  flex-wrap:nowrap;
+  gap:3px;
+  justify-content:flex-end;
+  margin:0 8px 0 auto;
+  min-width:0;
+}
+.topbar .nav-dropdown{flex:0 0 auto}
+.topbar .nav-button{
+  border-radius:999px;
+  color:#fff;
+  font-size:12px;
+  min-height:40px;
+  padding:9px 11px;
+  white-space:nowrap;
+}
+.topbar .nav-button.active{background:#ffffff28;color:#fff}
+.topbar .main-nav .nav-button:hover:not(.active){background:#ffffff24;color:#fff}
+.topbar .nav-button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.topbar .nav-dropdown-arrow{color:#fff}
+.topbar .user-menu{
+  color:#fff;
+  flex:0 0 auto;
+  gap:9px;
+  margin:0;
+}
+.topbar .notification-button{
+  border-radius:50%;
+  color:#fff;
+}
+.topbar .notification-button:hover{background:#ffffff24}
+.topbar .notification-button:focus-visible{outline-color:#fff}
+.topbar .notification-badge{border-color:var(--accent)}
+.topbar .profile-trigger{
+  background:#fff;
+  border:1px solid #f3ddd6;
+  border-radius:999px;
+  color:var(--ink);
+  justify-content:center;
+  max-width:min(22vw,240px);
+  min-height:42px;
+  padding:9px 15px;
+}
+.topbar .profile-trigger>span{color:var(--muted);display:inline-block}
+.topbar .profile-trigger:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.topbar .logout-button{border-radius:50%;color:#fff;height:36px;width:36px}
+.topbar .logout-button:hover{background:#ffffff24;color:#fff}
+.topbar .profile-dropdown{border-radius:12px;min-width:160px;overflow:hidden;padding:3px;top:calc(100% + 5px)}
+.topbar .profile-dropdown button{line-height:1.25;padding:8px 12px}
+.topbar .nav-dropdown-menu{border-radius:12px;overflow:hidden}
+
+:root{--preview-toolbar-offset:108px}
+.app-shell .preview-backdrop,
+.app-shell .ar-preview-backdrop,
+.app-shell .nta-preview-backdrop,
+.app-shell .travel-order-preview-backdrop{
+  padding-top:var(--preview-toolbar-offset);
+  z-index:60;
+}
+.app-shell .coa-preview-backdrop,
+.app-shell .completion-preview-backdrop,
+.app-shell .appreciation-preview-backdrop,
+.app-shell .participation-preview-backdrop{
+  padding-top:var(--preview-toolbar-offset);
+  z-index:60;
+}
+
+@media(max-width:920px){
+  :root{--preview-toolbar-offset:142px}
+  .topbar{
+    align-items:center;
+    border-radius:26px;
+    flex-wrap:wrap;
+    gap:2px 8px;
+    margin:12px 12px 0;
+    min-height:0;
+    padding:5px 9px 8px;
+  }
+  .topbar .brand{order:1}
+  .topbar .brand-logo{height:40px;width:40px}
+  .topbar .user-menu{margin-left:auto;order:2}
+  .topbar .profile-trigger{max-width:min(38vw,220px)}
+  .topbar .main-nav{
+    flex:0 0 100%;
+    justify-content:flex-start;
+    margin:0;
+    order:3;
+    overflow-x:auto;
+    overflow-y:hidden;
+    overscroll-behavior-x:contain;
+    padding:2px 0;
+    scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;
+    width:100%;
+  }
+  .topbar .main-nav::-webkit-scrollbar{display:none}
+  .topbar .nav-button{font-size:12px;min-height:42px;padding:9px 12px}
+  .topbar .nav-dropdown-menu{
+    left:12px;
+    max-height:calc(100dvh - 140px);
+    min-width:min(240px,calc(100vw - 24px));
+    overflow:auto;
+    position:fixed;
+    right:auto;
+    top:126px;
+    width:min(280px,calc(100vw - 24px));
+  }
+}
+
+@media(max-width:480px){
+  :root{--preview-toolbar-offset:122px}
+  .topbar{border-width:4px;border-radius:22px;margin:8px 8px 0;padding:4px 7px 6px}
+  .topbar .brand-logo{height:38px;width:38px}
+  .topbar .user-menu{gap:4px}
+  .topbar .notification-button{height:32px;width:32px}
+  .topbar .profile-trigger{font-size:11px;max-width:42vw;min-height:38px;padding:7px 10px}
+  .topbar .logout-button{height:32px;width:30px}
+  .topbar .main-nav{gap:0;justify-content:space-between;scroll-padding-inline:4px}
+  .topbar .nav-button{font-size:clamp(10px,2.6vw,11px);min-height:40px;padding:8px clamp(6px,2vw,10px)}
+  .topbar .nav-dropdown-menu{left:8px;top:116px;width:calc(100vw - 16px)}
+}
+
+@media(max-width:360px){
+  .topbar .main-nav{justify-content:flex-start;scroll-snap-type:x proximity}
+  .topbar .nav-button{font-size:10px;padding-inline:7px;scroll-snap-align:start}
+}
