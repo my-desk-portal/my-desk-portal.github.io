@@ -73,11 +73,11 @@ function displayTime(value: string) {
 function ordinalDay(value: string) {
   if (!value) return "";
   const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return displayDate(value);
+  if (Number.isNaN(date.getTime())) return <strong>{displayDate(value)}</strong>;
   const day = date.getDate();
   const suffix = day % 100 >= 11 && day % 100 <= 13 ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th";
   const month = new Intl.DateTimeFormat("en-PH", { month: "long" }).format(date);
-  return <>{day}<sup className="completion-ordinal-suffix">{suffix}</sup> day of {month} {date.getFullYear()}</>;
+  return <><strong>{day}<sup className="completion-ordinal-suffix">{suffix}</sup></strong> day of <strong>{month} {date.getFullYear()}</strong></>;
 }
 
 function dateLabel(value: string) {
@@ -361,7 +361,7 @@ function CompletionPaper({ record, participantName }: { record: CompletionRecord
     <h1 className="completion-participant">{participantName}</h1>
     <div className="completion-body">
       <p>has completed the <strong className="completion-event-title">{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at {record.eventDestination}.</p>
-      <p>Given this <strong>{ordinalDay(record.eventDateTo)}</strong> at <strong>{record.distributionPlace}</strong>.</p>
+      <p>Given this {ordinalDay(record.eventDateTo)} at <strong>{record.distributionPlace}</strong>, Philippines.</p>
     </div>
     <footer className="completion-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
   </article>;
