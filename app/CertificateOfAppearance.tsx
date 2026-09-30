@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { addDoc, collection, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
 import { parseCertificateImportWorkbook } from "@/lib/certificate-import";
+import DeleteConfirmation from "./DeleteConfirmation";
 import "./certificate-of-appearance.css";
 
 type CertificateGender = "female" | "male" | "unspecified" | "";
@@ -70,6 +71,8 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
   const [view, setView] = useState<"list" | "new" | "edit">("list");
   const [editingRecord, setEditingRecord] = useState<CertificateRecord | null>(null);
   const [preview, setPreview] = useState<CertificateRecord | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CertificateRecord | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -94,6 +97,24 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
       })
       .finally(() => setLoading(false));
   }, [user.uid]);
+
+  async function deleteRecord(record: CertificateRecord) {
+    if (!db) return;
+    setDeletingId(record.id);
+    setError("");
+    try {
+      await deleteDoc(doc(db, "certificatesOfAppearance", record.id));
+      setRecords((current) => current.filter((item) => item.id !== record.id));
+      setPreview((current) => current?.id === record.id ? null : current);
+      setPendingDelete(null);
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not delete the Certificate of Appearance (${code}).` : "Could not delete the Certificate of Appearance.");
+      setPendingDelete(null);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function saveCertificate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -265,7 +286,8 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     <input ref={importInputRef} className="coa-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importCertificates(event)} aria-label="Import Certificate of Appearance workbook" />
     {error && <p className="coa-error" role="alert">{error}</p>}
     {importMessage && <p className="coa-success" role="status">{importMessage}</p>}
-    {loading ? <p className="muted">Loading certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates yet</h3><p>Add appearance details manually or import the completed CA_Importing_Template.xlsx workbook.</p><div className="coa-empty-actions"><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add Appearance Certificate</button><button type="button" className="text-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="coa-record-list"><div className="coa-record-head"><span>Event&apos;s Title</span><span>Event&apos;s Destination</span><span>Event&apos;s Date</span><span></span></div>{records.map((record) => <div className="coa-record-row" key={record.id}><strong>{record.eventTitle}</strong><span>{record.destination}</span><span>{displayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</span><div className="coa-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button></div></div>)}</div>}
+    {loading ? <p className="muted">Loading certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates yet</h3><p>Add appearance details manually or import the completed CA_Importing_Template.xlsx workbook.</p><div className="coa-empty-actions"><button type="button" className="text-button" onClick={() => { setError(""); setView("new"); }}>Add Appearance Certificate</button><button type="button" className="text-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="coa-record-list"><div className="coa-record-head"><span>Event&apos;s Title</span><span>Event&apos;s Destination</span><span>Event&apos;s Date</span><span></span></div>{records.map((record) => <div className="coa-record-row" key={record.id}><strong>{record.eventTitle}</strong><span>{record.destination}</span><span>{displayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</span><div className="coa-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>Preview</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></div></div>)}</div>}
+    <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Certificate of Appearance Deletion?" description="Are you sure you want to delete this Certificate of Appearance? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
   </section>;
 }
 

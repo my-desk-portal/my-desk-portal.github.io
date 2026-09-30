@@ -4,7 +4,7 @@
 .coa-record-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
 .coa-record-row{border-top:1px solid var(--line);font-size:13px}
 .coa-record-row strong,.coa-record-row>span{overflow-wrap:anywhere}
-.coa-record-actions{display:flex;gap:10px;justify-content:flex-end}
+.coa-record-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end}
 .coa-record-actions .row-action{white-space:nowrap}
 .coa-error{background:#fff0eb;border-left:3px solid var(--accent);color:#9e3824;font-size:13px;margin:0 0 20px;padding:13px 16px}
 .coa-form{grid-template-columns:repeat(2,minmax(0,1fr))}

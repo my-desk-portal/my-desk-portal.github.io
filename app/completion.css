@@ -35,7 +35,7 @@
 .completion-record-row{border-top:1px solid var(--line);font-size:13px}
 .completion-record-row>strong,.completion-record-row>span{overflow-wrap:anywhere}
 .completion-unit-tag{background:var(--mint);display:inline-block;font-size:10px;font-weight:700;padding:5px 7px}
-.completion-record-actions{display:flex;gap:10px;justify-content:flex-end}
+.completion-record-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end}
 .completion-record-actions .row-action{white-space:nowrap}
 .completion-preview-backdrop{z-index:32}
 .completion-preview-toolbar{max-width:11in}

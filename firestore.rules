@@ -160,7 +160,7 @@ service cloud.firestore {
         && request.resource.data.speakers[0].gender == request.resource.data.speakerGender
         && request.resource.data.speakers[0].position == request.resource.data.speakerPosition
         && request.resource.data.speakers[0].office == request.resource.data.speakerOffice;
-      allow delete: if false;
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /completionCertificates/{certificateId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
@@ -195,7 +195,7 @@ service cloud.firestore {
         && request.resource.data.participantNames is list
         && request.resource.data.participantNames.size() > 0
         && request.resource.data.participantNames.size() <= 100;
-      allow delete: if false;
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /participationCertificates/{certificateId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
@@ -236,7 +236,7 @@ service cloud.firestore {
         && request.resource.data.participantGenders is list
         && request.resource.data.participantGenders.size() == request.resource.data.participantNames.size()
         && request.resource.data.participantGenders.hasOnly(["female", "male"]);
-      allow delete: if false;
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /travelOrders/{travelOrderId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || resource.data.status in ["Approved", "Pending", "Processing"]);

@@ -36,7 +36,7 @@
 .appreciation-record-row{border-top:1px solid var(--line);font-size:13px}
 .appreciation-record-row>strong,.appreciation-record-row>span{overflow-wrap:anywhere}
 .appreciation-unit-tag{background:var(--mint);display:inline-block;font-size:10px;font-weight:700;padding:5px 7px}
-.appreciation-record-actions{display:flex;gap:10px;justify-content:flex-end}
+.appreciation-record-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end}
 .appreciation-record-actions .row-action{white-space:nowrap}
 .appreciation-preview-backdrop{z-index:34}
 .appreciation-preview-toolbar{max-width:11in}

@@ -3,10 +3,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, where } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { parsePersonnelWorkbook, type PersonnelEntry } from "@/lib/personnel";
+import DeleteConfirmation from "./DeleteConfirmation";
 import "./nta.css";
 
 type NtaMode = "individual" | "batch";
@@ -142,8 +143,8 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
   </section>;
 }
 
-function NtaList({ records, onNew, onPreview }: { records: NtaRecord[]; onNew: () => void; onPreview: (record: NtaRecord) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Notices to Attend</h2><p className="muted">{records.length} {records.length === 1 ? "notice" : "notices"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No notices to attend yet</h3><p>Create an individual or group notice.</p><button className="text-button" onClick={onNew}>Add an NTA</button></div> : <div className="permit-table"><div className="table-head nta-list-head"><span>Type</span><span>Subject</span><span>Activity</span><span>Schedule</span><span></span></div>{records.map((record) => { const batchCount = record.batches?.length ?? 0; return <div className="table-row nta-list-row" key={record.id}><strong>{record.mode === "individual" ? "Individual" : "Group"}</strong><span>{record.subject}</span><span>{record.activityTitle}</span><span>{record.mode === "individual" ? formatDate(record.dateFrom ?? "") : `${batchCount} ${batchCount === 1 ? "Group" : "Groups"}`}</span><button className="row-action" onClick={() => onPreview(record)}>Preview</button></div>; })}</div>}</section>;
+function NtaList({ records, deletingId, onNew, onPreview, onDelete }: { records: NtaRecord[]; deletingId: string | null; onNew: () => void; onPreview: (record: NtaRecord) => void; onDelete: (record: NtaRecord) => void }) {
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Notices to Attend</h2><p className="muted">{records.length} {records.length === 1 ? "notice" : "notices"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No notices to attend yet</h3><p>Create an individual or group notice.</p><button className="text-button" onClick={onNew}>Add an NTA</button></div> : <div className="permit-table"><div className="table-head nta-list-head"><span>Type</span><span>Subject</span><span>Activity</span><span>Schedule</span><span></span></div>{records.map((record) => { const batchCount = record.batches?.length ?? 0; return <div className="table-row nta-list-row" key={record.id}><strong>{record.mode === "individual" ? "Individual" : "Group"}</strong><span>{record.subject}</span><span>{record.activityTitle}</span><span>{record.mode === "individual" ? formatDate(record.dateFrom ?? "") : `${batchCount} ${batchCount === 1 ? "Group" : "Groups"}`}</span><span className="nta-list-actions"><button type="button" className="row-action" onClick={() => onPreview(record)}>Preview</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></span></div>; })}</div>}</section>;
 }
 
 type NtaRosterSection = { batch: NtaBatch; batchIndex: number; attendees: NtaAttendee[]; startIndex: number; continued: boolean };
@@ -403,6 +404,8 @@ export default function NtaModule({ user }: { user: User }) {
   const [view, setView] = useState<"list" | "new">("list");
   const [preview, setPreview] = useState<NtaRecord | null>(null);
   const [loadError, setLoadError] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<NtaRecord | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   useEffect(() => {
     if (!db) return;
     getDocs(query(collection(db, "ntaRecords"), where("ownerId", "==", user.uid))).then((snapshot) => {
@@ -411,5 +414,22 @@ export default function NtaModule({ user }: { user: User }) {
       setRecords(rows);
     }).catch(() => setLoadError("Could not load Notices to Attend. Refresh and try again."));
   }, [user.uid]);
-  return <>{loadError && <div className="error-message">{loadError}</div>}{view === "new" ? <NtaForm user={user} onSaved={(record) => { setRecords((current) => [record, ...current]); setView("list"); }} onCancel={() => setView("list")} /> : <NtaList records={records} onNew={() => setView("new")} onPreview={setPreview} />}{preview && <NtaPreview record={preview} onClose={() => setPreview(null)} />}</>;
+  async function deleteRecord(record: NtaRecord) {
+    if (!db) return;
+    setDeletingId(record.id);
+    setLoadError("");
+    try {
+      await deleteDoc(doc(db, "ntaRecords", record.id));
+      setRecords((current) => current.filter((item) => item.id !== record.id));
+      setPreview((current) => current?.id === record.id ? null : current);
+      setPendingDelete(null);
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setLoadError(code ? `Could not delete the NTA (${code}).` : "Could not delete the NTA.");
+      setPendingDelete(null);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+  return <>{loadError && <div className="error-message">{loadError}</div>}{view === "new" ? <NtaForm user={user} onSaved={(record) => { setRecords((current) => [record, ...current]); setView("list"); }} onCancel={() => setView("list")} /> : <NtaList records={records} deletingId={deletingId} onNew={() => setView("new")} onPreview={setPreview} onDelete={setPendingDelete} />}{preview && <NtaPreview record={preview} onClose={() => setPreview(null)} />}<DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm NTA Deletion?" description="Are you sure you want to delete this Notice to Attend? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} /></>;
 }
