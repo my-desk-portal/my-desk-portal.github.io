@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { PDFFont, PDFPage } from "pdf-lib";
+import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
@@ -373,9 +374,10 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
   useEffect(() => {
     const canvas = previewCanvasRef.current;
     if (!previewUrl || !canvas) return;
+    const renderCanvas = canvas;
     let cancelled = false;
     let cancelRender: (() => void) | null = null;
-    let loadingTask: { destroy: () => Promise<void> } | null = null;
+    let loadingTask: PDFDocumentLoadingTask | null = null;
     setPreviewRendering(true);
     setPreviewRenderError("");
     canvas.width = 1;
@@ -397,9 +399,9 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
         const page = await pdf.getPage(1);
         if (cancelled) return;
         const viewport = page.getViewport({ scale: 2.5 });
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        const task = page.render({ canvas, viewport });
+        renderCanvas.width = Math.ceil(viewport.width);
+        renderCanvas.height = Math.ceil(viewport.height);
+        const task = page.render({ canvas: renderCanvas, viewport });
         cancelRender = () => task.cancel();
         await task.promise;
         if (!cancelled) setPreviewRendering(false);
