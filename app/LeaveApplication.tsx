@@ -1,0 +1,627 @@
+"use client";
+
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import type { PDFFont, PDFPage } from "pdf-lib";
+import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
+import type { User } from "firebase/auth";
+import { db } from "@/lib/firebase";
+import DeleteConfirmation from "./DeleteConfirmation";
+import "./leave-application.css";
+
+type Office = "FOD-AGRISTAT" | "FOD-AMIA" | "FOD-DRRM";
+type LeaveType =
+  | "Vacation Leave"
+  | "Mandatory/Forced Leave"
+  | "Sick Leave"
+  | "Maternity Leave"
+  | "Paternity Leave"
+  | "Special Privilege Leave"
+  | "Solo Parent Leave"
+  | "Study Leave"
+  | "10-Day VAWC Leave"
+  | "Rehabilitation Privilege"
+  | "Special Leave Benefits for Women"
+  | "Special Emergency (Calamity) Leave"
+  | "Adoption Leave"
+  | "Others";
+type LeaveStatus = "Pending" | "Approved" | "Disapproved";
+type LeaveApplicationRecord = {
+  id: string;
+  ownerId: string;
+  filedDate: string;
+  name: string;
+  office: Office;
+  position: string;
+  salary: string;
+  leaveType: LeaveType;
+  leaveDetails: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  specifyAbroad?: string;
+  specifyIllness?: string;
+  studyLeaveOtherPurpose?: string;
+  workingDays: number;
+  inclusiveDateFrom: string;
+  inclusiveDateTo: string;
+  status: LeaveStatus;
+  createdAt?: unknown;
+};
+
+const offices: Office[] = ["FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"];
+const leaveTypes: LeaveType[] = [
+  "Vacation Leave",
+  "Mandatory/Forced Leave",
+  "Sick Leave",
+  "Maternity Leave",
+  "Paternity Leave",
+  "Special Privilege Leave",
+  "Solo Parent Leave",
+  "Study Leave",
+  "10-Day VAWC Leave",
+  "Rehabilitation Privilege",
+  "Special Leave Benefits for Women",
+  "Special Emergency (Calamity) Leave",
+  "Adoption Leave",
+  "Others",
+];
+const leaveStatuses: LeaveStatus[] = ["Pending", "Approved", "Disapproved"];
+const travelLeaveDetails = ["Within the Philippines", "Abroad"] as const;
+const sickLeaveDetails = ["In Hospital", "Out Patient"] as const;
+const studyLeaveDetails = ["Completion of Master's Degree", "BAR/Board Examination Review", "Other Purpose"] as const;
+const studyLeaveOtherPurposes = ["Monetization of Leave Credits", "Terminal Leave"] as const;
+const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+
+function localDateValue() {
+  const today = new Date();
+  return new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function formatDate(value: string) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function middleInitial(value: string) {
+  const first = value.trim().split(/\s+/)[0]?.replace(/\.+$/, "");
+  const initial = first ? Array.from(first)[0] : "";
+  return initial ? `${initial.toLocaleUpperCase()}.` : "";
+}
+
+function fullName(record: Pick<LeaveApplicationRecord, "name" | "firstName" | "middleName" | "lastName">) {
+  const parsed = parseName(record.name);
+  const first = record.firstName?.trim() || parsed.first;
+  const middle = middleInitial(typeof record.middleName === "string" ? record.middleName : parsed.middle);
+  const last = record.lastName?.trim() || parsed.last;
+  return [first, middle, last].filter(Boolean).join(" ");
+}
+
+function leaveCalendarData(record: LeaveApplicationRecord, ownerId: string, status: LeaveStatus = record.status) {
+  const parsed = parseName(record.name);
+  return {
+    leaveApplicationId: record.id,
+    ownerId,
+    status,
+    firstName: record.firstName?.trim() || parsed.first,
+    middleInitial: middleInitial(typeof record.middleName === "string" ? record.middleName : parsed.middle),
+    lastName: record.lastName?.trim() || parsed.last,
+    office: record.office,
+    leaveType: record.leaveType,
+    inclusiveDateFrom: record.inclusiveDateFrom,
+    inclusiveDateTo: record.inclusiveDateTo,
+  };
+}
+
+function leaveTypeLabel(record: Pick<LeaveApplicationRecord, "leaveType" | "leaveDetails">) {
+  const details = record.leaveDetails.trim();
+  return record.leaveType === "Others" && details ? `Others (${details})` : record.leaveType;
+}
+
+function parseName(value: string) {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  const comma = trimmed.indexOf(",");
+  if (comma >= 0) {
+    const last = trimmed.slice(0, comma).trim();
+    const given = trimmed.slice(comma + 1).trim().split(" ").filter(Boolean);
+    return { last, first: given[0] ?? "", middle: given.slice(1).join(" ") };
+  }
+  const parts = trimmed.split(" ").filter(Boolean);
+  return { last: parts.length > 1 ? parts[parts.length - 1] : "", first: parts[0] ?? "", middle: parts.slice(1, -1).join(" ") };
+}
+
+function normalizeNamePart(value: string) {
+  return value.trim().replace(/\s+/g, " ").replace(/,+$/, "").trim();
+}
+
+function officeFromProfile(value: unknown): Office | "" {
+  const unit = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (unit === "AGRISTAT" || unit === "FOD-AGRISTAT" || unit === "AGRICULTURAL STATISTICS") return "FOD-AGRISTAT";
+  if (unit === "AMIA" || unit === "FOD-AMIA") return "FOD-AMIA";
+  if (unit === "DRRM" || unit === "FOD-DRRM") return "FOD-DRRM";
+  return "";
+}
+
+function safePdfText(value: string) {
+  return value
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, "-")
+    .replace(/[^\x20-\xFF]/g, "")
+    .trim();
+}
+
+function fileDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return `${Number(month)}/${Number(day)}/${year}`;
+}
+
+function decimalSalary(value: string) {
+  if (!value.trim()) return "";
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount.toFixed(2) : value.trim();
+}
+
+function inclusiveDates(record: Pick<LeaveApplicationRecord, "inclusiveDateFrom" | "inclusiveDateTo">) {
+  const from = new Date(`${record.inclusiveDateFrom}T00:00:00Z`);
+  const to = new Date(`${record.inclusiveDateTo}T00:00:00Z`);
+  const monthDay = (date: Date) => new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", timeZone: "UTC" }).format(date);
+  const year = to.getUTCFullYear();
+  if (from.getTime() === to.getTime()) return `${monthDay(from)}, ${year}`;
+  if (from.getUTCFullYear() === year && from.getUTCMonth() === to.getUTCMonth()) {
+    const month = new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(to);
+    return `${month} ${from.getUTCDate()}-${to.getUTCDate()}, ${year}`;
+  }
+  return `${monthDay(from)} - ${monthDay(to)}, ${year}`;
+}
+
+function countWorkingDays(fromValue: string, toValue: string) {
+  if (!fromValue || !toValue || toValue < fromValue) return 0;
+  const from = Date.parse(`${fromValue}T00:00:00Z`);
+  const to = Date.parse(`${toValue}T00:00:00Z`);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return 0;
+  const totalDays = Math.floor((to - from) / 86400000) + 1;
+  const fullWeeks = Math.floor(totalDays / 7);
+  let workingDays = fullWeeks * 5;
+  const remainingDays = totalDays % 7;
+  const firstDay = new Date(from).getUTCDay();
+  for (let offset = 0; offset < remainingDays; offset += 1) {
+    const day = (firstDay + offset) % 7;
+    if (day !== 0 && day !== 6) workingDays += 1;
+  }
+  return workingDays;
+}
+
+function drawFitText(page: PDFPage, font: PDFFont, value: string, x: number, y: number, maxWidth: number, fontSize = 9.5) {
+  const text = safePdfText(value);
+  if (!text) return;
+  let size = fontSize;
+  while (size > 6 && font.widthOfTextAtSize(text, size) > maxWidth) size -= 0.25;
+  let fittedText = text;
+  if (font.widthOfTextAtSize(fittedText, size) > maxWidth) {
+    const characters = Array.from(text);
+    while (characters.length && font.widthOfTextAtSize(`${characters.join("")}...`, size) > maxWidth) characters.pop();
+    fittedText = characters.length ? `${characters.join("")}...` : "";
+  }
+  if (fittedText) page.drawText(fittedText, { x, y, size, font, color: rgb(0.08, 0.08, 0.08) });
+}
+
+async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
+  const response = await fetch(asset("/a4_size_application_letter_template.pdf"), { cache: "force-cache" });
+  if (!response.ok) throw new Error("The CSC leave application template could not be loaded.");
+  const pdf = await PDFDocument.load(await response.arrayBuffer());
+  const page = pdf.getPage(0);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const parsedApplicant = parseName(record.name);
+  const applicant = {
+    last: record.lastName?.trim() || parsedApplicant.last,
+    first: record.firstName?.trim() || parsedApplicant.first,
+    middle: middleInitial(typeof record.middleName === "string" ? record.middleName : parsedApplicant.middle),
+  };
+
+  drawFitText(page, font, record.office, 165.64, 878.38, 120, 9.5);
+  drawFitText(page, font, applicant.last, 367.41, 880.68, 103, 9.5);
+  drawFitText(page, font, applicant.first, 476.53, 880.68, 96, 9.5);
+  drawFitText(page, font, applicant.middle, 579.13, 880.68, 103.72, 9.5);
+  drawFitText(page, font, fileDate(record.filedDate), 175.08, 852.47, 104, 9.5);
+  drawFitText(page, font, record.position, 365, 851.98, 161, 9.5);
+  drawFitText(page, font, decimalSalary(record.salary), 611.04, 851.98, 78, 9.5);
+
+  const leaveTypeRows: Record<Exclude<LeaveType, "Others">, number> = {
+    "Vacation Leave": 778.86,
+    "Mandatory/Forced Leave": 760.63,
+    "Sick Leave": 742.4,
+    "Maternity Leave": 724.16,
+    "Paternity Leave": 705.91,
+    "Special Privilege Leave": 687.67,
+    "Solo Parent Leave": 669.44,
+    "Study Leave": 651.21,
+    "10-Day VAWC Leave": 632.97,
+    "Rehabilitation Privilege": 614.74,
+    "Special Leave Benefits for Women": 596.97,
+    "Special Emergency (Calamity) Leave": 578.27,
+    "Adoption Leave": 559.73,
+  };
+  const selectedLeaveRow = record.leaveType === "Others" ? 522.92 : leaveTypeRows[record.leaveType];
+  page.drawText("X", { x: record.leaveType === "Others" ? 68.5 : 79.1, y: selectedLeaveRow - 1, size: 8.5, font: bold, color: rgb(0.08, 0.08, 0.08) });
+  if (record.leaveType === "Others") drawFitText(page, font, record.leaveDetails, 86.43, 506.56, 332, 8.5);
+  const markLeaveDetail = (x: number, y: number) => page.drawText("X", { x, y: y - 1, size: 8.5, font: bold, color: rgb(0.08, 0.08, 0.08) });
+  if (["Vacation Leave", "Special Privilege Leave"].includes(record.leaveType)) {
+    if (record.leaveDetails === "Within the Philippines") markLeaveDetail(429.6, 760.63);
+    if (record.leaveDetails === "Abroad") {
+      markLeaveDetail(429.6, 742.4);
+      drawFitText(page, font, record.specifyAbroad ?? "", 520, 742.4, 163, 8.5);
+    }
+  }
+  if (record.leaveType === "Sick Leave") {
+    if (record.leaveDetails === "In Hospital") {
+      markLeaveDetail(429.6, 705.91);
+      drawFitText(page, font, record.specifyIllness ?? "", 566, 705.91, 116, 8.5);
+    }
+    if (record.leaveDetails === "Out Patient") {
+      markLeaveDetail(429.6, 687.67);
+      drawFitText(page, font, record.specifyIllness ?? "", 568, 687.67, 114, 8.5);
+    }
+  }
+  if (record.leaveType === "Special Leave Benefits for Women") {
+    drawFitText(page, font, record.specifyIllness ?? "", 502, 633.1, 178, 8.5);
+  }
+  if (record.leaveType === "Study Leave") {
+    if (record.leaveDetails === "Completion of Master's Degree") markLeaveDetail(429.6, 578.27);
+    if (record.leaveDetails === "BAR/Board Examination Review") markLeaveDetail(429.6, 559.73);
+    if (record.leaveDetails === "Other Purpose") {
+      markLeaveDetail(415.4, 541.2);
+      if (record.studyLeaveOtherPurpose === "Monetization of Leave Credits") markLeaveDetail(429.6, 522.8);
+      if (record.studyLeaveOtherPurpose === "Terminal Leave") markLeaveDetail(429.6, 504.5);
+    }
+  }
+  drawFitText(page, font, String(record.workingDays), 98.27, 466.51, 240, 9.5);
+  drawFitText(page, font, inclusiveDates(record), 97.65, 429.73, 303, 9.5);
+
+  pdf.setTitle(`Leave Application - ${fullName(record)}`);
+  pdf.setSubject("Civil Service Commission Leave Application (CS Form No. 6, Revised 2020)");
+  return pdf.save();
+}
+
+export default function LeaveApplicationModule({ user }: { user: User }) {
+  const [records, setRecords] = useState<LeaveApplicationRecord[]>([]);
+  const [view, setView] = useState<"list" | "new">("list");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<LeaveApplicationRecord | null>(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [previewRecord, setPreviewRecord] = useState<LeaveApplicationRecord | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [previewRendering, setPreviewRendering] = useState(false);
+  const [previewRenderError, setPreviewRenderError] = useState("");
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const [profileDefaults, setProfileDefaults] = useState<{ name: string; office: Office | ""; position: string }>({ name: user.displayName ?? "", office: "", position: "" });
+  const [filedDate, setFiledDate] = useState(localDateValue());
+  const [firstName, setFirstName] = useState(() => parseName(user.displayName ?? "").first);
+  const [middleName, setMiddleName] = useState(() => parseName(user.displayName ?? "").middle);
+  const [lastName, setLastName] = useState(() => parseName(user.displayName ?? "").last);
+  const [office, setOffice] = useState<Office | "">("");
+  const [position, setPosition] = useState("");
+  const [salary, setSalary] = useState("");
+  const [leaveType, setLeaveType] = useState<LeaveType | "">("");
+  const [leaveDetails, setLeaveDetails] = useState("");
+  const [specifyAbroad, setSpecifyAbroad] = useState("");
+  const [specifyIllness, setSpecifyIllness] = useState("");
+  const [studyLeaveOtherPurpose, setStudyLeaveOtherPurpose] = useState("");
+  const [inclusiveDateFrom, setInclusiveDateFrom] = useState("");
+  const [inclusiveDateTo, setInclusiveDateTo] = useState("");
+
+  useEffect(() => {
+    if (!db) {
+      setLoading(false);
+      setError("Firebase is not configured.");
+      return;
+    }
+    return onSnapshot(query(collection(db, "leaveApplications"), where("ownerId", "==", user.uid)), (snapshot) => {
+      const rows = snapshot.docs.map((item) => {
+        const data = item.data();
+        return { id: item.id, ...data, status: leaveStatuses.includes(data.status) ? data.status : "Pending" } as LeaveApplicationRecord;
+      });
+      rows.sort((left, right) => ((right.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0) - ((left.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0));
+      setRecords(rows);
+      setLoading(false);
+    }, (cause) => {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not load Leave Applications (${code}).` : "Could not load Leave Applications. Refresh and try again.");
+      setLoading(false);
+    });
+  }, [user.uid]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadProfileDefaults() {
+      if (!db) return;
+      try {
+        const snapshot = await getDoc(doc(db, "users", user.uid));
+        if (!active || !snapshot.exists()) return;
+        const profile = snapshot.data();
+        const defaults = {
+          name: typeof profile.name === "string" && profile.name.trim() ? profile.name : user.displayName ?? "",
+          position: typeof profile.position === "string" ? profile.position : "",
+          office: officeFromProfile(profile.unit),
+        };
+        setProfileDefaults(defaults);
+        const applicant = parseName(defaults.name);
+        setFirstName(applicant.first);
+        setMiddleName(applicant.middle);
+        setLastName(applicant.last);
+        setPosition(defaults.position);
+        setOffice(defaults.office);
+      } catch {
+        // The applicant can fill these fields manually when profile data is unavailable.
+      }
+    }
+    void loadProfileDefaults();
+    return () => { active = false; };
+  }, [user.uid]);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  useEffect(() => {
+    const canvas = previewCanvasRef.current;
+    if (!previewUrl || !canvas) return;
+    let cancelled = false;
+    let cancelRender: (() => void) | null = null;
+    let loadingTask: { destroy: () => Promise<void> } | null = null;
+    setPreviewRendering(true);
+    setPreviewRenderError("");
+    canvas.width = 1;
+    canvas.height = 1;
+
+    async function renderPdfPage() {
+      try {
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        if (cancelled) return;
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
+        const response = await fetch(previewUrl);
+        if (!response.ok) throw new Error("The Leave Application PDF could not be loaded for preview.");
+        if (cancelled) return;
+        const data = new Uint8Array(await response.arrayBuffer());
+        if (cancelled) return;
+        loadingTask = pdfjs.getDocument({ data });
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        const page = await pdf.getPage(1);
+        if (cancelled) return;
+        const viewport = page.getViewport({ scale: 2.5 });
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const task = page.render({ canvas, viewport });
+        cancelRender = () => task.cancel();
+        await task.promise;
+        if (!cancelled) setPreviewRendering(false);
+      } catch (cause) {
+        if (!cancelled) {
+          setPreviewRendering(false);
+          setPreviewRenderError(cause instanceof Error ? cause.message : "The Leave Application preview could not be rendered.");
+        }
+      }
+    }
+
+    void renderPdfPage();
+    return () => {
+      cancelled = true;
+      cancelRender?.();
+      if (loadingTask) void loadingTask.destroy();
+    };
+  }, [previewUrl]);
+
+  function resetForm() {
+    const applicant = parseName(profileDefaults.name);
+    setFiledDate(localDateValue());
+    setFirstName(applicant.first);
+    setMiddleName(applicant.middle);
+    setLastName(applicant.last);
+    setOffice(profileDefaults.office);
+    setPosition(profileDefaults.position);
+    setSalary("");
+    setLeaveType("");
+    setLeaveDetails("");
+    setSpecifyAbroad("");
+    setSpecifyIllness("");
+    setStudyLeaveOtherPurpose("");
+    setInclusiveDateFrom("");
+    setInclusiveDateTo("");
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!db) { setError("Firebase is not configured."); return; }
+    const normalizedFirstName = normalizeNamePart(firstName);
+    const normalizedMiddleName = normalizeNamePart(middleName);
+    const normalizedLastName = normalizeNamePart(lastName);
+    if (!normalizedFirstName || !normalizedLastName) {
+      setError("Enter a first name and last name.");
+      return;
+    }
+    if (inclusiveDateTo < inclusiveDateFrom) {
+      setError("The inclusive end date must be on or after the start date.");
+      return;
+    }
+    const calculatedWorkingDays = countWorkingDays(inclusiveDateFrom, inclusiveDateTo);
+    if (calculatedWorkingDays === 0) {
+      setError("The inclusive dates must include at least one weekday.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const leaveRef = doc(collection(db, "leaveApplications"));
+      const leaveData = {
+        ownerId: user.uid,
+        filedDate,
+        name: `${normalizedLastName}, ${normalizedFirstName}${normalizedMiddleName ? ` ${normalizedMiddleName}` : ""}`,
+        firstName: normalizedFirstName,
+        middleName: normalizedMiddleName,
+        lastName: normalizedLastName,
+        office,
+        position: position.trim(),
+        salary: decimalSalary(salary),
+        leaveType,
+        leaveDetails: leaveType === "Others" ? leaveDetails.trim() : ["Vacation Leave", "Special Privilege Leave", "Sick Leave", "Study Leave"].includes(leaveType) ? leaveDetails : "",
+        specifyAbroad: ["Vacation Leave", "Special Privilege Leave"].includes(leaveType) && leaveDetails === "Abroad" ? specifyAbroad.trim() : "",
+        specifyIllness: leaveType === "Sick Leave" || leaveType === "Special Leave Benefits for Women" ? specifyIllness.trim() : "",
+        studyLeaveOtherPurpose: leaveType === "Study Leave" && leaveDetails === "Other Purpose" ? studyLeaveOtherPurpose : "",
+        workingDays: calculatedWorkingDays,
+        inclusiveDateFrom,
+        inclusiveDateTo,
+        status: "Pending",
+        createdAt: serverTimestamp(),
+      };
+      const record = { id: leaveRef.id, ...leaveData } as LeaveApplicationRecord;
+      const batch = writeBatch(db);
+      batch.set(leaveRef, leaveData);
+      batch.set(doc(db, "approvedLeaveCalendar", record.id), leaveCalendarData(record, user.uid));
+      await batch.commit();
+      setMessage("Leave Application saved.");
+      setView("list");
+      resetForm();
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not save the Leave Application (${code}).` : "Could not save the Leave Application. Try again.");
+    } finally { setBusy(false); }
+  }
+
+  async function changeStatus(record: LeaveApplicationRecord, status: LeaveStatus) {
+    if (!db) { setError("Firebase is not configured."); return; }
+    setUpdatingId(record.id);
+    setError("");
+    setMessage("");
+    try {
+      const leaveRef = doc(db, "leaveApplications", record.id);
+      const calendarRef = doc(db, "approvedLeaveCalendar", record.id);
+      if ((record.status === "Pending" || record.status === "Approved") && status === "Disapproved") {
+        await setDoc(calendarRef, leaveCalendarData(record, user.uid));
+      }
+      const batch = writeBatch(db);
+      batch.update(leaveRef, { status });
+      if (status === "Pending" || status === "Approved") {
+        batch.set(calendarRef, leaveCalendarData(record, user.uid, status));
+      } else if (record.status === "Pending" || record.status === "Approved") {
+        batch.delete(calendarRef);
+      }
+      await batch.commit();
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not update Leave Application status (${code}).` : "Could not update Leave Application status.");
+    } finally { setUpdatingId(null); }
+  }
+
+  async function deleteRecord(record: LeaveApplicationRecord) {
+    if (!db) return;
+    setDeletingId(record.id);
+    setError("");
+    try {
+      const leaveRef = doc(db, "leaveApplications", record.id);
+      const calendarRef = doc(db, "approvedLeaveCalendar", record.id);
+      if (record.status === "Pending" || record.status === "Approved") {
+        await setDoc(calendarRef, leaveCalendarData(record, user.uid));
+      }
+      const batch = writeBatch(db);
+      batch.delete(leaveRef);
+      if (record.status === "Pending" || record.status === "Approved") batch.delete(calendarRef);
+      await batch.commit();
+      setPendingDelete(null);
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not delete Leave Application (${code}).` : "Could not delete Leave Application.");
+      setPendingDelete(null);
+    } finally { setDeletingId(null); }
+  }
+
+  async function openPreview(record: LeaveApplicationRecord) {
+    setPreviewLoadingId(record.id);
+    setPreviewRendering(true);
+    setPreviewRenderError("");
+    setError("");
+    try {
+      const bytes = await createLeaveApplicationPdf(record);
+      const blob = new Blob([new Uint8Array(bytes).buffer], { type: "application/pdf" });
+      const nextUrl = URL.createObjectURL(blob);
+      setPreviewRecord(record);
+      setPreviewUrl(nextUrl);
+    } catch (cause) {
+      setPreviewRendering(false);
+      setError(cause instanceof Error ? cause.message : "Could not create the Leave Application PDF.");
+    } finally { setPreviewLoadingId(null); }
+  }
+
+  function closePreview() {
+    setPreviewRecord(null);
+    setPreviewUrl("");
+  }
+
+  function printPreview() {
+    window.print();
+  }
+
+  return <>
+    <section className="content-section leave-application-section">
+    {error && <div className="error-message leave-application-error" role="alert">{error}</div>}
+    {message && <p className="leave-application-message" role="status">{message}</p>}
+    {view === "new" ? <>
+      <div className="section-heading leave-application-heading"><div><p className="eyebrow">New record</p><h2>Create Leave Application</h2><p className="muted">Enter the details for the Civil Service Commission Leave Application form.</p></div><button type="button" className="ghost-button" onClick={() => { setView("list"); setError(""); }}>Cancel</button></div>
+      <form className="leave-application-form" onSubmit={save}>
+        <div className="leave-application-applicant-row">
+          <label>Date of Filing<input type="date" value={filedDate} onChange={(event) => setFiledDate(event.target.value)} required /></label>
+          <label>First Name<input value={firstName} onChange={(event) => setFirstName(event.target.value)} maxLength={60} required /></label>
+          <label>Middle Name<input value={middleName} onChange={(event) => setMiddleName(event.target.value)} maxLength={60} /></label>
+          <label>Last Name<input value={lastName} onChange={(event) => setLastName(event.target.value)} maxLength={60} required /></label>
+        </div>
+        <label>Office<select value={office} onChange={(event) => setOffice(event.target.value as Office | "")} required><option value="" disabled>Select office</option>{offices.map((option) => <option key={option}>{option}</option>)}</select></label>
+        <label>Position<input value={position} onChange={(event) => setPosition(event.target.value)} maxLength={120} required /></label>
+        <label>Salary<div className="leave-application-currency-field"><span aria-hidden="true">₱</span><input type="number" inputMode="decimal" min="0" step="0.01" value={salary} onChange={(event) => setSalary(event.target.value)} onBlur={() => { if (salary !== "") setSalary(decimalSalary(salary)); }} aria-label="Salary amount in Philippine pesos" placeholder="0.00" required /></div></label>
+        <label>Type of Leave<select value={leaveType} onChange={(event) => { const selected = event.target.value as LeaveType | ""; setLeaveType(selected); setLeaveDetails(""); setSpecifyAbroad(""); setSpecifyIllness(""); setStudyLeaveOtherPurpose(""); }} required><option value="" disabled>Select type of leave</option>{leaveTypes.map((option) => <option key={option}>{option}</option>)}</select></label>
+        {(["Vacation Leave", "Special Privilege Leave"].includes(leaveType) || leaveType === "Sick Leave" || leaveType === "Study Leave") && <label className="leave-application-wide-field">Details of Leave<select value={leaveDetails} onChange={(event) => { const selected = event.target.value; setLeaveDetails(selected); if (selected !== "Abroad") setSpecifyAbroad(""); if (selected !== "Other Purpose") setStudyLeaveOtherPurpose(""); }} required><option value="" disabled>Select details of leave</option>{(leaveType === "Sick Leave" ? sickLeaveDetails : leaveType === "Study Leave" ? studyLeaveDetails : travelLeaveDetails).map((option) => <option key={option}>{option}</option>)}</select></label>}
+        {leaveType === "Others" && <label className="leave-application-wide-field">Specify Others<textarea rows={3} maxLength={100} value={leaveDetails} onChange={(event) => setLeaveDetails(event.target.value)} placeholder="Specify the other type of leave" required /></label>}
+        {(["Vacation Leave", "Special Privilege Leave"].includes(leaveType) && leaveDetails === "Abroad") && <label className="leave-application-wide-field">Specify Abroad<input value={specifyAbroad} onChange={(event) => setSpecifyAbroad(event.target.value)} maxLength={120} required /></label>}
+        {((leaveType === "Sick Leave" && (leaveDetails === "In Hospital" || leaveDetails === "Out Patient")) || leaveType === "Special Leave Benefits for Women") && <label className="leave-application-wide-field">Specify Illness<input value={specifyIllness} onChange={(event) => setSpecifyIllness(event.target.value)} maxLength={120} required /></label>}
+        {leaveType === "Study Leave" && leaveDetails === "Other Purpose" && <label>Other Purpose<select value={studyLeaveOtherPurpose} onChange={(event) => setStudyLeaveOtherPurpose(event.target.value)} required><option value="" disabled>Select other purpose</option>{studyLeaveOtherPurposes.map((option) => <option key={option}>{option}</option>)}</select></label>}
+        <fieldset className="leave-application-date-range"><legend>Inclusive Dates</legend><label>From<input aria-label="Inclusive start date" type="date" value={inclusiveDateFrom} onChange={(event) => setInclusiveDateFrom(event.target.value)} required /></label><span aria-hidden="true">to</span><label>To<input aria-label="Inclusive end date" type="date" min={inclusiveDateFrom} value={inclusiveDateTo} onChange={(event) => setInclusiveDateTo(event.target.value)} required /></label></fieldset>
+        <div className="leave-application-form-actions"><button type="button" className="ghost-button" onClick={() => { setView("list"); setError(""); }}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
+      </form>
+    </> : <>
+      <div className="section-heading leave-application-heading"><div><p className="eyebrow">Generated reports</p><h2>Leave Applications</h2><p className="muted">{records.length} {records.length === 1 ? "application" : "applications"} registered to your account.</p></div><button type="button" className="primary-button" onClick={() => { resetForm(); setError(""); setMessage(""); setView("new"); }}>Add</button></div>
+      {loading ? <p className="muted">Loading Leave Applications...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Leave Applications yet</h3><p>Create a Leave Application to view or download the completed CSC form.</p><button type="button" className="text-button" onClick={() => { resetForm(); setError(""); setMessage(""); setView("new"); }}>Add a Leave Application</button></div> : <div className="leave-application-records">
+        <div className="leave-application-record-head"><span>Date Filed</span><span>Name</span><span>Type of Leave</span><span>Inclusive Dates</span><span>Status</span><span>Actions</span></div>
+        {records.map((record) => <article className="leave-application-record" key={record.id}>
+          <span className="leave-application-record-date">{formatDate(record.filedDate)}</span><strong className="leave-application-record-name">{fullName(record)}</strong><span className="leave-application-record-type">{leaveTypeLabel(record)}</span><span className="leave-application-record-dates">{formatDate(record.inclusiveDateFrom)}{record.inclusiveDateTo !== record.inclusiveDateFrom && ` – ${formatDate(record.inclusiveDateTo)}`}</span>
+          <label className={`leave-application-status leave-application-status-${record.status.toLowerCase()}`}><span className="sr-only">Status for {fullName(record)}</span><select aria-label={`Status for ${fullName(record)}`} value={record.status} disabled={updatingId === record.id || deletingId !== null} onChange={(event) => void changeStatus(record, event.target.value as LeaveStatus)}>{leaveStatuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === record.id && <small>Saving...</small>}</label>
+          <div className="leave-application-actions"><button type="button" className="row-action" disabled={deletingId !== null || previewLoadingId !== null} onClick={() => void openPreview(record)}>{previewLoadingId === record.id ? "Preparing..." : "View"}</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></div>
+        </article>)}
+      </div>}
+    </>}
+    </section>
+    <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Leave Application Deletion?" description="Are you sure you want to delete this Leave Application? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
+    {previewRecord && previewUrl && <div className="preview-backdrop travel-order-preview-backdrop leave-application-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closePreview(); }}>
+      <div className="preview-toolbar leave-application-preview-toolbar">
+        <span>Leave Application preview · 1 page</span>
+        <button type="button" className="ghost-button" onClick={closePreview}>Close</button>
+        <a className="pdf-button" href={previewUrl} download={`leave-application-${previewRecord.filedDate}.pdf`}>Download PDF</a>
+        <button type="button" className="pdf-button" onClick={printPreview} disabled={previewRendering || Boolean(previewRenderError)}>Print</button>
+        {previewRenderError && <small className="download-error" role="alert">{previewRenderError}</small>}
+      </div>
+      <div className="travel-order-preview-pages" role="dialog" aria-modal="true" aria-label={`Leave Application for ${fullName(previewRecord)}`}>
+        <div className="travel-order-paper leave-application-paper">
+          {previewRendering && <span className="leave-application-preview-loading">Preparing preview...</span>}
+          {previewRenderError && <span className="leave-application-preview-render-error" role="alert">{previewRenderError}</span>}
+          <canvas ref={previewCanvasRef} className="leave-application-preview-canvas" aria-label={`Leave Application form for ${fullName(previewRecord)}`} />
+        </div>
+      </div>
+    </div>}
+  </>;
+}

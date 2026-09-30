@@ -238,6 +238,129 @@ service cloud.firestore {
         && request.resource.data.participantGenders.hasOnly(["female", "male"]);
       allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
+    match /leaveApplications/{leaveApplicationId} {
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.keys().hasAll(["ownerId", "filedDate", "name", "firstName", "middleName", "lastName", "office", "position", "salary", "leaveType", "leaveDetails", "specifyAbroad", "specifyIllness", "studyLeaveOtherPurpose", "workingDays", "inclusiveDateFrom", "inclusiveDateTo", "status", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "filedDate", "name", "firstName", "middleName", "lastName", "office", "position", "salary", "leaveType", "leaveDetails", "specifyAbroad", "specifyIllness", "studyLeaveOtherPurpose", "workingDays", "inclusiveDateFrom", "inclusiveDateTo", "status", "createdAt"])
+        && request.resource.data.filedDate is string
+        && request.resource.data.filedDate.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 183
+        && request.resource.data.firstName is string
+        && request.resource.data.firstName.size() > 0
+        && request.resource.data.firstName.size() <= 60
+        && request.resource.data.middleName is string
+        && request.resource.data.middleName.size() <= 60
+        && request.resource.data.lastName is string
+        && request.resource.data.lastName.size() > 0
+        && request.resource.data.lastName.size() <= 60
+        && request.resource.data.name == request.resource.data.lastName + ", " + request.resource.data.firstName + (request.resource.data.middleName.size() > 0 ? " " + request.resource.data.middleName : "")
+        && request.resource.data.office in ["FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"]
+        && request.resource.data.position is string
+        && request.resource.data.position.size() > 0
+        && request.resource.data.position.size() <= 120
+        && request.resource.data.salary is string
+        && request.resource.data.salary.size() > 0
+        && request.resource.data.salary.size() <= 20
+        && request.resource.data.leaveType in ["Vacation Leave", "Mandatory/Forced Leave", "Sick Leave", "Maternity Leave", "Paternity Leave", "Special Privilege Leave", "Solo Parent Leave", "Study Leave", "10-Day VAWC Leave", "Rehabilitation Privilege", "Special Leave Benefits for Women", "Special Emergency (Calamity) Leave", "Adoption Leave", "Others"]
+        && request.resource.data.leaveDetails is string
+        && request.resource.data.leaveDetails.size() <= 100
+        && ((request.resource.data.leaveType == "Others" && request.resource.data.leaveDetails.size() > 0)
+          || (request.resource.data.leaveType in ["Vacation Leave", "Special Privilege Leave"]
+            && request.resource.data.leaveDetails in ["Within the Philippines", "Abroad"])
+          || (request.resource.data.leaveType == "Sick Leave"
+            && request.resource.data.leaveDetails in ["In Hospital", "Out Patient"])
+          || (request.resource.data.leaveType == "Study Leave"
+            && request.resource.data.leaveDetails in ["Completion of Master's Degree", "BAR/Board Examination Review", "Other Purpose"])
+          || (request.resource.data.leaveType in ["Mandatory/Forced Leave", "Maternity Leave", "Paternity Leave", "Solo Parent Leave", "10-Day VAWC Leave", "Rehabilitation Privilege", "Special Leave Benefits for Women", "Special Emergency (Calamity) Leave", "Adoption Leave"]
+            && request.resource.data.leaveDetails.size() == 0))
+        && request.resource.data.specifyAbroad is string
+        && request.resource.data.specifyAbroad.size() <= 120
+        && ((request.resource.data.leaveType in ["Vacation Leave", "Special Privilege Leave"]
+            && request.resource.data.leaveDetails == "Abroad"
+            && request.resource.data.specifyAbroad.size() > 0)
+          || (!(request.resource.data.leaveType in ["Vacation Leave", "Special Privilege Leave"]
+              && request.resource.data.leaveDetails == "Abroad")
+            && request.resource.data.specifyAbroad.size() == 0))
+        && request.resource.data.specifyIllness is string
+        && request.resource.data.specifyIllness.size() <= 120
+        && ((request.resource.data.leaveType in ["Sick Leave", "Special Leave Benefits for Women"]
+            && request.resource.data.specifyIllness.size() > 0)
+          || (!(request.resource.data.leaveType in ["Sick Leave", "Special Leave Benefits for Women"])
+            && request.resource.data.specifyIllness.size() == 0))
+        && request.resource.data.studyLeaveOtherPurpose is string
+        && ((request.resource.data.leaveType == "Study Leave"
+            && request.resource.data.leaveDetails == "Other Purpose"
+            && request.resource.data.studyLeaveOtherPurpose in ["Monetization of Leave Credits", "Terminal Leave"])
+          || ((request.resource.data.leaveType != "Study Leave" || request.resource.data.leaveDetails != "Other Purpose")
+            && request.resource.data.studyLeaveOtherPurpose == ""))
+        && request.resource.data.workingDays is number
+        && request.resource.data.workingDays > 0
+        && request.resource.data.workingDays <= 365
+        && request.resource.data.inclusiveDateFrom is string
+        && request.resource.data.inclusiveDateFrom.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && request.resource.data.inclusiveDateTo is string
+        && request.resource.data.inclusiveDateTo.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && request.resource.data.inclusiveDateTo >= request.resource.data.inclusiveDateFrom
+        && request.resource.data.status == "Pending"
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
+        && request.resource.data.status in ["Pending", "Approved", "Disapproved"];
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+    }
+    match /approvedLeaveCalendar/{leaveApplicationId} {
+      function matchesApprovedApplication(data) {
+        let applicationPath = /databases/$(database)/documents/leaveApplications/$(leaveApplicationId);
+        return existsAfter(applicationPath)
+          && getAfter(applicationPath).data.ownerId == request.auth.uid
+          && getAfter(applicationPath).data.status == data.status
+          && getAfter(applicationPath).data.office == data.office
+          && getAfter(applicationPath).data.leaveType == data.leaveType
+          && getAfter(applicationPath).data.inclusiveDateFrom == data.inclusiveDateFrom
+          && getAfter(applicationPath).data.inclusiveDateTo == data.inclusiveDateTo
+          && ((!getAfter(applicationPath).data.keys().hasAll(["firstName", "lastName"]))
+            || (getAfter(applicationPath).data.firstName == data.firstName
+              && getAfter(applicationPath).data.lastName == data.lastName));
+      }
+      allow read: if isVerifiedUser() && resource.data.status in ["Approved", "Pending"];
+      allow create, update: if isVerifiedUser()
+        && request.resource.data.keys().hasAll(["leaveApplicationId", "ownerId", "status", "firstName", "middleInitial", "lastName", "office", "leaveType", "inclusiveDateFrom", "inclusiveDateTo"])
+        && request.resource.data.keys().hasOnly(["leaveApplicationId", "ownerId", "status", "firstName", "middleInitial", "lastName", "office", "leaveType", "inclusiveDateFrom", "inclusiveDateTo"])
+        && request.resource.data.leaveApplicationId == leaveApplicationId
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.status in ["Approved", "Pending"]
+        && request.resource.data.firstName is string
+        && request.resource.data.firstName.size() > 0
+        && request.resource.data.firstName.size() <= 60
+        && request.resource.data.middleInitial is string
+        && request.resource.data.middleInitial.size() <= 8
+        && (request.resource.data.middleInitial == "" || (request.resource.data.middleInitial.size() >= 2 && request.resource.data.middleInitial.matches("^.{1,7}[.]$")))
+        && request.resource.data.lastName is string
+        && request.resource.data.lastName.size() > 0
+        && request.resource.data.lastName.size() <= 60
+        && request.resource.data.office in ["FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"]
+        && request.resource.data.leaveType is string
+        && request.resource.data.leaveType.size() > 0
+        && request.resource.data.leaveType.size() <= 100
+        && request.resource.data.inclusiveDateFrom is string
+        && request.resource.data.inclusiveDateFrom.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && request.resource.data.inclusiveDateTo is string
+        && request.resource.data.inclusiveDateTo.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && request.resource.data.inclusiveDateTo >= request.resource.data.inclusiveDateFrom
+        && matchesApprovedApplication(request.resource.data);
+      allow delete: if isVerifiedUser()
+        && resource.data.status in ["Approved", "Pending"]
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.leaveApplicationId == leaveApplicationId
+        && resource.data.leaveApplicationId is string
+        && (!existsAfter(/databases/$(database)/documents/leaveApplications/$(resource.data.leaveApplicationId))
+          || !(getAfter(/databases/$(database)/documents/leaveApplications/$(resource.data.leaveApplicationId)).data.status in ["Approved", "Pending"]));
+    }
     match /travelOrders/{travelOrderId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || resource.data.status in ["Approved", "Pending", "Processing"]);
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
