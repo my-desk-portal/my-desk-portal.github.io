@@ -64,7 +64,10 @@ service cloud.firestore {
         && request.resource.data.statusKey is string
         && request.resource.data.status == "Approved"
         && getAfter(/databases/$(database)/documents/permits/$(request.resource.data.permitId)).data.personStatuses[request.resource.data.statusKey].status == "Approved";
-      allow delete: if isPermitAdmin();
+      allow delete: if isPermitAdmin() || (isVerifiedUser()
+        && resource.data.permitId is string
+        && get(/databases/$(database)/documents/permits/$(resource.data.permitId)).data.ownerId == request.auth.uid
+        && !existsAfter(/databases/$(database)/documents/permits/$(resource.data.permitId)));
     }
     match /specialOrders/{orderId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
@@ -250,7 +253,12 @@ service cloud.firestore {
         && request.resource.data.travelOrderId is string
         && get(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.ownerId == request.auth.uid
         && getAfter(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.status == "Approved";
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.travelOrderId is string
+        && get(/databases/$(database)/documents/travelOrders/$(resource.data.travelOrderId)).data.ownerId == request.auth.uid
+        && !existsAfter(/databases/$(database)/documents/travelOrders/$(resource.data.travelOrderId));
     }
     match /ntaRecords/{ntaId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;

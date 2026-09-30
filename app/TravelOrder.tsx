@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { parsePersonnelWorkbook, type PersonnelEntry } from "@/lib/personnel";
@@ -156,7 +156,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
   </section>;
 }
 
-function TravelOrderList({ orders, onNew, onPreview, onStatusChange, updatingId }: { orders: TravelOrder[]; onNew: () => void; onPreview: (order: TravelOrder) => void; onStatusChange: (order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]) => Promise<boolean>; updatingId: string | null }) {
+function TravelOrderList({ orders, onNew, onPreview, onDelete, onStatusChange, updatingId, deletingId }: { orders: TravelOrder[]; onNew: () => void; onPreview: (order: TravelOrder) => void; onDelete: (order: TravelOrder) => void; onStatusChange: (order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]) => Promise<boolean>; updatingId: string | null; deletingId: string | null }) {
   const [approvalOrderId, setApprovalOrderId] = useState<string | null>(null);
   const [approvalDate, setApprovalDate] = useState("");
   const [approvalNumbers, setApprovalNumbers] = useState<string[]>([]);
@@ -189,19 +189,19 @@ function TravelOrderList({ orders, onNew, onPreview, onStatusChange, updatingId 
   return <section className="content-section travel-order-list-section">
     <div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Travel Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "Travel Order" : "Travel Orders"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>
     {orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Travel Orders yet</h3><p>Create a Travel Order for one or more personnel.</p><button className="text-button" onClick={onNew}>Add a Travel Order</button></div> : <div className="permit-table">
-      <div className="table-head travel-order-list-head"><span>Date</span><span>Personnel</span><span>Place of Travel</span><span>Status</span><span>Preview</span></div>
+      <div className="table-head travel-order-list-head"><span>Date</span><span>Personnel</span><span>Place of Travel</span><span>Status</span><span>Actions</span></div>
       {orders.map((order) => <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">
           <strong>{order.date ? formatTravelDate(order.date) : "Pending approval"}</strong><span className="travel-order-list-people">{order.people.map((person) => person.name).join(", ")}</span><span>{order.placeOfTravel}</span>
-          <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={updatingId === order.id} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label>
-          <button className="row-action" onClick={() => onPreview(order)}>Preview</button>
+          <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={updatingId === order.id || deletingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label>
+          <span className="travel-order-row-actions"><button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onPreview(order)}>Preview</button><button type="button" className="delete-button" disabled={updatingId !== null || deletingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button></span>
         </div>
         {approvalOrderId === order.id && <form className="travel-order-approval-editor" onSubmit={(event) => confirmApproval(event, order)}>
           <div><strong>Complete approval details</strong><p>Enter the approval date and assign a unique TO No. to each person.</p></div>
           <label>Date<input type="date" value={approvalDate} onChange={(event) => { setApprovalDate(event.target.value); setApprovalError(""); }} required /></label>
           <div className="travel-order-number-fields">{order.people.map((person, index) => <label key={`${order.id}-to-number-${index}`}>{person.name}<input value={approvalNumbers[index] ?? ""} onChange={(event) => updateApprovalNumber(index, event.target.value)} placeholder="TO No." required /></label>)}</div>
           {approvalError && <p className="travel-order-number-error" role="alert">{approvalError}</p>}
-          <div className="travel-order-number-actions"><button type="button" className="ghost-button" disabled={updatingId === order.id} onClick={() => { setApprovalOrderId(null); setApprovalError(""); }}>Cancel</button><button className="primary-button" disabled={updatingId === order.id}>{updatingId === order.id ? "Approving..." : "Confirm Approval"}</button></div>
+          <div className="travel-order-number-actions"><button type="button" className="ghost-button" disabled={updatingId === order.id || deletingId !== null} onClick={() => { setApprovalOrderId(null); setApprovalError(""); }}>Cancel</button><button className="primary-button" disabled={updatingId === order.id || deletingId !== null}>{updatingId === order.id ? "Approving..." : "Confirm Approval"}</button></div>
         </form>}
       </div>)}
     </div>}
@@ -305,6 +305,7 @@ export default function TravelOrderModule({ user }: { user: User }) {
   const [preview, setPreview] = useState<TravelOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -321,6 +322,33 @@ export default function TravelOrderModule({ user }: { user: User }) {
       setError(code ? `Could not load Travel Orders (${code}).` : "Could not load Travel Orders. Refresh and try again.");
     }).finally(() => setLoading(false));
   }, [user.uid]);
+
+  async function deleteOrder(order: TravelOrder) {
+    const firestore = db;
+    if (!firestore || !window.confirm("Delete this Travel Order? Its assigned TO No. values will be released.")) return;
+    setDeletingId(order.id);
+    setError("");
+    try {
+      const numberRefs = [...new Set(order.people.map((person) => person.toNumber?.trim()).filter((number): number is string => Boolean(number)))]
+        .map((number) => doc(firestore, "travelOrderNumbers", travelOrderNumberKey(number)));
+      const numberSnapshots = await Promise.all(numberRefs.map((numberRef) => getDoc(numberRef)));
+      const batch = writeBatch(firestore);
+      numberSnapshots.forEach((snapshot) => {
+        if (!snapshot.exists()) return;
+        const data = snapshot.data();
+        if (data.ownerId === user.uid && data.travelOrderId === order.id) batch.delete(snapshot.ref);
+      });
+      batch.delete(doc(firestore, "travelOrders", order.id));
+      await batch.commit();
+      setOrders((current) => current.filter((item) => item.id !== order.id));
+      setPreview((current) => current?.id === order.id ? null : current);
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not delete Travel Order (${code}).` : "Could not delete Travel Order.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function changeStatus(order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]): Promise<boolean> {
     const firestore = db;
@@ -376,7 +404,7 @@ export default function TravelOrderModule({ user }: { user: User }) {
 
   return <>
     {error && <div className="error-message travel-order-error">{error}</div>}
-    {view === "new" ? <TravelOrderForm user={user} onSaved={(order) => { setOrders((current) => [order, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} onNew={() => { setError(""); setView("new"); }} onPreview={setPreview} onStatusChange={changeStatus} updatingId={updatingId} />}
+    {view === "new" ? <TravelOrderForm user={user} onSaved={(order) => { setOrders((current) => [order, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} onNew={() => { setError(""); setView("new"); }} onPreview={setPreview} onDelete={(order) => void deleteOrder(order)} onStatusChange={changeStatus} updatingId={updatingId} deletingId={deletingId} />}
     {preview && <TravelOrderPreview order={preview} onClose={() => setPreview(null)} />}
   </>;
 }
