@@ -6,7 +6,6 @@
   grid-template-areas:
     "date"
     "people"
-    "unit"
     "purpose"
     "actions";
   grid-template-columns: minmax(0, 1fr);
@@ -16,12 +15,8 @@
   grid-area: date;
 }
 
-.permit-slip-create-form > .participant-fields {
+.permit-slip-create-form > .permit-person-fields {
   grid-area: people;
-}
-
-.permit-slip-create-form > .permit-unit-field {
-  grid-area: unit;
 }
 
 .permit-slip-create-form > .permit-purpose-field {
@@ -36,13 +31,50 @@
   min-width: 0;
 }
 
-@media (min-width: 900px) {
-  .permit-slip-create-form {
-    grid-template-areas:
-      "date unit"
-      "people people"
-      "purpose purpose"
-      "actions actions";
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+.permit-person-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.permit-person-name-list,
+.permit-person-unit-list {
+  display: grid;
+  gap: 5px;
+}
+
+.permit-person-name-list > span {
+  overflow-wrap: anywhere;
+}
+
+.permit-person-unit-list > .unit-tag {
+  justify-self: start;
+}
+
+.permit-person-entry {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr) auto;
+}
+
+.permit-person-entry > label {
+  min-width: 0;
+}
+
+.permit-person-unit-warning {
+  color: #9e3824;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+@media (max-width: 720px) {
+  .permit-person-entry {
+    gap: 8px;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  }
+
+  .permit-person-entry > .remove-participant {
+    grid-column: 2;
+    justify-self: end;
   }
 }

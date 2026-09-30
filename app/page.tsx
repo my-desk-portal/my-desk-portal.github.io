@@ -49,7 +49,7 @@ import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-numbe
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string };
-type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; unit: Unit; purpose: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
+type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; createdAt?: unknown };
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
@@ -59,10 +59,6 @@ function permitUnitForPersonnel(person?: PersonnelEntry): Unit | "" {
   const value = person?.unit.trim().toUpperCase();
   if (units.includes(value as Unit)) return value as Unit;
   return value === "AGRICULTURAL STATISTICS" ? "AGRISTAT" : "";
-}
-
-function personnelUnitKey(person?: PersonnelEntry) {
-  return permitUnitForPersonnel(person) || person?.unit.trim().toLocaleLowerCase() || "";
 }
 
 function formatDate(date: string) {
@@ -244,8 +240,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
 }
 function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (permit: Permit) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [names, setNames] = useState([""]);
-  const [unit, setUnit] = useState<Unit | "">("");
+  const [people, setPeople] = useState<{ name: string; unit: Unit | "" }[]>([{ name: "", unit: "" }]);
   const [purpose, setPurpose] = useState("");
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
   const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -274,38 +269,28 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
 
   function selectPerson(index: number, name: string) {
     const selectedPerson = personnel.find((person) => person.name === name);
-    if (index === 0) {
-      const selectedUnitKey = personnelUnitKey(selectedPerson);
-      setNames((current) => current.map((currentName, currentIndex) => {
-        if (currentIndex === 0 || !currentName || !selectedPerson) return currentIndex === 0 ? name : currentName;
-        return personnelUnitKey(personnel.find((person) => person.name === currentName)) === selectedUnitKey ? currentName : "";
-      }));
-      setUnit(permitUnitForPersonnel(selectedPerson));
-      return;
-    }
-    setNames((current) => current.map((currentName, currentIndex) => currentIndex === index ? name : currentName));
+    setPeople((current) => current.map((person, currentIndex) => currentIndex === index
+      ? { name, unit: permitUnitForPersonnel(selectedPerson) }
+      : person));
+  }
+
+  function selectPersonUnit(index: number, unit: Unit | "") {
+    setPeople((current) => current.map((person, currentIndex) => currentIndex === index ? { ...person, unit } : person));
   }
 
   function removePerson(index: number) {
-    const remaining = names.filter((_, currentIndex) => currentIndex !== index);
-    if (index !== 0) {
-      setNames(remaining);
-      return;
-    }
-    const firstPerson = personnel.find((person) => person.name === remaining[0]);
-    const firstUnitKey = personnelUnitKey(firstPerson);
-    setNames(remaining.map((name, currentIndex) => currentIndex === 0 || !name || !firstPerson
-      || personnelUnitKey(personnel.find((person) => person.name === name)) === firstUnitKey ? name : ""));
-    setUnit(permitUnitForPersonnel(firstPerson));
+    setPeople((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!db) return;
-    const nameList = names.map((person) => person.trim()).filter(Boolean);
-    if (!nameList.length) { onError("Select at least one personnel name."); return; }
-    if (!unit) { onError("Select a unit for the permit slip."); return; }
-    const selectedUnit = unit;
+    const selectedPeople = people.map((person) => ({ ...person, name: person.name.trim() })).filter((person) => person.name);
+    if (!selectedPeople.length) { onError("Select at least one personnel name."); return; }
+    const missingUnit = selectedPeople.find((person) => !person.unit);
+    if (missingUnit) { onError(`Select a unit for ${missingUnit.name}.`); return; }
+    const nameList = selectedPeople.map((person) => person.name);
+    const personUnits = selectedPeople.map((person) => person.unit as Unit);
     const firestore = db;
     setBusy(true); onError("");
     try {
@@ -318,7 +303,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
         const permitNos = nameList.map((_, index) => `${year}-${String(firstNumber + index).padStart(4, "0")}`);
         const lastNumber = firstNumber + nameList.length - 1;
         const permitRef = doc(collection(firestore, "permits"));
-        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, unit: selectedUnit, purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
+        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, personUnits, unit: personUnits[0], purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
         unitCounterRefs.forEach((counterRef, index) => transaction.set(counterRef, { lastNumber, unit: units[index], year }));
         transaction.set(yearCounterRef, { lastNumber, year });
         transaction.set(permitRef, record);
@@ -329,9 +314,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     finally { setBusy(false); }
   }
 
-  const firstPerson = personnel.find((person) => person.name === names[0]);
-  const unitNeedsManualSelection = Boolean(names[0]) && !permitUnitForPersonnel(firstPerson) && !unit;
-  return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Full name</span>{names.map((person, index) => { const firstUnitKey = personnelUnitKey(firstPerson); const choices = index === 0 || !names[0] ? personnel : personnel.filter((candidate) => personnelUnitKey(candidate) === firstUnitKey); return <div className="participant-input" key={index}><select aria-label={`Person ${index + 1}`} value={person} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Select person ${index + 1}`}</option>{choices.map((candidate) => <option key={candidate.name} value={candidate.name}>{candidate.name}</option>)}</select>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove person ${index + 1}`} onClick={() => removePerson(index)}>Remove</button>}</div>; })}<button type="button" className="text-button add-participant" onClick={() => setNames([...names, ""])}>+ Add name</button>{names.length > 1 && <span className="muted">All names on a permit slip must belong to the same unit.</span>}{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</span>}</div><label className="permit-unit-field">Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit | "")} required disabled={personnelStatus !== "ready" || Boolean(unit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : personnelStatus === "loading" ? "Loading personnel..." : "Select a person"}</option>{units.map((option) => <option key={option} value={option}>{option}</option>)}</select>{unitNeedsManualSelection && <span className="auth-message auth-message-error" role="status">No supported unit abbreviation is listed for this person. Select a unit to continue.</span>}</label><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={5} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
+  return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="permit-person-fields wide-field">{people.map((person, index) => { const personnelRecord = personnel.find((candidate) => candidate.name === person.name); const personnelUnit = permitUnitForPersonnel(personnelRecord); const unitNeedsManualSelection = Boolean(person.name) && !personnelUnit && !person.unit; return <div className="permit-person-entry" key={index}><label>Full name<select aria-label={`Full name ${index + 1}`} value={person.name} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Select person ${index + 1}`}</option>{personnel.map((candidate) => <option key={candidate.name} value={candidate.name}>{candidate.name}</option>)}</select></label><label>Unit<select aria-label={`Unit for ${person.name || `person ${index + 1}`}`} value={person.unit} onChange={(event) => selectPersonUnit(index, event.target.value as Unit | "")} required={Boolean(person.name)} disabled={personnelStatus !== "ready" || !person.name || Boolean(personnelUnit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : person.name ? "Select unit" : "Choose a name first"}</option>{units.map((option) => <option key={option} value={option}>{option}</option>)}</select>{unitNeedsManualSelection && <span className="permit-person-unit-warning" role="status">No supported unit is listed for this person. Select a unit.</span>}</label>{people.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove person ${index + 1}`} onClick={() => removePerson(index)}>Remove</button>}</div>; })}<button type="button" className="text-button add-participant" onClick={() => setPeople((current) => [...current, { name: "", unit: "" }])}>+ Add name</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</span>}</div><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={5} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
 function PermitList({ permits, approvedPermitNumbers, deletingId, onNew, onPrint, onDelete }: { permits: Permit[]; approvedPermitNumbers: Record<string, string>; deletingId: string | null; onNew: () => void; onPrint: (permit: Permit) => void; onDelete: (permit: Permit) => void }) {
@@ -340,7 +323,7 @@ function PermitList({ permits, approvedPermitNumbers, deletingId, onNew, onPrint
     if (normalizeWorkflowStatus(permit.personStatuses?.[permitDecisionKey(permit, index)]?.status) !== "Approved") return "Pending";
     const key = displayPermitNumber(originalNumber);
     return approvedPermitNumbers[key] ?? key;
-  }).join(", ")}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><span className="permit-row-actions"><button type="button" className="row-action" onClick={() => onPrint(permit)}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(permit)}>{deletingId === permit.id ? "Deleting..." : "Delete"}</button></span></div>)}</div>}</section>;
+  }).join(", ")}</strong><span>{formatDate(permit.date)}</span><span><span className="permit-person-name-list">{permit.names.map((name, index) => <span key={`${permit.id}-name-${index}`}>{name}</span>)}</span></span><span><span className="permit-person-unit-list">{permit.names.map((_, index) => <b className="unit-tag" key={`${permit.id}-unit-${index}`}>{permit.personUnits?.[index] ?? permit.unit}</b>)}</span></span><span className="permit-row-actions"><button type="button" className="row-action" onClick={() => onPrint(permit)}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(permit)}>{deletingId === permit.id ? "Deleting..." : "Delete"}</button></span></div>)}</div>}</section>;
 }
 
 function chunkNames(names: string[], size: number) {
@@ -374,12 +357,14 @@ function permitNotificationKey(notification: PermitNotification) {
 
 function singlePersonPermitPreview(permit: Permit | AdminPermit, personIndex: number): Permit {
   const personNumber = permit.permitNos?.[personIndex] ?? (permit.names.length > 1 ? `${permit.permitNo}__person_${personIndex + 1}` : permit.permitNo);
+  const personUnit = permit.personUnits?.[personIndex] ?? permit.unit ?? "AGRISTAT";
   return {
     ...permit,
     permitNo: personNumber,
     permitNos: [personNumber],
     names: [permit.names[personIndex] ?? ""],
-    unit: permit.unit ?? "AGRISTAT",
+    personUnits: [personUnit],
+    unit: personUnit,
   } as Permit;
 }
 
@@ -493,10 +478,11 @@ function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers
             </tr>
           </thead>
           <tbody>
-            <tr><td /><td /></tr>
-            <tr><td /><td /></tr>
-            <tr><td /><td /></tr>
-            <tr><td /><td /></tr>
+            <tr><td>1.)</td><td /></tr>
+            <tr><td>2.)</td><td /></tr>
+            <tr><td>3.)</td><td /></tr>
+            <tr><td>4.)</td><td /></tr>
+            <tr><td>(5.)</td><td /></tr>
           </tbody>
         </table>
       </div>

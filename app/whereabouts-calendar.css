@@ -44,6 +44,7 @@
 .whereabouts-date-table th:first-child{width:34%}.whereabouts-date-table th:nth-child(2){width:25%}.whereabouts-date-table th:last-child{width:41%}
 .whereabouts-date-table td{color:var(--ink);overflow-wrap:anywhere}
 .whereabouts-date-table td strong{display:block;font-size:11px}
+.whereabouts-date-table td>small{color:var(--muted);display:block;font-size:10px;margin-top:3px}
 .whereabouts-date-person-type{color:var(--accent-dark);display:block;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.02em;margin-bottom:4px;text-transform:uppercase}
 .whereabouts-pending-label{background:#fff1bc;border:1px solid #e8c34d;border-radius:2px;color:#725400;display:inline-block;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.02em;margin:0 0 5px;padding:2px 5px;text-transform:uppercase}
 .whereabouts-date-purpose small{color:var(--muted);display:block;font-size:10px;margin-top:5px}

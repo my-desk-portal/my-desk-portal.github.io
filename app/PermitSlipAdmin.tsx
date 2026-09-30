@@ -10,6 +10,7 @@ import "./permit-slip-admin.css";
 
 type PermitStatus = WorkflowStatus;
 type PermitUnitFilter = "All" | "AGRISTAT" | "AMIA" | "DRRM";
+type PermitUnit = Exclude<PermitUnitFilter, "All">;
 type PersonDecision = { status?: PermitStatus; decidedAt?: Timestamp | Date | string; signerName?: string; decidedBy?: string };
 export type AdminPermit = {
   id: string;
@@ -18,7 +19,8 @@ export type AdminPermit = {
   date: string;
   names: string[];
   name?: string;
-  unit?: "AGRISTAT" | "AMIA" | "DRRM";
+  personUnits?: PermitUnit[];
+  unit?: PermitUnit;
   purpose: string;
   ownerId?: string;
   personStatuses?: Record<string, PersonDecision>;
@@ -84,6 +86,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
     permit,
     index,
     name,
+    unit: permit.personUnits?.[index] ?? permit.unit,
     permitNo: permitNumber(permit, index),
     status: personStatus(permit, index),
   }))), [permits]);
@@ -92,7 +95,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
     .map((entry) => ({ permitNo: entry.permitNo }))), [entries]);
 
   const statusEntries = useMemo(() => entries
-    .filter((entry) => unitFilter === "All" || entry.permit.unit === unitFilter)
+    .filter((entry) => unitFilter === "All" || entry.unit === unitFilter)
     .sort((left, right) => right.permitNo.localeCompare(left.permitNo, "en", { numeric: true, sensitivity: "base" })
       || right.permit.date.localeCompare(left.permit.date)), [entries, unitFilter]);
 
@@ -109,7 +112,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
     const stats = new Map<string, { name: string; purposes: Set<string>; approved: number; disapproved: number }>();
     for (const entry of entries) {
       if (!entry.permit.date?.startsWith(`${month}-`)) continue;
-      if (unitFilter !== "All" && entry.permit.unit !== unitFilter) continue;
+      if (unitFilter !== "All" && entry.unit !== unitFilter) continue;
       const key = entry.name.trim().toLocaleLowerCase();
       if (!key) continue;
       const row = stats.get(key) ?? { name: entry.name.trim(), purposes: new Set<string>(), approved: 0, disapproved: 0 };
@@ -149,7 +152,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
           name: permit.names[personIndex],
           date: permit.date,
           purpose: permit.purpose,
-          unit: permit.unit ?? "",
+          unit: permit.personUnits?.[personIndex] ?? permit.unit ?? "",
         });
       } else {
         batch.delete(calendarRef);
@@ -175,11 +178,11 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
     {loading ? <p className="permit-admin-empty">Loading Permit Slips…</p> : mode === "statistics" ? <>
       <p className="permit-admin-period">{monthDateString(month)}</p>
       {monthlyStats.length === 0 ? <p className="permit-admin-empty">No Permit Slips were created this month.</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table"><thead><tr><th>Name</th><th>Purpose</th><th>No. of Approved Permit Slips</th><th>No. of Disapproved Permit Slips</th></tr></thead><tbody>{monthlyStats.map((row) => <tr key={row.name}><td data-label="Name">{row.name}</td><td data-label="Purpose">{[...row.purposes].join("; ") || "—"}</td><td data-label="No. of Approved Permit Slips">{row.approved}</td><td data-label="No. of Disapproved Permit Slips">{row.disapproved}</td></tr>)}</tbody></table></div>}
-    </> : statusEntries.length === 0 ? <p className="permit-admin-empty">{permits.length === 0 ? "No Permit Slips have been submitted." : "No Permit Slips match this unit."}</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table permit-status-table"><thead><tr><th>PS No.</th><th>Date</th><th>Name</th><th>Purpose</th><th>Status</th></tr></thead><tbody>{statusEntries.map(({ permit, index, name, permitNo, status }) => {
+    </> : statusEntries.length === 0 ? <p className="permit-admin-empty">{permits.length === 0 ? "No Permit Slips have been submitted." : "No Permit Slips match this unit."}</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table permit-status-table"><thead><tr><th>PS No.</th><th>Date</th><th>Name</th><th>Unit</th><th>Purpose</th><th>Status</th></tr></thead><tbody>{statusEntries.map(({ permit, index, name, unit, permitNo, status }) => {
       const key = `${permit.id}:${decisionKey(permit, index)}`;
       const originalNumber = displayPermitNumber(permitNo);
       const displayedNumber = status === "Approved" ? approvedPermitNumbers[originalNumber] ?? originalNumber : "Pending";
-      return <tr id={`permit-status-${encodeURIComponent(key)}`} className={key === focusNotificationKey ? "permit-admin-notification-target" : undefined} key={key}><td data-label="PS No.">{displayedNumber}</td><td data-label="Date">{displayDate(permit.date)}</td><td data-label="Name">{name}</td><td data-label="Purpose">{permit.purpose || "—"}</td><td data-label="Status"><select className={`permit-admin-status permit-admin-status-${status.toLowerCase()}`} value={status} disabled={savingKey === key} aria-label={`Status for ${name}, ${displayPermitNumber(permitNo)}`} onChange={(event) => void changeStatus(permit, index, event.target.value as PermitStatus)}><option>Pending</option><option>Approved</option><option>Disapproved</option></select>{savingKey === key && <small className="permit-admin-saving">Saving…</small>}</td></tr>;
+      return <tr id={`permit-status-${encodeURIComponent(key)}`} className={key === focusNotificationKey ? "permit-admin-notification-target" : undefined} key={key}><td data-label="PS No.">{displayedNumber}</td><td data-label="Date">{displayDate(permit.date)}</td><td data-label="Name">{name}</td><td data-label="Unit">{unit || "—"}</td><td data-label="Purpose">{permit.purpose || "—"}</td><td data-label="Status"><select className={`permit-admin-status permit-admin-status-${status.toLowerCase()}`} value={status} disabled={savingKey === key} aria-label={`Status for ${name}, ${displayPermitNumber(permitNo)}`} onChange={(event) => void changeStatus(permit, index, event.target.value as PermitStatus)}><option>Pending</option><option>Approved</option><option>Disapproved</option></select>{savingKey === key && <small className="permit-admin-saving">Saving…</small>}</td></tr>;
     })}</tbody></table></div>}
   </section>;
 }

@@ -35,6 +35,7 @@ type StoredPermit = {
   date: string;
   names?: string[];
   name?: string;
+  personUnits?: string[];
   purpose: string;
   unit?: string;
   personStatuses?: Record<string, { status?: string }>;
@@ -49,6 +50,7 @@ type SelectedCalendarEntry = {
   date: string;
   purpose: string;
   destination: string;
+  unit?: string;
 };
 
 function normalizeUnit(value?: string): Exclude<PermitUnitFilter, "All"> | "" {
@@ -77,7 +79,7 @@ async function publishExistingApprovedPermits(firestore: Firestore) {
       if (permit.personStatuses?.[statusKey]?.status !== "Approved" || existingCalendarIds.has(calendarId) || !permit.date || !name) return;
       missingEntries.push({
         id: calendarId,
-        data: { permitId: permit.id, statusKey, status: "Approved", permitNo, name, date: permit.date, purpose: permit.purpose ?? "", unit: permit.unit ?? "" },
+        data: { permitId: permit.id, statusKey, status: "Approved", permitNo, name, date: permit.date, purpose: permit.purpose ?? "", unit: permit.personUnits?.[index] ?? permit.unit ?? "" },
       });
     });
   });
@@ -226,6 +228,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
         date: formatCalendarDateRange(order.departureDate, order.returnDate),
         purpose: order.purpose || "—",
         destination: order.placeOfTravel || "—",
+        unit: order.chargeTo || "",
       }));
     }),
     ...selectedPermitSlips.map((permit) => ({
@@ -237,6 +240,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       date: formatCalendarDate(permit.date),
       purpose: permit.purpose || "—",
       destination: "",
+      unit: permit.unit || "",
     })),
   ];
   const selectedPeopleByDetails = new Map<string, SelectedCalendarEntry>();
@@ -249,8 +253,9 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       date: person.date,
       purpose: person.purpose,
       destination: person.destination,
+      unit: person.unit,
     };
-    const key = JSON.stringify([entry.type, entry.date, entry.purpose, entry.destination]);
+    const key = JSON.stringify([entry.type, entry.date, entry.purpose, entry.destination, entry.unit]);
     const existing = selectedPeopleByDetails.get(key);
     if (existing) {
       existing.names.push(...entry.names);
@@ -312,7 +317,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>
       {loading ? <p className="muted">Loading Travel Orders and approved Permit Slips...</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No Travel Orders or Permit Slips on this date.</p> : <>
         <div className="whereabouts-date-table-wrap"><table className="whereabouts-date-table"><thead><tr><th>Person</th><th>Date</th><th>Purpose / Destination</th></tr></thead><tbody>
-          {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span>{person.statuses.length > 1 ? <span className="whereabouts-pending-label">{person.statuses.join(" / ")}</span> : person.statuses[0] === "Pending" && <span className="whereabouts-pending-label">Pending</span>}<strong>{person.names.join(", ")}</strong></td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
+          {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span>{person.statuses.length > 1 ? <span className="whereabouts-pending-label">{person.statuses.join(" / ")}</span> : person.statuses[0] === "Pending" && <span className="whereabouts-pending-label">Pending</span>}<strong>{person.names.join(", ")}</strong>{person.unit && <small>{person.unit}</small>}</td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
         </tbody></table></div>
         {selectedPeoplePageCount > 1 && <nav className="whereabouts-pagination" aria-label="Selected date people pages"><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.max(0, page - 1))} disabled={currentSelectedPeoplePage === 0}>Previous</button><span aria-live="polite">Page {currentSelectedPeoplePage + 1} of {selectedPeoplePageCount}</span><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.min(selectedPeoplePageCount - 1, page + 1))} disabled={currentSelectedPeoplePage >= selectedPeoplePageCount - 1}>Next</button></nav>}
       </>}
@@ -325,10 +330,10 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       </div>
       <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-permit-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-permit-summary-title">Approved Permit Slip</h3><span>{annualPermits.length === 0 ? "0 records" : `${currentPermitPage * 10 + 1}–${Math.min(currentPermitPage * 10 + visibleAnnualPermits.length, annualPermits.length)} of ${annualPermits.length}`}</span></div>
-        <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Date</th><th>Name</th><th>Purpose</th></tr></thead><tbody>
-          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.permitNo ? ` (PS No. ${approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.purpose || "—"}</td></tr>)}
-          {!loading && visibleAnnualPermits.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={3}>No approved Permit Slips match this year and filter.</td></tr>}
-          {loading && <tr><td className="whereabouts-summary-empty" colSpan={3}>Loading approved Permit Slips…</td></tr>}
+        <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Date</th><th>Name</th><th>Unit</th><th>Purpose</th></tr></thead><tbody>
+          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.permitNo ? ` (PS No. ${approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.unit || "—"}</td><td>{permit.purpose || "—"}</td></tr>)}
+          {!loading && visibleAnnualPermits.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={4}>No approved Permit Slips match this year and filter.</td></tr>}
+          {loading && <tr><td className="whereabouts-summary-empty" colSpan={4}>Loading approved Permit Slips…</td></tr>}
         </tbody></table></div>
         {permitPageCount > 1 && <nav className="whereabouts-pagination" aria-label="Approved Permit Slip pages"><button type="button" onClick={() => setPermitPage((page) => Math.max(0, page - 1))} disabled={currentPermitPage === 0}>Previous</button><span aria-live="polite">Page {currentPermitPage + 1} of {permitPageCount}</span><button type="button" onClick={() => setPermitPage((page) => Math.min(permitPageCount - 1, page + 1))} disabled={currentPermitPage >= permitPageCount - 1}>Next</button></nav>}
       </section>
