@@ -34,7 +34,7 @@ type TravelOrder = {
   createdAt?: unknown;
 };
 
-const officeStation = "DA-RFO XIII";
+const officeStations = ["DA-RFO XIII", "DA-ILD Caraga"] as const;
 const chargeOptions = ["Agricultural Statistics", "AMIA", "DRRM"];
 const statuses: TravelOrderStatus[] = ["Pending", "Approved", "Disapproved"];
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
@@ -56,6 +56,7 @@ function formatTravelDate(value: string) {
 
 function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (order: TravelOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [people, setPeople] = useState<TravelOrderPerson[]>([{ name: "", position: "", salary: "" }]);
+  const [officeStation, setOfficeStation] = useState<(typeof officeStations)[number]>(officeStations[0]);
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
   const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [departureDate, setDepartureDate] = useState("");
@@ -130,7 +131,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
   return <section className="content-section form-section travel-order-form-section">
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Travel Order</h2><p className="muted">One A4 Travel Order page will be generated for each person. The date and TO No. are entered when approving.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     <form className="permit-form travel-order-form" onSubmit={save}>
-      <label className="travel-order-office-field">Office Station<input value={officeStation} readOnly /></label>
+      <label className="travel-order-office-field">Office Station<select value={officeStation} onChange={(event) => setOfficeStation(event.target.value as (typeof officeStations)[number])} required>{officeStations.map((station) => <option key={station}>{station}</option>)}</select></label>
       <div className="travel-order-people wide-field">
         <div className="travel-order-people-heading"><strong>Persons traveling</strong><span>Add each person who needs a separate Travel Order page.</span></div>
         {personnelStatus === "error" && <p className="travel-order-number-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</p>}
