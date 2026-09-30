@@ -218,7 +218,7 @@ async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
   const applicant = {
     last: record.lastName?.trim() || parsedApplicant.last,
     first: record.firstName?.trim() || parsedApplicant.first,
-    middle: middleInitial(typeof record.middleName === "string" ? record.middleName : parsedApplicant.middle),
+    middle: typeof record.middleName === "string" ? record.middleName.trim() : parsedApplicant.middle,
   };
 
   drawFitText(page, font, record.office, 165.64, 878.38, 120, 9.5);
