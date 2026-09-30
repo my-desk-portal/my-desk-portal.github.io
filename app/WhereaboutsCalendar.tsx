@@ -6,6 +6,7 @@ import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { isPermitAdmin } from "./PermitSlipAdmin";
 import { LEGACY_PENDING_STATUS, normalizeWorkflowStatus } from "./workflow-status";
+import { displayPermitNumber } from "./permit-number";
 import "./whereabouts-calendar.css";
 
 type CalendarTravelOrder = {
@@ -324,7 +325,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-permit-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-permit-summary-title">Approved Permit Slip</h3><span>{annualPermits.length === 0 ? "0 records" : `${currentPermitPage * 10 + 1}–${Math.min(currentPermitPage * 10 + visibleAnnualPermits.length, annualPermits.length)} of ${annualPermits.length}`}</span></div>
         <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Date</th><th>Name</th><th>Purpose</th></tr></thead><tbody>
-          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}</td><td>{permit.purpose || "—"}</td></tr>)}
+          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.permitNo ? ` (${displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.purpose || "—"}</td></tr>)}
           {!loading && visibleAnnualPermits.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={3}>No approved Permit Slips match this year and filter.</td></tr>}
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={3}>Loading approved Permit Slips…</td></tr>}
         </tbody></table></div>
@@ -333,7 +334,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-travel-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-travel-summary-title">Travel Orders</h3><span>{annualOrders.length === 0 ? "0 records" : `${currentTravelPage * 10 + 1}–${Math.min(currentTravelPage * 10 + visibleAnnualOrders.length, annualOrders.length)} of ${annualOrders.length}`}</span></div>
         <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Name</th><th>Departure From To</th><th>Destination</th><th>Purpose</th><th>Status</th></tr></thead><tbody>
-          {visibleAnnualOrders.map((order) => <tr key={`annual-travel-${order.id}`}><td>{(order.people ?? []).map((person) => person.name).filter(Boolean).join(", ") || "Not specified"}</td><td>{formatCalendarDateRange(order.departureDate, order.returnDate)}</td><td>{order.placeOfTravel || "—"}</td><td>{order.purpose || "—"}</td><td><span className={`whereabouts-summary-status whereabouts-summary-status-${order.status.toLowerCase()}`}>{order.status}</span></td></tr>)}
+          {visibleAnnualOrders.map((order) => <tr key={`annual-travel-${order.id}`}><td>{(order.people ?? []).map((person) => person.name ? `${person.name}${person.toNumber?.trim() ? ` (${person.toNumber.trim()})` : ""}` : "").filter(Boolean).join(", ") || "Not specified"}</td><td>{formatCalendarDateRange(order.departureDate, order.returnDate)}</td><td>{order.placeOfTravel || "—"}</td><td>{order.purpose || "—"}</td><td><span className={`whereabouts-summary-status whereabouts-summary-status-${order.status.toLowerCase()}`}>{order.status}</span></td></tr>)}
           {!loading && visibleAnnualOrders.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={5}>No Travel Orders match this year and filter.</td></tr>}
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={5}>Loading Travel Orders…</td></tr>}
         </tbody></table></div>

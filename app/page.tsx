@@ -41,6 +41,7 @@ import CompletionCertificate from "./CompletionCertificate";
 import AppreciationCertificate from "./AppreciationCertificate";
 import ParticipationCertificate from "./ParticipationCertificate";
 import { normalizeWorkflowStatus } from "./workflow-status";
+import { displayPermitNumber } from "./permit-number";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string };
@@ -306,14 +307,16 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     try {
       const year = new Date(`${date}T00:00:00`).getFullYear();
       const permit = await runTransaction(firestore, async (transaction) => {
-        const counterRef = doc(firestore, "permitCounters", `${selectedUnit}-${year}`);
-        const counterSnapshot = await transaction.get(counterRef);
-        const firstNumber = (counterSnapshot.exists() ? counterSnapshot.data().lastNumber : 0) + 1;
-        const permitNos = nameList.map((_, index) => `${selectedUnit}-${year}-${String(firstNumber + index).padStart(4, "0")}`);
+        const unitCounterRefs = units.map((counterUnit) => doc(firestore, "permitCounters", `${counterUnit}-${year}`));
+        const yearCounterRef = doc(firestore, "permitCounters", `year-${year}`);
+        const counterSnapshots = await Promise.all([...unitCounterRefs, yearCounterRef].map((counterRef) => transaction.get(counterRef)));
+        const firstNumber = Math.max(0, ...counterSnapshots.map((snapshot) => Number(snapshot.exists() ? snapshot.data().lastNumber : 0) || 0)) + 1;
+        const permitNos = nameList.map((_, index) => `${year}-${String(firstNumber + index).padStart(4, "0")}`);
         const lastNumber = firstNumber + nameList.length - 1;
         const permitRef = doc(collection(firestore, "permits"));
         const record = { permitNo: permitNos[0], permitNos, date, names: nameList, unit: selectedUnit, purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
-        transaction.set(counterRef, { lastNumber, unit: selectedUnit, year });
+        unitCounterRefs.forEach((counterRef, index) => transaction.set(counterRef, { lastNumber, unit: units[index], year }));
+        transaction.set(yearCounterRef, { lastNumber, year });
         transaction.set(permitRef, record);
         return { id: permitRef.id, ...record } as Permit;
       });
@@ -328,7 +331,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
 }
 
 function PermitList({ permits, onNew, onPrint }: { permits: Permit[]; onNew: () => void; onPrint: (permit: Permit) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.permitNos?.length ? `${permit.permitNos[0]}${permit.permitNos.length > 1 ? ` - ${permit.permitNos[permit.permitNos.length - 1]}` : ""}` : permit.permitNo}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View</button></div>)}</div>}</section>;
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.permitNos?.length ? `${displayPermitNumber(permit.permitNos[0])}${permit.permitNos.length > 1 ? ` - ${displayPermitNumber(permit.permitNos[permit.permitNos.length - 1])}` : ""}` : displayPermitNumber(permit.permitNo)}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View</button></div>)}</div>}</section>;
 }
 
 function chunkNames(names: string[], size: number) {
@@ -418,7 +421,7 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
       {isAdmin ? pendingNotifications.length === 0 ? <p className="notification-empty">No Permit Slips are awaiting review.</p> : <ul>{pendingNotifications.map((notification) => <li key={`${notification.permitId}-${notification.permitNo}`}><button type="button" className="notification-item" onClick={() => { setOpen(false); onAdminOpen(notification); }}>
         <span className="notification-status notification-status-pending">Awaiting review</span>
         <strong>{notification.name}</strong>
-        <span className="notification-permit-number">{notification.permitNo}</span>
+        <span className="notification-permit-number">{displayPermitNumber(notification.permitNo)}</span>
         {notification.purpose && <span className="notification-permit-number">{notification.purpose}</span>}
         <small>{notification.date ? formatDate(notification.date) : "Date not provided"}</small>
         <span className="notification-view-label">Open in Permit Slip Status</span>
@@ -450,7 +453,7 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
       <div className="permit-meta-row">
         <span className="permit-label">PS No.</span>
         <span className="permit-colon">:</span>
-        <span className="permit-input-line">{permitNo}</span>
+        <span className="permit-input-line">{displayPermitNumber(permitNo)}</span>
       </div>
       <div className="permit-meta-row">
         <span className="permit-label">Date</span>
@@ -505,6 +508,20 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
           <span className="permit-colon">:</span>
           <span className="permit-time-line" />
         </div>
+        <div className="permit-time-row">
+          <span className="permit-time-label">TIME OUT</span>
+          <span className="permit-colon">:</span>
+          <span className="permit-time-line" />
+          <span className="permit-colon">:</span>
+          <span className="permit-time-line" />
+        </div>
+        <div className="permit-time-row">
+          <span className="permit-time-label">TIME IN</span>
+          <span className="permit-colon">:</span>
+          <span className="permit-time-line" />
+          <span className="permit-colon">:</span>
+          <span className="permit-time-line" />
+        </div>
       </div>
     </div>
 
@@ -516,12 +533,6 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
       <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>
     </div>
 
-    <div className="permit-noted">
-      <div className="permit-approved-label">Noted:</div>
-      <div className="permit-noted-space" aria-hidden="true" />
-      <div className="permit-approved-name">CLARICE L. CALIBAYAN</div>
-      <div className="permit-approved-role permit-noted-role"><em>OIC</em>, Human Resource Section</div>
-    </div>
   </article>;
 }
 
@@ -556,7 +567,7 @@ function PrintPreview({ permit, onClose, singleSlip = false }: { permit: Permit;
         const pdfHeight = pdfWidth * canvas.height / canvas.width;
         const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: [pdfWidth, pdfHeight] });
         pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`permit-${permit.permitNo}.pdf`);
+        pdf.save(`permit-${displayPermitNumber(permit.permitNo)}.pdf`);
         return;
       }
       const sheetElements = Array.from(sheetsRef.current.querySelectorAll<HTMLElement>(".permit-sheet"));
@@ -566,7 +577,7 @@ function PrintPreview({ permit, onClose, singleSlip = false }: { permit: Permit;
         if (index > 0) pdf.addPage();
         pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, 210, 297);
       }
-      pdf.save(`permit-${permit.permitNo}.pdf`);
+      pdf.save(`permit-${displayPermitNumber(permit.permitNo)}.pdf`);
     } catch (error) {
       setDownloadError(error instanceof Error ? error.message : "Unable to create the PDF.");
     } finally {
