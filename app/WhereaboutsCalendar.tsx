@@ -55,10 +55,15 @@ type SelectedCalendarEntry = {
 
 function normalizeUnit(value?: string): Exclude<PermitUnitFilter, "All"> | "" {
   const unit = value?.trim().toUpperCase();
-  if (unit === "AGRISTAT" || unit === "AGRICULTURAL STATISTICS") return "AGRISTAT";
-  if (unit === "AMIA") return "AMIA";
-  if (unit === "DRRM") return "DRRM";
+  if (unit === "AGRISTAT" || unit === "FOD-AGRISTAT" || unit === "AGRICULTURAL STATISTICS") return "AGRISTAT";
+  if (unit === "AMIA" || unit === "FOD-AMIA") return "AMIA";
+  if (unit === "DRRM" || unit === "FOD-DRRM") return "DRRM";
   return "";
+}
+
+function displayUnit(value?: string) {
+  const unit = normalizeUnit(value);
+  return unit ? `FOD-${unit}` : value?.trim() ?? "";
 }
 
 async function publishExistingApprovedPermits(firestore: Firestore) {
@@ -317,7 +322,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>
       {loading ? <p className="muted">Loading Travel Orders and approved Permit Slips...</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No Travel Orders or Permit Slips on this date.</p> : <>
         <div className="whereabouts-date-table-wrap"><table className="whereabouts-date-table"><thead><tr><th>Person</th><th>Date</th><th>Purpose / Destination</th></tr></thead><tbody>
-          {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span>{person.statuses.map((status) => <span key={status} className={`whereabouts-status-label whereabouts-status-label-${status.toLowerCase()}`}>{status}</span>)}<strong>{person.names.join(", ")}</strong>{person.unit && <small>{person.unit}</small>}</td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
+          {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span>{person.statuses.map((status) => <span key={status} className={`whereabouts-status-label whereabouts-status-label-${status.toLowerCase()}`}>{status}</span>)}<strong>{person.names.join(", ")}</strong>{person.unit && <small>{displayUnit(person.unit)}</small>}</td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
         </tbody></table></div>
         {selectedPeoplePageCount > 1 && <nav className="whereabouts-pagination" aria-label="Selected date people pages"><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.max(0, page - 1))} disabled={currentSelectedPeoplePage === 0}>Previous</button><span aria-live="polite">Page {currentSelectedPeoplePage + 1} of {selectedPeoplePageCount}</span><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.min(selectedPeoplePageCount - 1, page + 1))} disabled={currentSelectedPeoplePage >= selectedPeoplePageCount - 1}>Next</button></nav>}
       </>}
@@ -326,12 +331,12 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       <header className="whereabouts-summary-heading"><div><p className="eyebrow">Annual summary</p><h2>Approved Records — {summaryYear}</h2><p className="muted">Approved Travel Orders and Permit Slips. Search by name and filter by unit; tables show 10 records per page, newest first.</p></div></header>
       <div className="whereabouts-summary-filters">
         <label>Name search<input type="search" value={nameSearch} onChange={(event) => { setNameSearch(event.target.value); setPermitPage(0); setTravelPage(0); }} placeholder="Search by name" /></label>
-        <label>Unit<select value={unitFilter} onChange={(event) => { setUnitFilter(event.target.value as PermitUnitFilter); setPermitPage(0); setTravelPage(0); }}><option value="All">All units</option><option value="AGRISTAT">Agricultural Statistics</option><option value="AMIA">AMIA</option><option value="DRRM">DRRM</option></select></label>
+        <label>Unit<select value={unitFilter} onChange={(event) => { setUnitFilter(event.target.value as PermitUnitFilter); setPermitPage(0); setTravelPage(0); }}><option value="All">All units</option><option value="AGRISTAT">FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select></label>
       </div>
       <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-permit-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-permit-summary-title">Approved Permit Slips</h3><span>{annualPermits.length === 0 ? "0 records" : `${currentPermitPage * 10 + 1}–${Math.min(currentPermitPage * 10 + visibleAnnualPermits.length, annualPermits.length)} of ${annualPermits.length}`}</span></div>
         <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Date</th><th>Name</th><th>Unit</th><th>Purpose</th></tr></thead><tbody>
-          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.permitNo ? ` (PS No. ${approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.unit || "—"}</td><td>{permit.purpose || "—"}</td></tr>)}
+          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.permitNo ? ` (PS No. ${approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.unit ? displayUnit(permit.unit) : "—"}</td><td>{permit.purpose || "—"}</td></tr>)}
           {!loading && visibleAnnualPermits.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={4}>No approved Permit Slips match this year and filter.</td></tr>}
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={4}>Loading approved Permit Slips…</td></tr>}
         </tbody></table></div>

@@ -76,9 +76,9 @@ function reportMonth(month: string) {
 
 function reportUnit(unit: Unit) {
   const unitNames: Record<Unit, string> = {
-    AMIA: "Adaptation and Mitigation Initiative in Agriculture - Caraga",
+    AMIA: "Adaptation Initiative and Mitigation in Agriculture - Caraga",
     AGRISTAT: "Agricultural Statistics - Caraga",
-    DRRM: "Disaster Risk Reduction and Management",
+    DRRM: "Disaster Risk Reduction and Management - Caraga",
   };
   return unitNames[unit];
 }

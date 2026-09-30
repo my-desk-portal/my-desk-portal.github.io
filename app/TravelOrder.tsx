@@ -35,7 +35,7 @@ type TravelOrder = {
 };
 
 const officeStations = ["DA-RFO XIII", "DA-ILD Caraga"] as const;
-const chargeOptions = ["Agricultural Statistics", "AMIA", "DRRM"];
+const chargeOptions = ["FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"];
 const statuses: TravelOrderStatus[] = ["Pending", "Approved", "Disapproved"];
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 

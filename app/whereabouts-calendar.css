@@ -75,6 +75,7 @@
 .whereabouts-summary-table th,.whereabouts-summary-table td{border:1px solid var(--line);font-size:12px;line-height:1.45;padding:10px 12px;vertical-align:top}
 .whereabouts-summary-table th{background:#f6f8f6;color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase}
 .whereabouts-summary-table td{color:var(--ink);overflow-wrap:anywhere}
+.whereabouts-summary-table th:nth-child(3),.whereabouts-summary-table td:nth-child(3){min-width:130px;white-space:nowrap}
 .whereabouts-summary-status{border:1px solid var(--line);display:inline-block;font-size:10px;font-weight:700;padding:4px 6px;white-space:nowrap}
 .whereabouts-summary-status-pending{background:#fff1bc;border-color:#e8c34d;color:#725400}
 .whereabouts-summary-status-approved{background:#eaf5ed;border-color:#c4dfcb;color:#21603a}
