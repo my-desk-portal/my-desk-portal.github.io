@@ -46,7 +46,9 @@
 .whereabouts-date-table td strong{display:block;font-size:11px}
 .whereabouts-date-table td>small{color:var(--muted);display:block;font-size:10px;margin-top:3px}
 .whereabouts-date-person-type{color:var(--accent-dark);display:block;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.02em;margin-bottom:4px;text-transform:uppercase}
-.whereabouts-pending-label{background:#fff1bc;border:1px solid #e8c34d;border-radius:2px;color:#725400;display:inline-block;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.02em;margin:0 0 5px;padding:2px 5px;text-transform:uppercase}
+.whereabouts-status-label{border:1px solid;border-radius:2px;display:inline-block;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.02em;margin:0 4px 5px 0;padding:2px 5px;text-transform:uppercase}
+.whereabouts-status-label-pending{background:#fff1bc;border-color:#e8c34d;color:#725400}
+.whereabouts-status-label-approved{background:#eaf5ed;border-color:#c4dfcb;color:#21603a}
 .whereabouts-date-purpose small{color:var(--muted);display:block;font-size:10px;margin-top:5px}
 .whereabouts-order-list{display:grid;gap:12px;padding-top:14px}
 .whereabouts-order-card{border:1px solid var(--line);min-width:0;padding:15px}
