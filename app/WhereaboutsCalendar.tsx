@@ -222,7 +222,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
         type: "Travel Order",
         status: order.status,
         name: person.name || "Not specified",
-        number: person.toNumber || "",
+        number: person.toNumber?.trim() ? `TO No. ${person.toNumber.trim()}` : "",
         date: formatCalendarDateRange(order.departureDate, order.returnDate),
         purpose: order.purpose || "—",
         destination: order.placeOfTravel || "—",
