@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDocs, onSnapshot, query, setDoc, where, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { isPermitAdmin } from "./PermitSlipAdmin";
 import { LEGACY_PENDING_STATUS, normalizeWorkflowStatus } from "./workflow-status";
-import { displayPermitNumber } from "./permit-number";
+import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
 import "./whereabouts-calendar.css";
 
 type CalendarTravelOrder = {
@@ -127,6 +127,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const [travelPage, setTravelPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const approvedPermitNumbers = useMemo(() => assignApprovedPermitNumbers(permitSlips), [permitSlips]);
 
   useEffect(() => { setSelectedPeoplePage(0); }, [selectedDate]);
 
@@ -232,7 +233,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       type: "Permit Slip",
       status: permit.status,
       name: permit.name,
-      number: "",
+      number: permit.permitNo ? `PS No. ${approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)}` : "",
       date: formatCalendarDate(permit.date),
       purpose: permit.purpose || "—",
       destination: "",
@@ -325,7 +326,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-permit-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-permit-summary-title">Approved Permit Slip</h3><span>{annualPermits.length === 0 ? "0 records" : `${currentPermitPage * 10 + 1}–${Math.min(currentPermitPage * 10 + visibleAnnualPermits.length, annualPermits.length)} of ${annualPermits.length}`}</span></div>
         <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Date</th><th>Name</th><th>Purpose</th></tr></thead><tbody>
-          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.permitNo ? ` (PS No. ${displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.purpose || "—"}</td></tr>)}
+          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.permitNo ? ` (PS No. ${approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.purpose || "—"}</td></tr>)}
           {!loading && visibleAnnualPermits.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={3}>No approved Permit Slips match this year and filter.</td></tr>}
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={3}>Loading approved Permit Slips…</td></tr>}
         </tbody></table></div>

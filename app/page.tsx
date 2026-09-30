@@ -41,7 +41,7 @@ import CompletionCertificate from "./CompletionCertificate";
 import AppreciationCertificate from "./AppreciationCertificate";
 import ParticipationCertificate from "./ParticipationCertificate";
 import { normalizeWorkflowStatus } from "./workflow-status";
-import { displayPermitNumber } from "./permit-number";
+import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string };
@@ -330,8 +330,13 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
   return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Full name</span>{names.map((person, index) => { const firstUnitKey = personnelUnitKey(firstPerson); const choices = index === 0 || !names[0] ? personnel : personnel.filter((candidate) => personnelUnitKey(candidate) === firstUnitKey); return <div className="participant-input" key={index}><select aria-label={`Person ${index + 1}`} value={person} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Select person ${index + 1}`}</option>{choices.map((candidate) => <option key={candidate.name} value={candidate.name}>{candidate.name}</option>)}</select>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove person ${index + 1}`} onClick={() => removePerson(index)}>Remove</button>}</div>; })}<button type="button" className="text-button add-participant" onClick={() => setNames([...names, ""])}>+ Add name</button>{names.length > 1 && <span className="muted">All names on a permit slip must belong to the same unit.</span>}{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</span>}</div><label className="permit-unit-field">Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit | "")} required disabled={personnelStatus !== "ready" || Boolean(unit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : personnelStatus === "loading" ? "Loading personnel..." : "Select a person"}</option>{units.map((option) => <option key={option} value={option}>{option}</option>)}</select>{unitNeedsManualSelection && <span className="auth-message auth-message-error" role="status">No supported unit abbreviation is listed for this person. Select a unit to continue.</span>}</label><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={5} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
-function PermitList({ permits, onNew, onPrint }: { permits: Permit[]; onNew: () => void; onPrint: (permit: Permit) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.permitNos?.length ? `${displayPermitNumber(permit.permitNos[0])}${permit.permitNos.length > 1 ? ` - ${displayPermitNumber(permit.permitNos[permit.permitNos.length - 1])}` : ""}` : displayPermitNumber(permit.permitNo)}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View</button></div>)}</div>}</section>;
+function PermitList({ permits, approvedPermitNumbers, onNew, onPrint }: { permits: Permit[]; approvedPermitNumbers: Record<string, string>; onNew: () => void; onPrint: (permit: Permit) => void }) {
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button" onClick={onNew}>Create a permit slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span></span></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.names.map((_, index) => {
+    const originalNumber = permit.permitNos?.[index] ?? permit.permitNo;
+    if (normalizeWorkflowStatus(permit.personStatuses?.[permitDecisionKey(permit, index)]?.status) !== "Approved") return "Pending";
+    const key = displayPermitNumber(originalNumber);
+    return approvedPermitNumbers[key] ?? key;
+  }).join(", ")}</strong><span>{formatDate(permit.date)}</span><span>{permit.names.join(", ")}</span><span><b className="unit-tag">{permit.unit}</b></span><button className="row-action" onClick={() => onPrint(permit)}>View</button></div>)}</div>}</section>;
 }
 
 function chunkNames(names: string[], size: number) {
@@ -421,7 +426,7 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
       {isAdmin ? pendingNotifications.length === 0 ? <p className="notification-empty">No Permit Slips are awaiting review.</p> : <ul>{pendingNotifications.map((notification) => <li key={`${notification.permitId}-${notification.permitNo}`}><button type="button" className="notification-item" onClick={() => { setOpen(false); onAdminOpen(notification); }}>
         <span className="notification-status notification-status-pending">Awaiting review</span>
         <strong>{notification.name}</strong>
-        <span className="notification-permit-number">{displayPermitNumber(notification.permitNo)}</span>
+        <span className="notification-permit-number">Pending</span>
         {notification.purpose && <span className="notification-permit-number">{notification.purpose}</span>}
         <small>{notification.date ? formatDate(notification.date) : "Date not provided"}</small>
         <span className="notification-view-label">Open in Permit Slip Status</span>
@@ -434,9 +439,11 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
   </div>;
 }
 
-function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; name: string; permitNo: string; decisionKey: string }) {
+function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers }: { permit: Permit; name: string; permitNo: string; decisionKey: string; approvedPermitNumbers: Record<string, string> }) {
   const decision = permit.personStatuses?.[decisionKey];
   const decisionTime = signatureTime(decision?.decidedAt);
+  const isApproved = normalizeWorkflowStatus(decision?.status) === "Approved";
+  const displayNumber = isApproved ? approvedPermitNumbers[displayPermitNumber(permitNo)] ?? displayPermitNumber(permitNo) : "Pending";
   return <article className="permit-document">
     <header className="permit-header">
       <div className="permit-logos">
@@ -453,7 +460,7 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
       <div className="permit-meta-row">
         <span className="permit-label">PS No.</span>
         <span className="permit-colon">:</span>
-        <span className="permit-input-line">{displayPermitNumber(permitNo)}</span>
+        <span className="permit-input-line">{displayNumber}</span>
       </div>
       <div className="permit-meta-row">
         <span className="permit-label">Date</span>
@@ -536,7 +543,7 @@ function PermitCard({ permit, name, permitNo, decisionKey }: { permit: Permit; n
   </article>;
 }
 
-function PrintPreview({ permit, onClose, singleSlip = false }: { permit: Permit; onClose: () => void; singleSlip?: boolean }) {
+function PrintPreview({ permit, approvedPermitNumbers, onClose, singleSlip = false }: { permit: Permit; approvedPermitNumbers: Record<string, string>; onClose: () => void; singleSlip?: boolean }) {
   const sheetsRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
@@ -614,9 +621,9 @@ function PrintPreview({ permit, onClose, singleSlip = false }: { permit: Permit;
     </div>
     <div ref={sheetsRef} className={singleSlip ? "permit-sheets permit-sheets-single" : "permit-sheets"}>
       {singleSlip
-        ? <div className="permit-sheets-single-scale"><PermitCard permit={permit} name={permit.names[0] ?? ""} permitNo={permit.permitNos?.[0] ?? permit.permitNo} decisionKey={permitDecisionKey(permit, 0)} /></div>
+        ? <div className="permit-sheets-single-scale"><PermitCard permit={permit} name={permit.names[0] ?? ""} permitNo={permit.permitNos?.[0] ?? permit.permitNo} decisionKey={permitDecisionKey(permit, 0)} approvedPermitNumbers={approvedPermitNumbers} /></div>
         : sheets.map((sheetNames, sheetIndex) => <div className="permit-sheet" key={sheetIndex}>
-          {sheetNames.map((name, nameIndex) => { const personIndex = sheetIndex * 4 + nameIndex; return <PermitCard permit={permit} name={name} permitNo={permit.permitNos?.[personIndex] ?? permit.permitNo} decisionKey={permitDecisionKey(permit, personIndex)} key={nameIndex} />; })}
+          {sheetNames.map((name, nameIndex) => { const personIndex = sheetIndex * 4 + nameIndex; return <PermitCard permit={permit} name={name} permitNo={permit.permitNos?.[personIndex] ?? permit.permitNo} decisionKey={permitDecisionKey(permit, personIndex)} approvedPermitNumbers={approvedPermitNumbers} key={nameIndex} />; })}
         </div>)}
     </div>
   </div>;
@@ -914,6 +921,7 @@ export default function Home() {
   const [biometricsGreeting, setBiometricsGreeting] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [permits, setPermits] = useState<Permit[]>([]);
+  const [approvedPermitNumbers, setApprovedPermitNumbers] = useState<Record<string, string>>({});
   const [pendingPermitNotifications, setPendingPermitNotifications] = useState<PendingPermitNotification[]>([]);
   const [focusedPermitNotificationKey, setFocusedPermitNotificationKey] = useState<string | null>(null);
   const [specialOrders, setSpecialOrders] = useState<SpecialOrder[]>([]);
@@ -1099,6 +1107,16 @@ export default function Home() {
     return { id: item.id, ...data, names } as Permit;
   })), () => setError("Could not load permits. If this is your first setup, deploy the Firestore index or refresh.")); }, [user]);
   useEffect(() => {
+    if (!user || !db) { setApprovedPermitNumbers({}); return; }
+    return onSnapshot(collection(db, "approvedPermitCalendar"), (snapshot) => {
+      const approvedNumbers = snapshot.docs
+        .map((item) => item.data() as { status?: string; permitNo?: string })
+        .filter((permit): permit is { status: string; permitNo: string } => permit.status === "Approved" && typeof permit.permitNo === "string")
+        .map((permit) => ({ permitNo: permit.permitNo }));
+      setApprovedPermitNumbers(assignApprovedPermitNumbers(approvedNumbers));
+    }, () => setApprovedPermitNumbers({}));
+  }, [user]);
+  useEffect(() => {
     if (!user || !db || !isPermitAdmin(user.email)) {
       setPendingPermitNotifications([]);
       return;
@@ -1181,5 +1199,5 @@ export default function Home() {
   </div>
   <div className="profile-password-actions"><button type="button" className="ghost-button" disabled={profileSaving || resetEmailBusy} onClick={() => void sendResetLink()}>{resetEmailBusy ? "Sending..." : "Reset Password"}</button><button className="primary-button" disabled={profileLoading || profileSaving || resetEmailBusy}>{profileLoading ? "Loading..." : profileSaving ? "Saving..." : "Save Changes"}</button></div>
   {profileMessage && <p className={`auth-message auth-message-${profileMessage.kind}`} role={profileMessage.kind === "error" ? "alert" : "status"}>{profileMessage.text}</p>}
-  </form></section></div>}<main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{philippineDateTime && <>{philippineDateTime.split(" | ")[0]} | <span className="dashboard-time">{philippineDateTime.split(" | ")[1]}</span></>}</p><h1>{biometricsGreeting ?? "Good to see you"}{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "appreciation" ? <AppreciationCertificate user={user} /> : section === "completion" ? <CompletionCertificate user={user} /> : section === "participation" ? <ParticipationCertificate user={user} /> : section === "certificate-of-appearance" ? <CertificateOfAppearance user={user} /> : section === "myar" ? <AccomplishmentReportModule user={user} /> : section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("list"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
+  </form></section></div>}<main className="dashboard"><div className="dashboard-header"><div><p className="eyebrow">{philippineDateTime && <>{philippineDateTime.split(" | ")[0]} | <span className="dashboard-time">{philippineDateTime.split(" | ")[1]}</span></>}</p><h1>{biometricsGreeting ?? "Good to see you"}{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "appreciation" ? <AppreciationCertificate user={user} /> : section === "completion" ? <CompletionCertificate user={user} /> : section === "participation" ? <ParticipationCertificate user={user} /> : section === "certificate-of-appearance" ? <CertificateOfAppearance user={user} /> : section === "myar" ? <AccomplishmentReportModule user={user} /> : section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} approvedPermitNumbers={approvedPermitNumbers} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} onNew={() => { setError(""); setView("list"); }} onPrint={setSpecialOrderPreview} />)}</main>{preview && <PrintPreview permit={preview} approvedPermitNumbers={approvedPermitNumbers} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }
