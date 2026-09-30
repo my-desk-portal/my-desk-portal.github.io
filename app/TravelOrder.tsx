@@ -8,6 +8,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, runTransaction, server
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { parsePersonnelWorkbook, type PersonnelEntry } from "@/lib/personnel";
+import DeleteConfirmation from "./DeleteConfirmation";
 import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import "./travel-order.css";
 
@@ -306,6 +307,7 @@ export default function TravelOrderModule({ user }: { user: User }) {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<TravelOrder | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -325,7 +327,7 @@ export default function TravelOrderModule({ user }: { user: User }) {
 
   async function deleteOrder(order: TravelOrder) {
     const firestore = db;
-    if (!firestore || !window.confirm("Delete this Travel Order? Its assigned TO No. values will be released.")) return;
+    if (!firestore) return;
     setDeletingId(order.id);
     setError("");
     try {
@@ -342,9 +344,11 @@ export default function TravelOrderModule({ user }: { user: User }) {
       await batch.commit();
       setOrders((current) => current.filter((item) => item.id !== order.id));
       setPreview((current) => current?.id === order.id ? null : current);
+      setPendingDelete(null);
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       setError(code ? `Could not delete Travel Order (${code}).` : "Could not delete Travel Order.");
+      setPendingDelete(null);
     } finally {
       setDeletingId(null);
     }
@@ -404,7 +408,8 @@ export default function TravelOrderModule({ user }: { user: User }) {
 
   return <>
     {error && <div className="error-message travel-order-error">{error}</div>}
-    {view === "new" ? <TravelOrderForm user={user} onSaved={(order) => { setOrders((current) => [order, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} onNew={() => { setError(""); setView("new"); }} onPreview={setPreview} onDelete={(order) => void deleteOrder(order)} onStatusChange={changeStatus} updatingId={updatingId} deletingId={deletingId} />}
+    {view === "new" ? <TravelOrderForm user={user} onSaved={(order) => { setOrders((current) => [order, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} onNew={() => { setError(""); setView("new"); }} onPreview={setPreview} onDelete={setPendingDelete} onStatusChange={changeStatus} updatingId={updatingId} deletingId={deletingId} />}
+    <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Travel Order Deletion?" description="Are you sure you want to delete this Travel Order? This action cannot be undone. Its assigned TO No. values will be released." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteOrder(pendingDelete); }} />
     {preview && <TravelOrderPreview order={preview} onClose={() => setPreview(null)} />}
   </>;
 }
