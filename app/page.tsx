@@ -71,6 +71,7 @@ const amiaDocumentTrackingLinks = [
   { label: "Physical Accomplishment Updates", href: "https://docs.google.com/spreadsheets/d/1o5hXhVjfOLbMP2KXvbxbF2OgArBMiSU0/edit?gid=328484245" },
   { label: "Procument Updates", href: "https://docs.google.com/spreadsheets/d/1rnl2NxgAXdhwLki0zFFEf4kGYiOcCqnL/edit?gid=387609537" },
   { label: "Recieved Documents via QR", href: "https://docs.google.com/spreadsheets/d/108R25W_RgTp3Mpgkuz2QmpqdriOg_P6J5Aemu68Db90/edit?gid=115756846" },
+  { label: "Scanned Documents", href: "https://darfoxiii-my.sharepoint.com/my?id=%2Fpersonal%2Famia%5Fcaraga%5Fda%5Fgov%5Fph%2FDocuments%2F2026%20WORKING%20FILES%2FSCANNED%20DOCUMENTS%2DAPPROVED&viewid=a922d1ac%2Da10a%2D4277%2D80dc%2Dd5261e478759" },
   { label: "Special Tasks", href: "https://docs.google.com/spreadsheets/d/1Yc8lndKZSgNwWrbvBUycgDXX27l2SED5/edit?gid=2098609058" },
   { label: "Travel Order Maker 2026", href: "https://docs.google.com/spreadsheets/d/16xng3LBmgNAlBtB115t8ZWzPoPOxXUUQ/edit?gid=8330880" },
   { label: "Travel Orders and Post Travel Reports", href: "https://docs.google.com/spreadsheets/d/1hniVoqkTFN7WmouP2NrFzmfQ4bNWg5sK/edit?gid=1841021416" },
