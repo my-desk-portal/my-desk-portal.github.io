@@ -54,6 +54,26 @@ type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; createdAt?: unknown };
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
+const amiaDocumentTrackingLinks = [
+  { label: "Acknowledgement Receipt", href: "https://docs.google.com/spreadsheets/d/1u7k481x6vKfyV9btnCIOrBHAociNwZBy/edit?gid=1914856634" },
+  { label: "AMIA Properties Under GBA", href: "https://docs.google.com/spreadsheets/d/1jJULlezndneDggyPKiX4C7nWeANdHeMZ/edit?gid=937100823" },
+  { label: "AMIA Staff Directory", href: "https://docs.google.com/spreadsheets/d/1SMIOH-UvvM-edpCBfDO3FfWk7pEFhaKy/edit?gid=16567296" },
+  { label: "AWS Update", href: "https://docs.google.com/spreadsheets/d/11FouwYOU4J1Z6hDMdjg8HGIwQteHBx4o/edit?gid=1735388733" },
+  { label: "Calamity Updates Per Village", href: "https://docs.google.com/spreadsheets/d/1xsYWEK37-Wsaojr0c4viN2iXqIuCr9IN/edit?gid=1833610696" },
+  { label: "Calendar of Activities", href: "https://docs.google.com/spreadsheets/d/1IMPltjcxMqNq4B4ebTYxLCjLYWPiCIA1/edit?gid=1167988669" },
+  { label: "Drafts", href: "https://docs.google.com/spreadsheets/d/1KvwH2K6Fcx9yKKhI-TBPFYmymwU6i3VU/edit?gid=595053097" },
+  { label: "Incoming and Outgoing Basic Correspondence", href: "https://docs.google.com/spreadsheets/d/1xmisHO1IMWiyFQZ6BDrS2Qotbymu5h0b/edit?gid=1840005247" },
+  { label: "IPCRs", href: "https://docs.google.com/spreadsheets/d/19noRNTZNuiqK2Qt5HoKx9Y1t4oajJuPF/edit?gid=1505714350" },
+  { label: "Others", href: "https://docs.google.com/spreadsheets/d/1C0iXV1Z3TIsAxB62c2jB25yfnhjMV3By/edit?gid=1490275197" },
+  { label: "Philip Tracking", href: "https://docs.google.com/spreadsheets/d/1zD8i5ATSJx6__-k5M_reutOdHpfzcgwA/edit?gid=451356015" },
+  { label: "Physical Accomplishment Updates", href: "https://docs.google.com/spreadsheets/d/1o5hXhVjfOLbMP2KXvbxbF2OgArBMiSU0/edit?gid=328484245" },
+  { label: "Procument Updates", href: "https://docs.google.com/spreadsheets/d/1rnl2NxgAXdhwLki0zFFEf4kGYiOcCqnL/edit?gid=387609537" },
+  { label: "Special Tasks", href: "https://docs.google.com/spreadsheets/d/1Yc8lndKZSgNwWrbvBUycgDXX27l2SED5/edit?gid=2098609058" },
+  { label: "Travel Orders and Post Travel Reports", href: "https://docs.google.com/spreadsheets/d/1hniVoqkTFN7WmouP2NrFzmfQ4bNWg5sK/edit?gid=1841021416" },
+  { label: "AMIA Minimum Requirements", href: "https://docs.google.com/spreadsheets/d/1ZkedGbBjqZkJ0UEohZGBoPL3oafdbNlpsRNizUJ9bQY/edit?gid=1817634266" },
+  { label: "Travel Order Maker 2026", href: "https://darfoxiii-my.sharepoint.com/:x:/r/personal/amia_caraga_da_gov_ph/_layouts/15/Doc.aspx?sourcedoc=%7BBDA6EC96-119B-424A-8FFA-D5AE53659C7D%7D&file=2026%20AMIA%20TRAVEL%20ORDER%20MAKER.xlsx&action=default&mobileredirect=true" },
+  { label: "Recieved Documents via QR", href: "https://docs.google.com/spreadsheets/d/108R25W_RgTp3Mpgkuz2QmpqdriOg_P6J5Aemu68Db90/edit?gid=115756846" },
+];
 const profileUnitOptions: { value: Unit; label: string }[] = [
   { value: "AGRISTAT", label: "FOD-AGRISTAT" },
   { value: "AMIA", label: "FOD-AMIA" },
@@ -929,6 +949,7 @@ export default function Home() {
   const [section, setSection] = useState<"permits" | "special-orders" | "nta" | "travel-orders" | "whereabouts-calendar" | "permit-statistics" | "permit-status" | "myar" | "leave-application" | "certificate-of-appearance" | "completion" | "appreciation" | "participation">("whereabouts-calendar");
   const [permitMenuOpen, setPermitMenuOpen] = useState(false);
   const [certificateMenuOpen, setCertificateMenuOpen] = useState(false);
+  const [amiaDocumentMenuOpen, setAmiaDocumentMenuOpen] = useState(false);
   const [preview, setPreview] = useState<Permit | null>(null);
   const [singleSlipPreview, setSingleSlipPreview] = useState(false);
   const [specialOrderPreview, setSpecialOrderPreview] = useState<SpecialOrder | null>(null);
@@ -937,6 +958,7 @@ export default function Home() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileCertificateOpen, setMobileCertificateOpen] = useState(false);
+  const [mobileAmiaDocumentOpen, setMobileAmiaDocumentOpen] = useState(false);
   const [mobilePermitOpen, setMobilePermitOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [changePassword, setChangePassword] = useState("");
@@ -1194,6 +1216,7 @@ export default function Home() {
   function closeMobileNavigation() {
     setMobileMenuOpen(false);
     setMobileCertificateOpen(false);
+    setMobileAmiaDocumentOpen(false);
     setMobilePermitOpen(false);
   }
 
@@ -1217,11 +1240,14 @@ export default function Home() {
       <button className={section === "travel-orders" ? "nav-button active" : "nav-button"} aria-label="Travel Order" title="Travel Order" onClick={() => { setSection("travel-orders"); setView("list"); }}>TO</button>
       <button className={section === "myar" ? "nav-button active" : "nav-button"} onClick={() => { setSection("myar"); setView("list"); }}>myAR</button>
       <button className={section === "leave-application" ? "nav-button active" : "nav-button"} onClick={() => { setSection("leave-application"); setView("list"); }}>Leave Application</button>
+      <div className="nav-dropdown amia-document-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAmiaDocumentMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setAmiaDocumentMenuOpen(false); }}><button type="button" className="nav-button amia-document-nav-button" aria-haspopup="true" aria-expanded={amiaDocumentMenuOpen} aria-controls="amia-document-menu" onClick={() => setAmiaDocumentMenuOpen((open) => !open)}>AMIA Document Tracking <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{amiaDocumentMenuOpen && <div className="nav-dropdown-menu amia-document-nav-menu" id="amia-document-menu">{amiaDocumentTrackingLinks.map((link) => <a className="nav-dropdown-item" href={link.href} key={link.label} target="_blank" rel="noopener noreferrer">{link.label}</a>)}</div>}</div>
       <div className="nav-dropdown certificate-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setCertificateMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setCertificateMenuOpen(false); }}><button type="button" className={section === "certificate-of-appearance" || section === "completion" || section === "appreciation" || section === "participation" ? "nav-button certificate-nav-button active" : "nav-button certificate-nav-button"} aria-haspopup="true" aria-expanded={certificateMenuOpen} aria-controls="certificate-menu" onClick={() => setCertificateMenuOpen((open) => !open)}>Certificate <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{certificateMenuOpen && <div className="nav-dropdown-menu certificate-nav-menu" id="certificate-menu"><button type="button" className={section === "certificate-of-appearance" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("certificate-of-appearance"); setView("list"); setCertificateMenuOpen(false); }}>Appearance</button><button type="button" className={section === "completion" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("completion"); setView("list"); setCertificateMenuOpen(false); }}>Completion</button><button type="button" className={section === "appreciation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("appreciation"); setView("list"); setCertificateMenuOpen(false); }}>Appreciation</button><button type="button" className={section === "participation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("participation"); setView("list"); setCertificateMenuOpen(false); }}>Participation</button></div>}</div>
     </nav><div className="user-menu"><PermitNotificationCenter isAdmin={isAdmin} userId={user.uid} count={notificationCount} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} onAdminOpen={(notification) => { closeMobileNavigation(); setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onViewPermit={(notification) => { closeMobileNavigation(); setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div><button type="button" className="mobile-menu-toggle" aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen} aria-controls="mobile-navigation" onClick={() => setMobileMenuOpen((open) => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 5h18M3 12h18M3 19h18" /></svg></button></header>
 {mobileMenuOpen && <><button type="button" className="mobile-nav-scrim" aria-label="Close navigation" onClick={closeMobileNavigation} /><nav className="mobile-navigation" id="mobile-navigation" aria-label="Mobile navigation">
 <button type="button" className="mobile-profile-link" onClick={() => { closeMobileNavigation(); setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button>
 <div className="mobile-navigation-links">
+<button type="button" className="mobile-nav-link" aria-expanded={mobileAmiaDocumentOpen} aria-controls="mobile-amia-document-menu" onClick={() => setMobileAmiaDocumentOpen((open) => !open)}><span>AMIA Document Tracking</span><span className={mobileAmiaDocumentOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
+{mobileAmiaDocumentOpen && <div className="mobile-nav-submenu mobile-amia-document-submenu" id="mobile-amia-document-menu">{amiaDocumentTrackingLinks.map((link) => <a className="mobile-nav-submenu-link" href={link.href} key={link.label} target="_blank" rel="noopener noreferrer" onClick={closeMobileNavigation}>{link.label}</a>)}</div>}
 <button type="button" className="mobile-nav-link" aria-expanded={mobileCertificateOpen} aria-controls="mobile-certificate-menu" onClick={() => setMobileCertificateOpen((open) => !open)}><span>Certificate</span><span className={mobileCertificateOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
 {mobileCertificateOpen && <div className="mobile-nav-submenu" id="mobile-certificate-menu"><button type="button" onClick={() => { setSection("certificate-of-appearance"); setView("list"); closeMobileNavigation(); }}>Appearance</button><button type="button" onClick={() => { setSection("completion"); setView("list"); closeMobileNavigation(); }}>Completion</button><button type="button" onClick={() => { setSection("appreciation"); setView("list"); closeMobileNavigation(); }}>Appreciation</button><button type="button" onClick={() => { setSection("participation"); setView("list"); closeMobileNavigation(); }}>Participation</button></div>}
 <button type="button" className="mobile-nav-link" onClick={() => { setSection("myar"); setView("list"); closeMobileNavigation(); }}>myAR</button>

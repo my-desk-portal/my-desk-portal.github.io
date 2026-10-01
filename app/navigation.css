@@ -46,6 +46,38 @@
 .topbar .main-nav .nav-button:hover:not(.active){background:#ffffff24;color:#fff}
 .topbar .nav-button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .topbar .nav-dropdown-arrow{color:#fff}
+.topbar .amia-document-nav-button{font-size:11px;padding-left:8px;padding-right:8px}
+.topbar .amia-document-nav-menu{
+  display:grid;
+  gap:4px;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  left:auto;
+  max-height:min(68vh,560px);
+  min-width:0;
+  overflow-y:auto;
+  padding:10px;
+  right:0;
+  width:min(760px,calc(100vw - 32px));
+}
+.topbar .amia-document-nav-menu .nav-dropdown-item{
+  align-items:center;
+  background:transparent;
+  border-radius:8px;
+  cursor:pointer;
+  display:flex;
+  line-height:1.35;
+  min-height:42px;
+  overflow-wrap:anywhere;
+  text-decoration:none;
+  white-space:normal;
+}
+.topbar .amia-document-nav-menu .nav-dropdown-item:hover,
+.topbar .amia-document-nav-menu .nav-dropdown-item:focus-visible{
+  background:var(--mint);
+  color:var(--ink);
+  text-decoration:none;
+}
+.topbar .amia-document-nav-menu .nav-dropdown-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .topbar .user-menu{
   color:#fff;
   flex:0 0 auto;
@@ -76,6 +108,7 @@
 .topbar .profile-dropdown{border-radius:12px;min-width:160px;overflow:hidden;padding:3px;top:calc(100% + 5px)}
 .topbar .profile-dropdown button{line-height:1.25;padding:8px 12px}
 .topbar .nav-dropdown-menu{border-radius:12px;overflow:hidden}
+.topbar .amia-document-nav-menu{overflow-y:auto}
 
 :root{--preview-toolbar-offset:108px}
 .app-shell .preview-backdrop,
@@ -135,6 +168,10 @@
   }
 }
 
+@media(min-width:981px) and (max-width:1150px){
+  .topbar .amia-document-nav-menu{grid-template-columns:repeat(2,minmax(0,1fr));width:min(600px,calc(100vw - 32px))}
+}
+
 @media(max-width:480px){
   :root{--preview-toolbar-offset:122px}
   .topbar{border-width:4px;border-radius:22px;margin:8px 8px 0;padding:4px 7px 6px}
@@ -157,7 +194,7 @@
 .mobile-nav-scrim,
 .mobile-navigation{display:none}
 
-@media(max-width:980px){
+@media(max-width:1120px){
   :root{--preview-toolbar-offset:94px}
   .topbar{
     align-items:center;
@@ -230,6 +267,7 @@
     width:100%;
   }
   .mobile-navigation-links{display:grid;padding:9px clamp(24px,10vw,56px) 0 16px}
+  .mobile-navigation-links{grid-template-columns:minmax(0,1fr)}
   .mobile-nav-link{
     align-items:center;
     background:transparent;
@@ -246,6 +284,7 @@
     text-align:right;
     width:100%;
   }
+  .mobile-nav-link>span:first-child{min-width:0;overflow-wrap:anywhere}
   .mobile-nav-link:focus-visible,.mobile-profile-link:focus-visible,.mobile-nav-submenu button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
   .mobile-nav-chevron{
     border-bottom:1px solid var(--accent);
@@ -267,4 +306,27 @@
     padding:4px 0;
     text-align:right;
   }
+  .mobile-nav-submenu .mobile-nav-submenu-link{
+    background:transparent;
+    border:1px solid transparent;
+    border-radius:8px;
+    color:var(--accent);
+    cursor:pointer;
+    display:block;
+    font-size:14px;
+    line-height:1.35;
+    min-height:42px;
+    overflow-wrap:anywhere;
+    padding:10px 12px;
+    text-align:right;
+    text-decoration:none;
+    width:100%;
+  }
+  .mobile-nav-submenu .mobile-nav-submenu-link:hover,
+  .mobile-nav-submenu .mobile-nav-submenu-link:focus-visible{
+    background:var(--mint);
+    color:var(--ink);
+    text-decoration:none;
+  }
+  .mobile-nav-submenu .mobile-nav-submenu-link:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
 }
