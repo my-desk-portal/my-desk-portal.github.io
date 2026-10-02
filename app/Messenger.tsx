@@ -1,0 +1,332 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { User } from "firebase/auth";
+import { arrayUnion, collection, deleteField, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import DeleteConfirmation from "./DeleteConfirmation";
+import "./messenger.css";
+
+type Person = { id: string; name: string; position: string; unit: string };
+type Chat = { id: string; members: string[]; pending?: boolean; lastText?: string; lastSenderId?: string; lastAt?: Timestamp | null; readAt?: Record<string, Timestamp | null> };
+type MessageKind = "text" | "sticker" | "gif";
+type ReplyRef = { id: string; senderId: string; kind: MessageKind; text: string };
+type Message = { id: string; senderId: string; kind: MessageKind; text: string; deleted?: boolean; reactions?: Record<string, string>; replyTo?: ReplyRef; createdAt?: Timestamp | null };
+type Picker = "emoji" | "sticker" | "gif" | null;
+type GifResult = { id: string; url: string };
+
+const unitOptions = [
+  { value: "All", label: "All Units" },
+  { value: "AGRISTAT", label: "FOD-AGRISTAT" },
+  { value: "AMIA", label: "FOD-AMIA" },
+  { value: "DRRM", label: "FOD-DRRM" },
+];
+const emojis = ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤔", "😅", "😢", "😭", "😡", "🥳", "😴", "🙄", "👍", "👎", "👏", "🙏", "💪", "🤝", "👌", "✌️", "❤️", "💔", "🔥", "✨", "🎉", "✅", "❌", "⭐"];
+const stickers = ["👍", "❤️", "😂", "🎉", "🙏", "😍", "🔥", "👏", "😢", "😎", "🥳", "💯", "🤝", "🙌", "😴", "🤔"];
+const MAX_TEXT = 2000;
+const reactionOptions = [
+  { key: "heart", emoji: "❤️", label: "Love" },
+  { key: "like", emoji: "👍", label: "Like" },
+  { key: "wow", emoji: "😮", label: "Wow" },
+  { key: "sad", emoji: "😢", label: "Sad" },
+  { key: "angry", emoji: "😡", label: "Angry" },
+];
+const giphyKey = process.env.NEXT_PUBLIC_GIPHY_API_KEY;
+
+const chatIdFor = (first: string, second: string) => [first, second].sort().join("_");
+const millis = (value?: Timestamp | null) => value?.toMillis?.() ?? 0;
+const isUnread = (chat: Chat, userId: string) => Boolean(chat.lastSenderId && chat.lastSenderId !== userId && millis(chat.lastAt) > millis(chat.readAt?.[userId]));
+const unitLabel = (unit: string) => unit ? `FOD-${unit}` : "";
+const isHttpsUrl = (value: string) => { try { return new URL(value).protocol === "https:" && value.length <= 500; } catch { return false; } };
+
+function useChats(userId: string) {
+  const [chats, setChats] = useState<Chat[]>([]);
+  useEffect(() => {
+    if (!db) return;
+    return onSnapshot(query(collection(db, "chats"), where("members", "array-contains", userId)), { includeMetadataChanges: true }, (snapshot) => {
+      setChats(snapshot.docs.map((item) => ({ id: item.id, ...item.data(), pending: item.metadata.hasPendingWrites } as Chat)));
+    }, () => setChats([]));
+  }, [userId]);
+  return chats;
+}
+
+export function MessengerButton({ user, active, onClick }: { user: User; active: boolean; onClick: () => void }) {
+  const chats = useChats(user.uid);
+  const unread = chats.filter((chat) => isUnread(chat, user.uid)).length;
+  return <button type="button" className={`notification-button messenger-button${active ? " active" : ""}`} aria-label={`Messages${unread ? `, ${unread} unread` : ""}`} title="Messages" onClick={onClick}>
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.6-.8L3 21l1.9-5.1A8.4 8.4 0 0 1 3 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z" /></svg>
+    {unread > 0 && <span className="notification-badge" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
+  </button>;
+}
+
+export default function MessengerModule({ user }: { user: User }) {
+  const chats = useChats(user.uid);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [loadingPeople, setLoadingPeople] = useState(true);
+  const [search, setSearch] = useState("");
+  const [unitFilter, setUnitFilter] = useState("All");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [draft, setDraft] = useState("");
+  const [picker, setPicker] = useState<Picker>(null);
+  const [gifQuery, setGifQuery] = useState("");
+  const [gifResults, setGifResults] = useState<GifResult[]>([]);
+  const [gifUrl, setGifUrl] = useState("");
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const threadRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    async function loadPeople() {
+      if (!db) { setLoadingPeople(false); return; }
+      try {
+        const snapshot = await getDocs(collection(db, "users"));
+        if (!active) return;
+        setPeople(snapshot.docs.filter((item) => item.id !== user.uid).map((item) => {
+          const data = item.data();
+          return { id: item.id, name: typeof data.name === "string" ? data.name : "", position: typeof data.position === "string" ? data.position : "", unit: typeof data.unit === "string" ? data.unit : "" };
+        }).filter((person) => person.name));
+      } catch {
+        if (active) setError("Could not load people. Refresh and try again.");
+      } finally {
+        if (active) setLoadingPeople(false);
+      }
+    }
+    void loadPeople();
+    return () => { active = false; };
+  }, [user.uid]);
+
+  const chatByPerson = useMemo(() => {
+    const map = new Map<string, Chat>();
+    chats.forEach((chat) => { const other = chat.members.find((id) => id !== user.uid); if (other) map.set(other, chat); });
+    return map;
+  }, [chats, user.uid]);
+
+  const visiblePeople = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase();
+    return people
+      .filter((person) => !term || person.name.toLocaleLowerCase().includes(term))
+      .filter((person) => unitFilter === "All" || person.unit === unitFilter)
+      .sort((left, right) => millis(chatByPerson.get(right.id)?.lastAt) - millis(chatByPerson.get(left.id)?.lastAt) || left.name.localeCompare(right.name, "en", { sensitivity: "base" }));
+  }, [people, search, unitFilter, chatByPerson]);
+
+  const selected = people.find((person) => person.id === selectedId) ?? null;
+  const selectedChat = selectedId ? chatByPerson.get(selectedId) ?? null : null;
+  // Listening before the server has the chat document is denied by the rules, so wait for the write to land.
+  const selectedChatId = selectedChat && !selectedChat.pending ? selectedChat.id : null;
+
+  useEffect(() => {
+    setMessages([]);
+    if (!db || !selectedChatId) return;
+    return onSnapshot(query(collection(db, "chats", selectedChatId, "messages"), orderBy("createdAt", "desc"), limit(100)), (snapshot) => {
+      setMessages(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Message)).reverse());
+      setError("");
+    }, () => setError("Could not load this conversation."));
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    setHiddenIds([]);
+    setMenuFor(null);
+    if (!db || !selectedChatId) return;
+    return onSnapshot(doc(db, "chats", selectedChatId, "hidden", user.uid), (snapshot) => {
+      const ids = snapshot.data()?.ids;
+      setHiddenIds(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []);
+    }, () => setHiddenIds([]));
+  }, [selectedChatId, user.uid]);
+
+  useEffect(() => {
+    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
+  }, [messages, selectedId]);
+
+  const needsRead = Boolean(selectedChat && isUnread(selectedChat, user.uid));
+  useEffect(() => {
+    if (!db || !selectedChatId || !needsRead) return;
+    void updateDoc(doc(db, "chats", selectedChatId), { [`readAt.${user.uid}`]: serverTimestamp() }).catch(() => undefined);
+  }, [selectedChatId, needsRead, messages.length, user.uid]);
+
+  useEffect(() => {
+    if (picker !== "gif" || !giphyKey) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const term = gifQuery.trim();
+        const endpoint = term ? "search" : "trending";
+        const url = `https://api.giphy.com/v1/gifs/${endpoint}?api_key=${encodeURIComponent(giphyKey)}&limit=18&rating=g${term ? `&q=${encodeURIComponent(term)}` : ""}`;
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) throw new Error("GIF search failed.");
+        const body = await response.json() as { data?: { id: string; images?: { fixed_height?: { url?: string } } }[] };
+        setGifResults((body.data ?? []).flatMap((item) => item.images?.fixed_height?.url ? [{ id: item.id, url: item.images.fixed_height.url }] : []));
+      } catch {
+        if (!controller.signal.aborted) setGifResults([]);
+      }
+    }, 300);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [picker, gifQuery]);
+
+  async function send(kind: MessageKind, text: string) {
+    const value = text.trim();
+    if (!db || !selected || !value || sending) return;
+    if (value.length > MAX_TEXT) { setError(`Messages can contain up to ${MAX_TEXT} characters.`); return; }
+    if (kind === "gif" && !isHttpsUrl(value)) { setError("Enter a valid https link to a GIF."); return; }
+    setSending(true);
+    setError("");
+    try {
+      const chatId = chatIdFor(user.uid, selected.id);
+      const chatRef = doc(db, "chats", chatId);
+      const batch = writeBatch(db);
+      batch.set(chatRef, {
+        members: [user.uid, selected.id].sort(),
+        lastText: kind === "text" ? value.slice(0, 120) : kind === "sticker" ? "Sent a sticker" : "Sent a GIF",
+        lastSenderId: user.uid,
+        lastAt: serverTimestamp(),
+        readAt: { [user.uid]: serverTimestamp() },
+      }, { merge: true });
+      batch.set(doc(collection(chatRef, "messages")), {
+        senderId: user.uid, kind, text: value, createdAt: serverTimestamp(),
+        ...(replyTo ? { replyTo: { id: replyTo.id, senderId: replyTo.senderId, kind: replyTo.kind, text: replyTo.kind === "text" ? replyTo.text.slice(0, 120) : replyTo.kind === "sticker" ? "Sticker" : "GIF" } } : {}),
+      });
+      await batch.commit();
+      if (kind === "text") setDraft("");
+      setReplyTo(null);
+      setPicker(null);
+      setGifUrl("");
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not send the message (${code}).` : "Could not send the message.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function react(message: Message, key: string) {
+    if (!db || !selectedChatId) return;
+    setMenuFor(null);
+    setError("");
+    const mine = message.reactions?.[user.uid];
+    try {
+      await updateDoc(doc(db, "chats", selectedChatId, "messages", message.id), { [`reactions.${user.uid}`]: mine === key ? deleteField() : key });
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not react to the message (${code}).` : "Could not react to the message.");
+    }
+  }
+
+  async function hideMessage(message: Message) {
+    if (!db || !selectedChatId) return;
+    setMenuFor(null);
+    setError("");
+    try {
+      await setDoc(doc(db, "chats", selectedChatId, "hidden", user.uid), { ids: arrayUnion(message.id) }, { merge: true });
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not hide the message (${code}).` : "Could not hide the message.");
+    }
+  }
+
+  async function removeMessage(message: Message) {
+    if (!db || !selectedChatId) return;
+    setDeleting(true);
+    setError("");
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "chats", selectedChatId, "messages", message.id), { deleted: true, kind: "text", text: "" });
+      if (messages[messages.length - 1]?.id === message.id) batch.update(doc(db, "chats", selectedChatId), { lastText: "Message deleted" });
+      await batch.commit();
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not delete the message (${code}).` : "Could not delete the message.");
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+    }
+  }
+
+  function formatTime(value?: Timestamp | null) {
+    const date = value?.toDate?.();
+    if (!date) return "";
+    const sameDay = date.toDateString() === new Date().toDateString();
+    return new Intl.DateTimeFormat("en-PH", sameDay ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+  }
+
+  return <section className={`messenger${selected ? " has-selected" : ""}`} aria-label="Messenger">
+    <aside className="messenger-people">
+      <header><h2>Messages</h2></header>
+      <div className="messenger-filters">
+        <label>Search by Name<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by Name" /></label>
+        <label>Filter by Unit<select value={unitFilter} onChange={(event) => setUnitFilter(event.target.value)}>{unitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+      </div>
+      <ul className="messenger-people-list">
+        {loadingPeople && <li className="messenger-empty">Loading people…</li>}
+        {!loadingPeople && visiblePeople.length === 0 && <li className="messenger-empty">No people match your search.</li>}
+        {visiblePeople.map((person) => {
+          const chat = chatByPerson.get(person.id);
+          const unread = chat ? isUnread(chat, user.uid) : false;
+          return <li key={person.id}><button type="button" className={`messenger-person${selectedId === person.id ? " active" : ""}${unread ? " unread" : ""}`} onClick={() => { setSelectedId(person.id); setPicker(null); setError(""); }}>
+            <span className="messenger-avatar" aria-hidden="true">{person.name.charAt(0).toUpperCase()}</span>
+            <span className="messenger-person-text"><strong>{person.name}</strong><small>{chat?.lastText ? `${chat.lastSenderId === user.uid ? "You: " : ""}${chat.lastText}` : unitLabel(person.unit) || person.position}</small></span>
+            {unread && <span className="messenger-unread-dot" aria-label="Unread" />}
+          </button></li>;
+        })}
+      </ul>
+    </aside>
+    <div className="messenger-chat">
+      {!selected ? <div className="messenger-placeholder"><strong>Select a person</strong><p>Choose someone from the list to start a conversation.</p></div> : <>
+        <header className="messenger-chat-header">
+          <button type="button" className="messenger-back" onClick={() => setSelectedId(null)} aria-label="Back to people">‹</button>
+          <span className="messenger-avatar" aria-hidden="true">{selected.name.charAt(0).toUpperCase()}</span>
+          <div><strong>{selected.name}</strong><small>{[selected.position, unitLabel(selected.unit)].filter(Boolean).join(" · ")}</small></div>
+        </header>
+        <div className="messenger-thread" ref={threadRef}>
+          {messages.filter((message) => !hiddenIds.includes(message.id)).length === 0 && <p className="messenger-empty">No messages yet. Say hello!</p>}
+          {messages.filter((message) => !hiddenIds.includes(message.id)).map((message) => {
+            const mine = message.senderId === user.uid;
+            return <div className={`messenger-message${mine ? " mine" : ""}`} key={message.id}>
+              {message.replyTo && !message.deleted && <span className="messenger-reply-quote"><b>{message.replyTo.senderId === user.uid ? "You" : selected.name}</b>{message.replyTo.text}</span>}
+              <div className="messenger-message-row" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenuFor(null); }}>
+                <span className={`messenger-actions${menuFor?.endsWith(`:${message.id}`) ? " is-open" : ""}`}>
+                  <span className="messenger-action-wrap">
+                    <button type="button" className="messenger-action" aria-label="More actions" title="More actions" aria-expanded={menuFor === `more:${message.id}`} onClick={() => setMenuFor((current) => current === `more:${message.id}` ? null : `more:${message.id}`)}>&#8942;</button>
+                    {menuFor === `more:${message.id}` && <span className="messenger-menu" role="menu"><button type="button" role="menuitem" onClick={() => void hideMessage(message)}>Hide for me</button>{mine && !message.deleted && <button type="button" role="menuitem" onClick={() => { setMenuFor(null); setPendingDelete(message); }}>Delete for everyone</button>}</span>}
+                  </span>
+                  {!message.deleted && <button type="button" className="messenger-action" aria-label="Reply to this message" title="Reply" onClick={() => { setReplyTo(message); setMenuFor(null); }}>&#8617;</button>}
+                  {!message.deleted && <span className="messenger-action-wrap">
+                    <button type="button" className="messenger-action" aria-label="React" title="React" aria-expanded={menuFor === `react:${message.id}`} onClick={() => setMenuFor((current) => current === `react:${message.id}` ? null : `react:${message.id}`)}>&#9786;</button>
+                    {menuFor === `react:${message.id}` && <span className="messenger-menu messenger-reaction-bar" role="menu">{reactionOptions.map((option) => <button type="button" key={option.key} role="menuitem" title={option.label} aria-label={option.label} className={message.reactions?.[user.uid] === option.key ? "is-mine" : ""} onClick={() => void react(message, option.key)}>{option.emoji}</button>)}</span>}
+                  </span>}
+                </span>
+                {message.deleted ? <span className="messenger-deleted">{mine ? "You deleted a message." : `${selected.name} deleted a message.`}</span> : message.kind === "sticker" ? <span className="messenger-sticker">{message.text}</span>
+                  : message.kind === "gif" ? isHttpsUrl(message.text) ? <img className="messenger-gif" src={message.text} alt="GIF" referrerPolicy="no-referrer" loading="lazy" /> : null
+                  : <span className="messenger-bubble">{message.text}</span>}
+              </div>
+              {Object.keys(message.reactions ?? {}).length > 0 && !message.deleted && <span className="messenger-reactions">{reactionOptions.map((option) => { const count = Object.values(message.reactions ?? {}).filter((value) => value === option.key).length; return count > 0 ? <button type="button" key={option.key} className={message.reactions?.[user.uid] === option.key ? "is-mine" : ""} title={option.label} onClick={() => void react(message, option.key)}>{option.emoji}{count > 1 ? ` ${count}` : ""}</button> : null; })}</span>}
+              <small>{formatTime(message.createdAt)}</small>
+            </div>;
+          })}
+        </div>
+        {error && <p className="messenger-error" role="alert">{error}</p>}
+        {picker && <div className="messenger-picker">
+          {picker === "emoji" && <div className="messenger-emoji-grid">{emojis.map((emoji) => <button type="button" key={emoji} onClick={() => setDraft((current) => `${current}${emoji}`)}>{emoji}</button>)}</div>}
+          {picker === "sticker" && <div className="messenger-sticker-grid">{stickers.map((sticker) => <button type="button" key={sticker} onClick={() => void send("sticker", sticker)} disabled={sending}>{sticker}</button>)}</div>}
+          {picker === "gif" && (giphyKey
+            ? <><input type="search" value={gifQuery} onChange={(event) => setGifQuery(event.target.value)} placeholder="Search GIFs" aria-label="Search GIFs" /><div className="messenger-gif-grid">{gifResults.map((gif) => <button type="button" key={gif.id} onClick={() => void send("gif", gif.url)} disabled={sending}><img src={gif.url} alt="GIF result" referrerPolicy="no-referrer" loading="lazy" /></button>)}</div></>
+            : <form className="messenger-gif-link" onSubmit={(event) => { event.preventDefault(); void send("gif", gifUrl); }}><input type="url" value={gifUrl} onChange={(event) => setGifUrl(event.target.value)} placeholder="Paste a GIF link (https://…)" aria-label="GIF link" required /><button className="primary-button" disabled={sending}>Send GIF</button></form>)}
+        </div>}
+        {replyTo && <div className="messenger-reply-bar"><span>Replying to <b>{replyTo.senderId === user.uid ? "yourself" : selected.name}</b><em>{replyTo.kind === "text" ? replyTo.text : replyTo.kind === "sticker" ? "Sticker" : "GIF"}</em></span><button type="button" aria-label="Cancel reply" onClick={() => setReplyTo(null)}>×</button></div>}
+        <form className="messenger-composer" onSubmit={(event) => { event.preventDefault(); void send("text", draft); }}>
+          <button type="button" className={`messenger-tool${picker === "emoji" ? " active" : ""}`} aria-label="Emoji" title="Emoji" onClick={() => setPicker((current) => current === "emoji" ? null : "emoji")}>😊</button>
+          <button type="button" className={`messenger-tool${picker === "sticker" ? " active" : ""}`} aria-label="Stickers" title="Stickers" onClick={() => setPicker((current) => current === "sticker" ? null : "sticker")}>🏷️</button>
+          <button type="button" className={`messenger-tool messenger-tool-gif${picker === "gif" ? " active" : ""}`} aria-label="GIF" title="GIF" onClick={() => setPicker((current) => current === "gif" ? null : "gif")}>GIF</button>
+          <input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={MAX_TEXT} placeholder="Type a message" aria-label="Message" autoComplete="off" />
+          <button className="primary-button" disabled={sending || !draft.trim()}>Send</button>
+        </form>
+      </>}
+    </div>
+    <DeleteConfirmation open={pendingDelete !== null} title="Delete message for everyone?" description={'The message will be replaced with "You deleted a message." for everyone in the conversation. This cannot be undone.'} busy={deleting} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void removeMessage(pendingDelete); }} />
+  </section>;
+}

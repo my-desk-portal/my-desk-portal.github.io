@@ -78,3 +78,17 @@
     justify-self: end;
   }
 }
+
+.permit-slip-create-form > .permit-date-field input,
+.permit-slip-create-form > .permit-purpose-field textarea {
+  box-sizing: border-box;
+  height: 54px;
+  min-height: 54px;
+}
+
+.permit-slip-create-form > .permit-purpose-field textarea {
+  display: block;
+  line-height: 1.4;
+  overflow-y: auto;
+  resize: none;
+}

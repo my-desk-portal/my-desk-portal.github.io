@@ -43,6 +43,69 @@ service cloud.firestore {
         && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"];
       allow delete: if false;
     }
+    match /chats/{chatId} {
+      allow read: if isVerifiedUser() && request.auth.uid in resource.data.members;
+      allow create: if isVerifiedUser()
+        && request.resource.data.keys().hasOnly(["members", "lastText", "lastSenderId", "lastAt", "readAt"])
+        && request.resource.data.members is list
+        && request.resource.data.members.size() == 2
+        && request.auth.uid in request.resource.data.members
+        && chatId == request.resource.data.members[0] + "_" + request.resource.data.members[1]
+        && request.resource.data.lastSenderId == request.auth.uid
+        && request.resource.data.lastText is string
+        && request.resource.data.lastText.size() <= 200;
+      allow update: if isVerifiedUser()
+        && request.auth.uid in resource.data.members
+        && request.resource.data.members == resource.data.members
+        && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt"])
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["lastText", "lastSenderId", "lastAt", "readAt"])
+            && request.resource.data.lastSenderId == request.auth.uid
+            && request.resource.data.lastText is string
+            && request.resource.data.lastText.size() <= 200));
+      allow delete: if false;
+      match /hidden/{userId} {
+        allow read, write: if isVerifiedUser()
+          && request.auth.uid == userId
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members
+          && (request.method == "delete"
+            || (request.resource.data.keys().hasOnly(["ids"])
+              && request.resource.data.ids is list
+              && request.resource.data.ids.size() <= 500));
+      }
+      match /messages/{messageId} {
+        allow read: if isVerifiedUser()
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members;
+        allow create: if isVerifiedUser()
+          && request.auth.uid in getAfter(/databases/$(database)/documents/chats/$(chatId)).data.members
+          && request.resource.data.keys().hasOnly(["senderId", "kind", "text", "createdAt", "replyTo"])
+          && (!request.resource.data.keys().hasAny(["replyTo"])
+            || (request.resource.data.replyTo is map
+              && request.resource.data.replyTo.keys().hasOnly(["id", "senderId", "kind", "text"])
+              && request.resource.data.replyTo.text is string
+              && request.resource.data.replyTo.text.size() <= 200))
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.kind in ["text", "sticker", "gif"]
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && (request.resource.data.kind != "gif" || request.resource.data.text.matches("^https://[^ ]+$"))
+          && request.resource.data.createdAt == request.time;
+        allow update: if isVerifiedUser()
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members
+          && ((resource.data.senderId == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["deleted", "text", "kind"])
+              && request.resource.data.deleted == true
+              && request.resource.data.kind == "text"
+              && request.resource.data.text == "")
+            || (resource.data.get("deleted", false) == false
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["reactions"])
+              && request.resource.data.reactions is map
+              && request.resource.data.reactions.diff(resource.data.get("reactions", {})).affectedKeys().hasOnly([request.auth.uid])
+              && (!(request.auth.uid in request.resource.data.reactions)
+                || request.resource.data.reactions[request.auth.uid] in ["heart", "like", "wow", "sad", "angry"])));
+        allow delete: if false;
+      }
+    }
     match /calendarOfActivities/{calendarId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
         || resource.data.status == "Approved");
