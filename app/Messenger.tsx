@@ -36,7 +36,7 @@ const giphyKey = process.env.NEXT_PUBLIC_GIPHY_API_KEY;
 const chatIdFor = (first: string, second: string) => [first, second].sort().join("_");
 const millis = (value?: Timestamp | null) => value?.toMillis?.() ?? 0;
 const isUnread = (chat: Chat, userId: string) => Boolean(chat.lastSenderId && chat.lastSenderId !== userId && millis(chat.lastAt) > millis(chat.readAt?.[userId]));
-const unitLabel = (unit: string) => unit ? `FOD-${unit}` : "";
+const unitLabel = (unit: string) => unit === "Field Operations Division" ? unit : unit ? `FOD-${unit}` : "";
 const isHttpsUrl = (value: string) => { try { return new URL(value).protocol === "https:" && value.length <= 500; } catch { return false; } };
 
 type LinkPreviewData = { title?: string; description?: string; image?: string; publisher?: string };
