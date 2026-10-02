@@ -55,7 +55,7 @@ type SpecialOrder = { id: string; subject: string; activityTitle: string; organi
 
 const specialOrderSignatories = [
   { name: "ENGR. RICARDO P. OÑATE JR.", designation: "Regional Executive Director" },
-  { name: "REBECCA R. ATEGA", designation: "Regional Technical Director" },
+  { name: "REBECCA R. ATEGA", designation: "RTD for Operations" },
 ] as const;
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];

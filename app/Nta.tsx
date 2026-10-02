@@ -45,7 +45,7 @@ type NtaRecord = {
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const ntaSignatories = [
   { name: "ENGR. RICARDO P. OÑATE JR.", designation: "Regional Executive Director" },
-  { name: "REBECCA R. ATEGA", designation: "Regional Technical Director" },
+  { name: "REBECCA R. ATEGA", designation: "RTD for Operations" },
 ] as const;
 const legacySignatoryName = "MELODY M. GUIMARY";
 const legacySignatoryDesignation = "Chief, Field Operations Division";
