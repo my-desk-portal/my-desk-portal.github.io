@@ -31,6 +31,8 @@ type NtaRecord = {
   subject: string;
   activityTitle: string;
   organizer: string;
+  signatoryName?: string;
+  signatoryDesignation?: string;
   dateFrom?: string;
   dateTo?: string;
   venueType?: "physical" | "virtual";
@@ -41,6 +43,8 @@ type NtaRecord = {
 };
 
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+const defaultSignatoryName = "MELODY M. GUIMARY";
+const defaultSignatoryDesignation = "Chief, Field Operations Division";
 const formatDate = (date: string) => date ? new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "Asia/Manila" }).format(new Date(`${date}T12:00:00+08:00`)) : "";
 const formatDateRange = (from: string, to: string) => from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`;
 const initialBatch = (): NtaBatch => ({ number: "1", dateFrom: "", dateTo: "", timeFrom: "", timeTo: "", venueType: "physical", venue: "", link: "", attendees: [{ name: "", office: "" }] });
@@ -52,6 +56,8 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
   const [subject, setSubject] = useState("");
   const [activityTitle, setActivityTitle] = useState("");
   const [organizer, setOrganizer] = useState("");
+  const [signatoryName, setSignatoryName] = useState(defaultSignatoryName);
+  const [signatoryDesignation, setSignatoryDesignation] = useState(defaultSignatoryDesignation);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [venueType, setVenueType] = useState<"physical" | "virtual">("physical");
@@ -96,7 +102,7 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
     event.preventDefault();
     if (!db) { setError("Database is not configured."); return; }
     setBusy(true); setError("");
-    const common = { mode, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
+    const common = { mode, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), signatoryName: signatoryName.trim(), signatoryDesignation: signatoryDesignation.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
     try {
       const data = mode === "individual"
         ? { ...common, to: to.trim(), positionDesignation: positionDesignation.trim(), dateFrom, dateTo, venueType, venue: venue.trim(), link: venueType === "virtual" ? link.trim() : "" }
@@ -138,6 +144,8 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
           {batches.length > 1 && <button type="button" className="remove-participant nta-remove-batch" onClick={() => setBatches((current) => current.filter((_, index) => index !== batchIndex))}>Remove group</button>}
         </fieldset>)}<button type="button" className="text-button" onClick={() => setBatches((current) => [...current, { ...initialBatch(), number: String(current.length + 1) }])}>+ Add group</button></div>
       </>}
+      <label>Signatory Name<input value={signatoryName} onChange={(event) => setSignatoryName(event.target.value)} maxLength={160} required /></label>
+      <label>Signatory Designation<input value={signatoryDesignation} onChange={(event) => setSignatoryDesignation(event.target.value)} maxLength={160} required /></label>
       <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
@@ -173,13 +181,15 @@ function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, hid
   const batches = record.batches ?? [];
   const individual = page === "individual";
   const batchOverview = page === "batch-overview";
+  const signatoryName = record.signatoryName || defaultSignatoryName;
+  const signatoryDesignation = record.signatoryDesignation || defaultSignatoryDesignation;
   return <article className="nta-document-page"><img className="nta-letterhead" src={asset("/Document-Header-Footer.jpg")} alt="" /><div className={`nta-document-content ${page}${showFixedCopy ? " nta-roster-copy-page" : ""}${hideFixedCopy ? " nta-roster-copy-hidden" : ""}`}>
     {(individual || batchOverview) && <header className="nta-doc-title"><h1>NOTICE TO ATTEND</h1><p>No. ____________________</p><p>Series of {new Date().getFullYear()}</p></header>}
-    {page === "batch-copy" ? <NtaFixedCopy /> : page === "individual-continuation" ? <NtaIndividualClosing units={individualClosingUnits} continuation /> : individual ? <>
+    {page === "batch-copy" ? <NtaFixedCopy /> : page === "individual-continuation" ? <NtaIndividualClosing units={individualClosingUnits} signatoryName={signatoryName} signatoryDesignation={signatoryDesignation} continuation /> : individual ? <>
       <section className="nta-to-subject"><div className="nta-to-recipient"><p><b>TO</b><strong>:</strong><strong>{record.to?.toUpperCase()}</strong></p>{record.positionDesignation && <p className="nta-position-line"><span aria-hidden="true" /><span aria-hidden="true" /><span>{record.positionDesignation}</span></p>}</div><p><b>SUBJECT</b><strong>:</strong><strong>{record.subject.toUpperCase()}</strong></p></section>
       <hr className="nta-rule" /><p className="nta-directed">You are hereby directed to attend the activity with the following details:</p>
       <dl className="nta-details"><div><dt>Title of Activity</dt><b>:</b><dd>{record.activityTitle}</dd></div><div><dt>Organizer / Host</dt><b>:</b><dd>{record.organizer}</dd></div><div><dt>Date(s)</dt><b>:</b><dd>{formatDateRange(record.dateFrom ?? "", record.dateTo ?? "")}</dd></div><div><dt>Venue / Platform</dt><b>:</b><dd>{record.venue}</dd></div>{record.venueType === "virtual" && <div><dt>Link</dt><b>:</b><dd className="nta-link">{record.link}</dd></div>}</dl>
-      <NtaIndividualClosing units={individualClosingUnits} signatoryPulledBack={individualSignatoryPulledBack} />
+      <NtaIndividualClosing units={individualClosingUnits} signatoryName={signatoryName} signatoryDesignation={signatoryDesignation} signatoryPulledBack={individualSignatoryPulledBack} />
     </> : batchOverview ? <>
       <section className="nta-to-subject"><p><b>TO</b><strong>:</strong><strong>ALL CONCERNED PERSONNEL</strong></p><p className="nta-office-line"><span /> <strong>This Office</strong></p><p><b>SUBJECT</b><strong>:</strong><strong>{record.subject.toUpperCase()}</strong></p></section>
       <hr className="nta-rule" /><p className="nta-directed">You are hereby directed to attend the activity with the following details:</p>
@@ -196,15 +206,15 @@ function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, hid
       <div className="nta-batch-tables">{rosterSections.map((section) => <NtaBatchTable batch={{ ...section.batch, attendees: section.attendees }} startIndex={section.startIndex} showCaption={!section.continued} key={`${section.batchIndex}-${section.startIndex}`} />)}</div>
       {showFixedCopy && <NtaFixedCopy />}
     </>}
-    {(showFixedCopy && (page === "batch-overview" || page === "batch-attendees" || page === "batch-copy")) && <footer className="nta-signatory"><strong>MELODY M. GUIMARY</strong><span><i>Chief</i>, Field Operations Division</span></footer>}
+    {(showFixedCopy && (page === "batch-overview" || page === "batch-attendees" || page === "batch-copy")) && <footer className="nta-signatory"><strong>{signatoryName}</strong><span>{signatoryDesignation === defaultSignatoryDesignation ? <><i>Chief</i>, Field Operations Division</> : signatoryDesignation}</span></footer>}
   </div></article>;
 }
 
-function NtaIndividualClosing({ units, signatoryPulledBack = false, continuation = false }: { units: NtaIndividualClosingUnit[]; signatoryPulledBack?: boolean; continuation?: boolean }) {
+function NtaIndividualClosing({ units, signatoryName, signatoryDesignation, signatoryPulledBack = false, continuation = false }: { units: NtaIndividualClosingUnit[]; signatoryName: string; signatoryDesignation: string; signatoryPulledBack?: boolean; continuation?: boolean }) {
   if (units.length === 0) return null;
   return <div className={`nta-individual-closing${continuation ? " nta-individual-closing-continuation" : ""}${signatoryPulledBack ? " nta-individual-closing-pulled" : ""}`}>
     {units.map((unit) => {
-      if (unit === "signatory") return <footer className="nta-signatory nta-individual-closing-unit" data-nta-individual-closing-unit key={unit}><strong>MELODY M. GUIMARY</strong><span><i>Chief</i>, Field Operations Division</span></footer>;
+      if (unit === "signatory") return <footer className="nta-signatory nta-individual-closing-unit" data-nta-individual-closing-unit key={unit}><strong>{signatoryName}</strong><span>{signatoryDesignation === defaultSignatoryDesignation ? <><i>Chief</i>, Field Operations Division</> : signatoryDesignation}</span></footer>;
       const copy = {
         feedback: "As a representative, you are expected to actively participate and note key discussions and agreements. A brief report of feedback shall be submitted within ____ days after the activity.",
         expenses: "Travel and other incidental expenses, if any, shall be subject to existing accounting and auditing rules and regulations.",
