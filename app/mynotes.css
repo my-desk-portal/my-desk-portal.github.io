@@ -36,8 +36,6 @@
 .my-notes-drag-grip:active{cursor:grabbing}
 .my-notes-drag-grip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .my-notes-grip-icon{fill:currentColor;height:22px;width:14px}
-.my-notes-remove-task{background:#dc2626;border:1px solid #dc2626;color:#fff;cursor:pointer;font:inherit;font-size:11px;min-height:40px;padding:0 12px}
-.my-notes-remove-task:hover{background:#b91c1c;border-color:#b91c1c;color:#fff}
 .my-notes-add-task{justify-self:start}
 .my-notes-form-actions{gap:.1in;grid-column:auto;margin:0;padding-top:16px}
 .my-notes-table-scroll{max-width:100%;overflow-x:auto}

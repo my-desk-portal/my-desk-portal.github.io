@@ -412,7 +412,7 @@ function AppreciationSpeakersFieldset({ speakers, onChange, onAdd, onRemove }: {
       <label>Gender<select name="speaker-gender" value={speaker.gender} onChange={(event) => onChange(index, { gender: event.target.value as AppreciationSpeakerDraft["gender"] })} required><option value="" disabled>Select gender</option><option value="female">Female</option><option value="male">Male</option></select></label>
       <label>Position<input name="speaker-position" maxLength={180} value={speaker.position} onChange={(event) => onChange(index, { position: event.target.value })} required /></label>
       <label>Office<input name="speaker-office" maxLength={240} value={speaker.office} onChange={(event) => onChange(index, { office: event.target.value })} required /></label>
-      {speakers.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove speaker ${index + 1}`} onClick={() => onRemove(index)}>Remove</button>}
+      {speakers.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete speaker ${index + 1}`} onClick={() => onRemove(index)}>Delete</button>}
     </div>)}
     <button type="button" className="text-button" disabled={speakers.length >= MAX_SPEAKERS} onClick={onAdd}>+ Add speaker</button>
   </fieldset>;

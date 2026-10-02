@@ -140,7 +140,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
           <label>Name<select value={person.name} onChange={(event) => { const name = event.target.value; updatePerson(index, { name, position: personnel.find((entry) => entry.name === name)?.position ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((entry) => <option key={entry.name} value={entry.name}>{entry.name}</option>)}</select></label>
           <label>Position<input value={person.position} readOnly required /></label>
           <label>Salary per Month <span className="muted-inline">(optional)</span><input value={person.salary} onChange={(event) => updatePerson(index, { salary: event.target.value })} placeholder="e.g. 25,000.00" /></label>
-          {people.length > 1 && <button type="button" className="remove-participant" onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove person</button>}
+          {people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}
         </fieldset>)}
         <button type="button" className="text-button" onClick={() => setPeople((current) => [...current, { name: "", position: "", salary: "" }])}>+ Add a Person</button>
       </div>

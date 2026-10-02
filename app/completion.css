@@ -20,7 +20,6 @@
 .completion-participants-hint{color:var(--muted);font-size:12px;line-height:1.45;margin:0}
 .completion-name-row{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) auto;min-width:0}
 .completion-name-row label,.completion-name-row input{min-width:0}
-.completion-name-row .remove-participant{padding:10px 4px}
 .completion-participants-fieldset>.text-button{justify-self:start}
 .completion-schedule{display:grid;gap:18px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .completion-date-range,.completion-time-range{align-items:end;display:grid;gap:9px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);min-width:0}

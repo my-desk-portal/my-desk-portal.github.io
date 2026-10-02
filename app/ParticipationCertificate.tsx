@@ -421,7 +421,7 @@ function ParticipationParticipantsFieldset({ participants, onChange, onAdd, onRe
       <h3>Participant {index + 1}</h3>
       <label>Name<input name="participant-name" maxLength={180} value={participant.name} onChange={(event) => onChange(index, { name: event.target.value })} required /></label>
       <label>Gender<select name="participant-gender" value={participant.gender} onChange={(event) => onChange(index, { gender: event.target.value as ParticipantDraft["gender"] })} required><option value="" disabled>Select gender</option><option value="female">Female</option><option value="male">Male</option></select></label>
-      {participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Remove participant ${index + 1}`} onClick={() => onRemove(index)}>Remove</button>}
+      {participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete participant ${index + 1}`} onClick={() => onRemove(index)}>Delete</button>}
     </div>)}
     <button type="button" className="text-button" disabled={participants.length >= MAX_PARTICIPANTS} onClick={onAdd}>+ Add participant</button>
   </fieldset>;

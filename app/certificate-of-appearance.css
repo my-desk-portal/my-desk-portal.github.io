@@ -16,7 +16,6 @@
 .coa-people-fieldset{border:1px solid var(--line);display:grid;gap:14px;margin:0;padding:16px}
 .coa-people-fieldset legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:12px;padding:0 8px}
 .coa-person-row{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,2fr) minmax(140px,1fr) minmax(0,2fr) auto}
-.coa-person-row .remove-participant{padding:13px 4px}
 .coa-people-fieldset>.text-button{justify-self:start}
 .coa-preview-backdrop{z-index:30}
 .coa-preview-toolbar{max-width:210mm}

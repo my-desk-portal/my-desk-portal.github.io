@@ -29,8 +29,6 @@
 .ar-drag-activity:active{cursor:grabbing}
 .ar-drag-activity:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ar-drag-grip{fill:currentColor;height:22px;width:14px}
-.ar-remove-activity{background:#dc2626;border:1px solid #dc2626;color:#fff;cursor:pointer;font:inherit;font-size:11px;min-height:40px;padding:0 12px}
-.ar-remove-activity:hover{background:#b91c1c;border-color:#b91c1c;color:#fff}
 .ar-add-activity{justify-self:start}
 .ar-form-actions{gap:.1in;grid-column:auto;margin:0;padding-top:16px}
 .ar-add-report-button{flex:0 0 auto;white-space:nowrap}

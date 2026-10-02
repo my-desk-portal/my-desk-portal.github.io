@@ -20,12 +20,10 @@
 .participation-participants-hint{color:var(--muted);font-size:12px;line-height:1.45;margin:0}
 .participation-name-row{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) auto;min-width:0}
 .participation-name-row label,.participation-name-row input{min-width:0}
-.participation-name-row .remove-participant{padding:10px 4px}
 .participation-participants-fieldset>.text-button{justify-self:start}
 .participation-person-card{align-items:end;border:1px solid var(--line);display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(150px,.45fr) auto;min-width:0;padding:14px}
 .participation-person-card h3{color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;grid-column:1/-1;letter-spacing:.06em;margin:0;text-transform:uppercase}
 .participation-person-card label,.participation-person-card input,.participation-person-card select{min-width:0}
-.participation-person-card .remove-participant{padding:10px 4px}
 .participation-schedule{display:grid;gap:18px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .participation-date-range,.participation-time-range{align-items:end;display:grid;gap:9px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);min-width:0}
 .participation-date-range label,.participation-time-range label,.participation-date-range input,.participation-time-range input{max-width:100%;min-width:0}
