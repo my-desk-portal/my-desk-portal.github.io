@@ -64,13 +64,15 @@ service cloud.firestore {
             && request.resource.data.lastText.size() <= 200));
       allow delete: if false;
       match /hidden/{userId} {
-        allow read, write: if isVerifiedUser()
+        allow read, delete: if isVerifiedUser()
+          && request.auth.uid == userId
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members;
+        allow create, update: if isVerifiedUser()
           && request.auth.uid == userId
           && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members
-          && (request.method == "delete"
-            || (request.resource.data.keys().hasOnly(["ids"])
-              && request.resource.data.ids is list
-              && request.resource.data.ids.size() <= 500));
+          && request.resource.data.keys().hasOnly(["ids"])
+          && request.resource.data.ids is list
+          && request.resource.data.ids.size() <= 500;
       }
       match /messages/{messageId} {
         allow read: if isVerifiedUser()

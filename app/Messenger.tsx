@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
 import { arrayUnion, collection, deleteField, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -38,6 +38,55 @@ const millis = (value?: Timestamp | null) => value?.toMillis?.() ?? 0;
 const isUnread = (chat: Chat, userId: string) => Boolean(chat.lastSenderId && chat.lastSenderId !== userId && millis(chat.lastAt) > millis(chat.readAt?.[userId]));
 const unitLabel = (unit: string) => unit ? `FOD-${unit}` : "";
 const isHttpsUrl = (value: string) => { try { return new URL(value).protocol === "https:" && value.length <= 500; } catch { return false; } };
+
+type LinkPreviewData = { title?: string; description?: string; image?: string; publisher?: string };
+const urlPattern = /https?:\/\/[^\s<>"']+/gi;
+const previewCache = new Map<string, LinkPreviewData | null>();
+
+// Trailing punctuation is usually part of the sentence, not the link.
+const cleanUrl = (value: string) => value.replace(/[.,!?;:)\]]+$/, "");
+const firstUrl = (text: string) => { const match = text.match(urlPattern); return match ? cleanUrl(match[0]) : null; };
+
+function linkify(text: string) {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const match of text.matchAll(urlPattern)) {
+    const url = cleanUrl(match[0]);
+    const index = match.index ?? 0;
+    if (index > last) parts.push(text.slice(last, index));
+    parts.push(<a key={index} className="messenger-link" href={url} target="_blank" rel="noopener noreferrer nofollow">{url}</a>);
+    last = index + url.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function LinkPreview({ url }: { url: string }) {
+  const [preview, setPreview] = useState<LinkPreviewData | null | undefined>(() => previewCache.get(url));
+  useEffect(() => {
+    if (previewCache.has(url)) { setPreview(previewCache.get(url)); return; }
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`, { signal: controller.signal });
+        const body = await response.json() as { status?: string; data?: { title?: string; description?: string; publisher?: string; image?: { url?: string } | null } };
+        const data = body.status === "success" ? body.data : undefined;
+        const result = data && (data.title || data.description) ? { title: data.title, description: data.description, publisher: data.publisher, image: data.image?.url } : null;
+        previewCache.set(url, result);
+        setPreview(result);
+      } catch {
+        if (!controller.signal.aborted) { previewCache.set(url, null); setPreview(null); }
+      }
+    })();
+    return () => controller.abort();
+  }, [url]);
+  if (!preview) return null;
+  const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } })();
+  return <a className="messenger-link-card" href={url} target="_blank" rel="noopener noreferrer nofollow">
+    {preview.image && isHttpsUrl(preview.image) && <img src={preview.image} alt="" referrerPolicy="no-referrer" loading="lazy" />}
+    <span><small>{preview.publisher || host}</small><strong>{preview.title || host}</strong>{preview.description && <em>{preview.description}</em>}</span>
+  </a>;
+}
 
 function useChats(userId: string) {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -210,7 +259,18 @@ export default function MessengerModule({ user }: { user: User }) {
     setError("");
     const mine = message.reactions?.[user.uid];
     try {
-      await updateDoc(doc(db, "chats", selectedChatId, "messages", message.id), { [`reactions.${user.uid}`]: mine === key ? deleteField() : key });
+      const messageRef = doc(db, "chats", selectedChatId, "messages", message.id);
+      const reaction = { [`reactions.${user.uid}`]: mine === key ? deleteField() : key };
+      if (mine === key || message.senderId === user.uid) {
+        await updateDoc(messageRef, reaction);
+      } else {
+        // A new reaction on someone else's message counts as a new message so the sender is notified.
+        const emoji = reactionOptions.find((option) => option.key === key)?.emoji ?? "";
+        const batch = writeBatch(db);
+        batch.update(messageRef, reaction);
+        batch.update(doc(db, "chats", selectedChatId), { lastText: `Reacted ${emoji} to a message`, lastSenderId: user.uid, lastAt: serverTimestamp(), [`readAt.${user.uid}`]: serverTimestamp() });
+        await batch.commit();
+      }
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       setError(code ? `Could not react to the message (${code}).` : "Could not react to the message.");
@@ -302,8 +362,9 @@ export default function MessengerModule({ user }: { user: User }) {
                 </span>
                 {message.deleted ? <span className="messenger-deleted">{mine ? "You deleted a message." : `${selected.name} deleted a message.`}</span> : message.kind === "sticker" ? <span className="messenger-sticker">{message.text}</span>
                   : message.kind === "gif" ? isHttpsUrl(message.text) ? <img className="messenger-gif" src={message.text} alt="GIF" referrerPolicy="no-referrer" loading="lazy" /> : null
-                  : <span className="messenger-bubble">{message.text}</span>}
+                  : <span className="messenger-bubble">{linkify(message.text)}</span>}
               </div>
+              {message.kind === "text" && !message.deleted && firstUrl(message.text) && <LinkPreview url={firstUrl(message.text) as string} />}
               {Object.keys(message.reactions ?? {}).length > 0 && !message.deleted && <span className="messenger-reactions">{reactionOptions.map((option) => { const count = Object.values(message.reactions ?? {}).filter((value) => value === option.key).length; return count > 0 ? <button type="button" key={option.key} className={message.reactions?.[user.uid] === option.key ? "is-mine" : ""} title={option.label} onClick={() => void react(message, option.key)}>{option.emoji}{count > 1 ? ` ${count}` : ""}</button> : null; })}</span>}
               <small>{formatTime(message.createdAt)}</small>
             </div>;
