@@ -253,7 +253,7 @@
 .profile-dropdown button{background:transparent;border:0;color:var(--ink);font-size:13px;padding:11px 12px;text-align:left;width:100%}
 .profile-dropdown button:hover,.profile-dropdown button:focus-visible{background:var(--mint)}
 .profile-backdrop{align-items:center;background:#18211fcc;display:flex;inset:0;justify-content:center;overflow:auto;padding:20px;position:fixed;z-index:80}
-.profile-dialog{background:#fff;border-top:3px solid var(--accent);box-shadow:0 18px 50px #0004;max-height:calc(100vh - 40px);max-width:520px;overflow:auto;padding:28px;width:100%}
+.profile-dialog{background:#fff;border-top:3px solid var(--accent);box-shadow:0 18px 50px #0004;max-height:calc(100vh - 40px);max-width:760px;overflow:auto;padding:28px;width:100%}
 .profile-dialog-header{align-items:center;display:flex;justify-content:space-between;margin-bottom:24px}
 .profile-dialog-header .eyebrow{margin-bottom:5px}
 .profile-dialog-header h2{font-size:26px;letter-spacing:-.04em;margin:0}
@@ -261,13 +261,17 @@
 .profile-details>div{border-bottom:1px solid var(--line);display:grid;gap:12px;grid-template-columns:100px minmax(0,1fr);padding:12px 0}
 .profile-details dt{color:var(--muted);font-size:12px}
 .profile-details dd{font-size:13px;font-weight:600;margin:0;overflow-wrap:anywhere}
-.profile-form{display:grid;gap:14px}
+.profile-form{display:grid;gap:14px;grid-template-columns:repeat(6,minmax(0,1fr))}
+.profile-form>label{grid-column:span 2;min-width:0}
+.profile-form>label:nth-of-type(7),.profile-form>.profile-password-fields,.profile-form>.profile-password-actions,.profile-form>.auth-message{grid-column:1/-1}
 .profile-form .auth-message{margin:0}
-.profile-password-fields{display:grid;gap:16px;margin-top:8px}
+.profile-password-fields{display:grid;gap:14px;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:8px}
+.profile-password-fields>label{min-width:0}
 .profile-password-actions{display:flex;gap:10px;justify-content:flex-end}
 .auth-footer-actions{align-items:center;display:flex;gap:12px;justify-content:center;margin-top:24px}.auth-footer-actions .text-button{margin:0;white-space:nowrap}.auth-forgot-password{color:var(--ink)}
 .auth-reset-form .text-button{justify-self:start;margin:0}
 @media(max-width:720px){.profile-trigger.user-greeting{display:inline-flex;max-width:45vw}.profile-dialog{padding:22px 18px}.profile-details>div{grid-template-columns:80px minmax(0,1fr)}}
+@media(max-width:560px){.profile-form{grid-template-columns:1fr}.profile-form>label,.profile-form>label:nth-of-type(7){grid-column:1/-1}.profile-password-fields{grid-template-columns:1fr}}
 .permit-form{grid-template-columns:repeat(2,minmax(0,1fr))}
 .permit-form>label,.permit-form>.date-range-field{min-width:0}
 .permit-date-input{font-size:16px;max-width:100%;min-width:0;width:100%}
