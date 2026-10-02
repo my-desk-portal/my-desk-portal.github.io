@@ -276,7 +276,7 @@ img{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 
 .permit-row-actions,.travel-order-row-actions{align-items:center;display:flex;gap:10px;justify-content:flex-end;white-space:nowrap}
 .delete-button{background:none;border:0;color:#a23d2d;font-size:12px;padding:0}
-.delete-button:hover:not(:disabled){text-decoration:underline}
+.delete-button:hover:not(:disabled){text-decoration:none}
 .delete-button:disabled{cursor:wait;opacity:.65}
 @media(max-width:720px){.permit-row-actions{grid-column:1/-1;justify-content:flex-start}}
 
