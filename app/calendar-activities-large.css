@@ -87,4 +87,5 @@
   .calendar-activity-preview-pages{display:block!important;width:auto!important}
   .calendar-activity-paper{box-shadow:none!important;height:210mm!important;margin:0!important;page:calendar-activity;page-break-after:always;width:297mm!important}
   .calendar-activity-paper:last-child{page-break-after:auto}
+  .calendar-activity-paper,.calendar-activity-paper *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 }

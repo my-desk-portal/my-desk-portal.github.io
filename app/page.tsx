@@ -418,6 +418,7 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
   onOpenCalendarActivityApproval: (notification: CalendarActivityApprovalNotification) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [hiddenReadIds, setHiddenReadIds] = useState<string[]>([]);
   const [readNotificationState, setReadNotificationState] = useState<{ userId: string; keys: string[] } | null>(null);
 
   useEffect(() => {
@@ -437,6 +438,17 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
   const unreadCalendarActivityApprovalNotifications = isAdmin ? calendarActivityApprovalNotifications.filter((notification) => !notification.readBy.includes(userId)) : [];
   const visibleCount = (isAdmin ? count : unreadNotifications.length) + unreadCalendarActivityNotifications.length + unreadCalendarActivityApprovalNotifications.length;
 
+  function toggleOpen() {
+    // Read calendar notifications stay visible until the dropdown is closed, then drop off on the next open.
+    if (!open) setHiddenReadIds([
+      ...calendarActivityNotifications.filter((notification) => notification.read).map((notification) => notification.id),
+      ...calendarActivityApprovalNotifications.filter((notification) => notification.readBy.includes(userId)).map((notification) => notification.id),
+    ]);
+    setOpen(!open);
+  }
+  const shownCalendarActivityNotifications = calendarActivityNotifications.filter((notification) => !hiddenReadIds.includes(notification.id));
+  const shownCalendarActivityApprovalNotifications = calendarActivityApprovalNotifications.filter((notification) => !hiddenReadIds.includes(notification.id));
+
   function markAsRead(notification: PermitNotification) {
     const keys = [...new Set([...readNotificationKeys, permitNotificationKey(notification)])];
     setReadNotificationState({ userId, keys });
@@ -448,7 +460,7 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
   }
 
   return <div className="notification-center" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
-    <button type="button" className="notification-button" aria-label={`${visibleCount} unread notifications`} title={`${visibleCount} unread notifications`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+    <button type="button" className="notification-button" aria-label={`${visibleCount} unread notifications`} title={`${visibleCount} unread notifications`} aria-haspopup="dialog" aria-expanded={open} onClick={toggleOpen}>
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></svg>
       {visibleCount > 0 && <span className="notification-badge" aria-hidden="true">{visibleCount > 99 ? "99+" : visibleCount}</span>}
     </button>
@@ -466,12 +478,12 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
         <span className="notification-detail"><span className="notification-detail-label">Date</span><span>{notification.date ? formatDate(notification.date) : "Date not provided"}</span></span>
         <span className="notification-detail"><span className="notification-detail-label">Status</span><strong className={`notification-status notification-status-${notification.status.toLowerCase()}`}>{notification.status}</strong></span>
       </button></li>)}</ul></>}
-      {calendarActivityNotifications.length > 0 && <><p className="notification-section-title">Calendar of Activities</p><ul>{calendarActivityNotifications.map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-activity-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadCalendarActivity(notification); }}>
+      {shownCalendarActivityNotifications.length > 0 && <><p className="notification-section-title">Calendar of Activities</p><ul>{shownCalendarActivityNotifications.map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-activity-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadCalendarActivity(notification); }}>
         <strong>{notification.month ? new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${notification.month}-01T00:00:00Z`)) : "Activity schedule"}</strong>
         {notification.activities.map((activity, index) => <span className="calendar-notification-activity" key={`${notification.id}-${index}`}><b>{activity.activity}</b><span>{activity.dateFrom === activity.dateTo ? formatDate(activity.dateFrom) : `${formatDate(activity.dateFrom)} – ${formatDate(activity.dateTo)}`}</span><span>{activity.location}</span></span>)}
         <small>{notification.read ? "Read" : "New · Select to mark as read"}</small>
       </button></li>)}</ul></>}
-      {isAdmin && calendarActivityApprovalNotifications.length > 0 && <><p className="notification-section-title">Approved Calendars of Activities</p><ul>{calendarActivityApprovalNotifications.map((notification) => {
+      {isAdmin && shownCalendarActivityApprovalNotifications.length > 0 && <><p className="notification-section-title">Approved Calendars of Activities</p><ul>{shownCalendarActivityApprovalNotifications.map((notification) => {
         const isRead = notification.readBy.includes(userId);
         const month = /^\d{4}-\d{2}$/.test(notification.month) ? new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${notification.month}-01T00:00:00Z`)) : notification.month;
         return <li key={notification.id}><button type="button" className={`notification-item calendar-activity-notification${isRead ? " is-read" : ""}`} onClick={() => { if (!isRead) onReadCalendarActivityApproval(notification); setOpen(false); onOpenCalendarActivityApproval(notification); }}><strong>Calendar of Activities of FOD-{notification.unit}, {month} is Approved</strong><small>Prepared by {notification.preparedName}</small><span className="notification-view-label">Open Calendar of Activities Records</span><small>{isRead ? "Read" : "New · Select to view"}</small></button></li>;
