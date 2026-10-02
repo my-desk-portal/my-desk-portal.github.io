@@ -19,6 +19,7 @@
   .my-notes-table-row>[role="cell"]:not(:first-child){grid-column:2;min-width:0}
   .my-notes-table-row>[role="cell"]:not(:first-child)::before{color:var(--muted);content:attr(data-label);display:block;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.06em;margin:2px 0 5px;text-transform:uppercase}
   .my-notes-table textarea{min-height:48px}
+  .my-notes-text-preview{display:none}
   .my-notes-table-row>[data-label="Status"] select{max-width:min(100%,220px)}
   .my-notes-saving-status{margin:0 0 8px}
   .my-notes-empty-state{min-height:180px}
