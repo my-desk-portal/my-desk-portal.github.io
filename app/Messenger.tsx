@@ -261,7 +261,6 @@ export default function MessengerModule({ user }: { user: User }) {
       if (kind === "text") setDraft("");
       setReplyTo(null);
       setPicker(null);
-      setGifUrl("");
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       setError(code ? `Could not send the message (${code}).` : "Could not send the message.");
