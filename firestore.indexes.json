@@ -15,6 +15,14 @@
         { "fieldPath": "ownerId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "calendarActivityNotifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "calendarId", "order": "ASCENDING" },
+        { "fieldPath": "ownerId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

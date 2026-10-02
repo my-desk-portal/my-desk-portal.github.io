@@ -42,6 +42,13 @@ type ApprovedLeaveApplication = {
   inclusiveDateFrom: string;
   inclusiveDateTo: string;
 };
+type ApprovedActivityCalendar = {
+  id: string;
+  unit: string;
+  month: string;
+  preparedName?: string;
+  activities: { dateFrom: string; dateTo: string; activity: string; location: string; responsiblePeople?: { name: string }[] }[];
+};
 type StoredPermit = {
   id: string;
   permitNo: string;
@@ -180,14 +187,17 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const [orders, setOrders] = useState<CalendarTravelOrder[]>([]);
   const [permitSlips, setPermitSlips] = useState<ApprovedPermitSlip[]>([]);
   const [leaveApplications, setLeaveApplications] = useState<ApprovedLeaveApplication[]>([]);
+  const [activityCalendars, setActivityCalendars] = useState<ApprovedActivityCalendar[]>([]);
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [nameSearch, setNameSearch] = useState("");
+  const [documentFilter, setDocumentFilter] = useState<"permit" | "travel" | "leave" | "activities">("permit");
   const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>("All");
   const [selectedPeoplePage, setSelectedPeoplePage] = useState(0);
   const [permitPage, setPermitPage] = useState(0);
   const [travelPage, setTravelPage] = useState(0);
   const [leavePage, setLeavePage] = useState(0);
+  const [activitiesPage, setActivitiesPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const approvedPermitNumbers = useMemo(() => assignApprovedPermitNumbers(permitSlips), [permitSlips]);
@@ -200,6 +210,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     setOrders([]);
     setPermitSlips([]);
     setLeaveApplications([]);
+    setActivityCalendars([]);
     setError("");
     if (!db) { setError("Firebase is not configured."); setLoading(false); return () => { active = false; }; }
     const firestore = db;
@@ -225,6 +236,14 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       const code = (cause as { code?: string }).code;
       if (active) setError(code ? `Could not load Travel Orders (${code}).` : "Could not load Travel Orders. Refresh and try again.");
       finishInitialLoad("travel");
+    });
+    const unsubscribeActivityCalendars = onSnapshot(query(collection(firestore, "calendarOfActivities"), where("status", "==", "Approved")), (snapshot) => {
+      const approved = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as ApprovedActivityCalendar))
+        .filter((calendar) => calendar.month && Array.isArray(calendar.activities));
+      if (active) setActivityCalendars(approved);
+    }, (cause) => {
+      const code = (cause as { code?: string }).code;
+      if (active) setError(code ? `Could not load Calendar of Activities (${code}).` : "Could not load Calendar of Activities. Refresh and try again.");
     });
     const unsubscribePermits = onSnapshot(collection(firestore, "approvedPermitCalendar"), (snapshot) => {
       const approved = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as ApprovedPermitSlip))
@@ -281,7 +300,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       if (active) setError(code ? `Could not sync existing Leave Applications (${code}).` : "Could not sync existing Leave Applications.");
       finishInitialLoad("leave-backfill");
     });
-    return () => { active = false; unsubscribeTravel(); unsubscribePermits(); unsubscribeLeaveApplications(); unsubscribeLeaveBackfill(); };
+    return () => { active = false; unsubscribeTravel(); unsubscribeActivityCalendars(); unsubscribePermits(); unsubscribeLeaveApplications(); unsubscribeLeaveBackfill(); };
   }, [user.uid, user.email]);
 
   const year = month.getFullYear();
@@ -416,6 +435,14 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const permitPageCount = Math.max(1, Math.ceil(annualPermits.length / 10));
   const travelPageCount = Math.max(1, Math.ceil(annualOrders.length / 10));
   const leavePageCount = Math.max(1, Math.ceil(annualLeaveApplications.length / 10));
+  const annualActivityCalendars = activityCalendars
+    .filter((calendar) => calendar.month.startsWith(`${summaryYear}-`))
+    .filter((calendar) => !normalizedSearch || calendar.activities.some((activity) => (activity.responsiblePeople ?? []).some((person) => (person.name ?? "").toLocaleLowerCase().includes(normalizedSearch))))
+    .filter((calendar) => unitFilter === "All" || normalizeUnit(calendar.unit) === unitFilter)
+    .sort((left, right) => right.month.localeCompare(left.month) || (left.unit ?? "").localeCompare(right.unit ?? ""));
+  const activitiesPageCount = Math.max(1, Math.ceil(annualActivityCalendars.length / 10));
+  const currentActivitiesPage = Math.min(activitiesPage, activitiesPageCount - 1);
+  const visibleActivityCalendars = annualActivityCalendars.slice(currentActivitiesPage * 10, currentActivitiesPage * 10 + 10);
   const currentPermitPage = Math.min(permitPage, permitPageCount - 1);
   const currentTravelPage = Math.min(travelPage, travelPageCount - 1);
   const currentLeavePage = Math.min(leavePage, leavePageCount - 1);
@@ -455,12 +482,13 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       </>}
     </section>
     <section className="whereabouts-annual-summary" aria-label={`Whereabouts records for ${summaryYear}`}>
-      <header className="whereabouts-summary-heading"><div><p className="eyebrow">Annual summary</p><h2>Approved Records — {summaryYear}</h2><p className="muted">Approved Travel Orders, Permit Slips, and Leave Applications. Search by name and filter by unit; tables show 10 records per page, newest first.</p></div></header>
+      <header className="whereabouts-summary-heading"><div><p className="eyebrow">Annual summary</p><h2>Approved Records — {summaryYear}</h2><p className="muted">Approved Travel Orders, Permit Slips, Leave Applications, and Calendar of Activities. Search by name and filter by unit; tables show 10 records per page, newest first.</p></div></header>
       <div className="whereabouts-summary-filters">
-        <label>Name search<input type="search" value={nameSearch} onChange={(event) => { setNameSearch(event.target.value); setPermitPage(0); setTravelPage(0); setLeavePage(0); }} placeholder="Search by name" /></label>
-        <label>Unit<select value={unitFilter} onChange={(event) => { setUnitFilter(event.target.value as PermitUnitFilter); setPermitPage(0); setTravelPage(0); setLeavePage(0); }}><option value="All">All units</option><option value="AGRISTAT">FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select></label>
+        <label>Approved document<select value={documentFilter} onChange={(event) => setDocumentFilter(event.target.value as "permit" | "travel" | "leave" | "activities")}><option value="permit">Permit Slips</option><option value="travel">Travel Orders</option><option value="leave">Leave Applications</option><option value="activities">Calendar of Activities</option></select></label>
+        <label>Name search<input type="search" value={nameSearch} onChange={(event) => { setNameSearch(event.target.value); setPermitPage(0); setTravelPage(0); setLeavePage(0); setActivitiesPage(0); }} placeholder="Search by Name" /></label>
+        <label>Unit<select value={unitFilter} onChange={(event) => { setUnitFilter(event.target.value as PermitUnitFilter); setPermitPage(0); setTravelPage(0); setLeavePage(0); setActivitiesPage(0); }}><option value="All">All Units</option><option value="AGRISTAT">FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select></label>
       </div>
-      <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-permit-summary-title">
+      {documentFilter === "permit" && <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-permit-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-permit-summary-title">Approved Permit Slips</h3><span>{annualPermits.length === 0 ? "0 records" : `${currentPermitPage * 10 + 1}–${Math.min(currentPermitPage * 10 + visibleAnnualPermits.length, annualPermits.length)} of ${annualPermits.length}`}</span></div>
         <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Date</th><th>Name</th><th>Unit</th><th>Purpose</th></tr></thead><tbody>
           {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.permitNo ? ` (PS No. ${approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.unit ? displayUnit(permit.unit) : "—"}</td><td>{permit.purpose || "—"}</td></tr>)}
@@ -468,8 +496,8 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={4}>Loading approved Permit Slips…</td></tr>}
         </tbody></table></div>
         {permitPageCount > 1 && <nav className="whereabouts-pagination" aria-label="Approved Permit Slips pages"><button type="button" onClick={() => setPermitPage((page) => Math.max(0, page - 1))} disabled={currentPermitPage === 0}>Previous</button><span aria-live="polite">Page {currentPermitPage + 1} of {permitPageCount}</span><button type="button" onClick={() => setPermitPage((page) => Math.min(permitPageCount - 1, page + 1))} disabled={currentPermitPage >= permitPageCount - 1}>Next</button></nav>}
-      </section>
-      <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-travel-summary-title">
+      </section>}
+      {documentFilter === "travel" && <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-travel-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-travel-summary-title">Approved Travel Orders</h3><span>{annualOrders.length === 0 ? "0 records" : `${currentTravelPage * 10 + 1}–${Math.min(currentTravelPage * 10 + visibleAnnualOrders.length, annualOrders.length)} of ${annualOrders.length}`}</span></div>
         <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Name</th><th>Departure From To</th><th>Destination</th><th>Purpose</th></tr></thead><tbody>
           {visibleAnnualOrders.map((order) => <tr key={`annual-travel-${order.id}`}><td>{(order.people ?? []).map((person) => person.name ? `${person.name}${person.toNumber?.trim() ? ` (TO No. ${person.toNumber.trim()})` : ""}` : "").filter(Boolean).join(", ") || "Not specified"}</td><td>{formatCalendarDateRange(order.departureDate, order.returnDate)}</td><td>{order.placeOfTravel || "—"}</td><td>{order.purpose || "—"}</td></tr>)}
@@ -477,8 +505,8 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={4}>Loading Travel Orders…</td></tr>}
         </tbody></table></div>
         {travelPageCount > 1 && <nav className="whereabouts-pagination" aria-label="Travel Order pages"><button type="button" onClick={() => setTravelPage((page) => Math.max(0, page - 1))} disabled={currentTravelPage === 0}>Previous</button><span aria-live="polite">Page {currentTravelPage + 1} of {travelPageCount}</span><button type="button" onClick={() => setTravelPage((page) => Math.min(travelPageCount - 1, page + 1))} disabled={currentTravelPage >= travelPageCount - 1}>Next</button></nav>}
-      </section>
-      <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-leave-summary-title">
+      </section>}
+      {documentFilter === "leave" && <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-leave-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-leave-summary-title">Approved Leave Applications</h3><span>{annualLeaveApplications.length === 0 ? "0 records" : `${currentLeavePage * 10 + 1}–${Math.min(currentLeavePage * 10 + visibleAnnualLeaveApplications.length, annualLeaveApplications.length)} of ${annualLeaveApplications.length}`}</span></div>
         <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Name</th><th>Inclusive Dates</th><th>Office</th><th>Type of Leave</th></tr></thead><tbody>
           {visibleAnnualLeaveApplications.map((leave) => <tr key={`annual-leave-${leave.id}`}><td>{leaveApplicantName(leave)}</td><td>{formatCalendarDateRange(leave.inclusiveDateFrom, leave.inclusiveDateTo)}</td><td>{displayUnit(leave.office) || "—"}</td><td>{leave.leaveType}</td></tr>)}
@@ -486,7 +514,16 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={4}>Loading approved Leave Applications…</td></tr>}
         </tbody></table></div>
         {leavePageCount > 1 && <nav className="whereabouts-pagination" aria-label="Approved Leave Applications pages"><button type="button" onClick={() => setLeavePage((page) => Math.max(0, page - 1))} disabled={currentLeavePage === 0}>Previous</button><span aria-live="polite">Page {currentLeavePage + 1} of {leavePageCount}</span><button type="button" onClick={() => setLeavePage((page) => Math.min(leavePageCount - 1, page + 1))} disabled={currentLeavePage >= leavePageCount - 1}>Next</button></nav>}
-      </section>
+      </section>}
+      {documentFilter === "activities" && <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-activities-summary-title">
+        <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-activities-summary-title">Approved Calendar of Activities</h3><span>{annualActivityCalendars.length === 0 ? "0 records" : `${currentActivitiesPage * 10 + 1}–${Math.min(currentActivitiesPage * 10 + visibleActivityCalendars.length, annualActivityCalendars.length)} of ${annualActivityCalendars.length}`}</span></div>
+        <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table whereabouts-activities-table"><thead><tr><th>Month</th><th>Unit</th><th>Activities</th></tr></thead><tbody>
+          {visibleActivityCalendars.map((calendar) => <tr key={`annual-activities-${calendar.id}`}><td>{formatCalendarDate(`${calendar.month}-01`, { month: "long", year: "numeric" })}</td><td>{displayUnit(calendar.unit) || "—"}</td><td>{calendar.activities.map((activity, index) => <p key={index}><strong>{`${formatCalendarDateRange(activity.dateFrom, activity.dateTo).replace(/,? \d{4}/g, "")}:`}</strong>{` ${activity.activity}${activity.location ? ` (${activity.location})` : ""}`}</p>)}</td></tr>)}
+          {!loading && visibleActivityCalendars.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={3}>No approved Calendar of Activities match this year and filter.</td></tr>}
+          {loading && <tr><td className="whereabouts-summary-empty" colSpan={3}>Loading Calendar of Activities…</td></tr>}
+        </tbody></table></div>
+        {activitiesPageCount > 1 && <nav className="whereabouts-pagination" aria-label="Calendar of Activities pages"><button type="button" onClick={() => setActivitiesPage((page) => Math.max(0, page - 1))} disabled={currentActivitiesPage === 0}>Previous</button><span aria-live="polite">Page {currentActivitiesPage + 1} of {activitiesPageCount}</span><button type="button" onClick={() => setActivitiesPage((page) => Math.min(activitiesPageCount - 1, page + 1))} disabled={currentActivitiesPage >= activitiesPageCount - 1}>Next</button></nav>}
+      </section>}
     </section>
   </section>;
 }

@@ -108,6 +108,24 @@
 .topbar .profile-dropdown{border-radius:12px;min-width:160px;overflow:hidden;padding:3px;top:calc(100% + 5px)}
 .topbar .profile-dropdown button{line-height:1.25;padding:8px 12px}
 .topbar .nav-dropdown-menu{border-radius:12px;overflow:hidden}
+.topbar .mydocs-nav-menu{
+  max-height:min(70vh,620px);
+  max-height:min(70dvh,620px);
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  width:min(340px,calc(100vw - 24px));
+}
+.topbar .mydocs-nav-menu .nav-dropdown-item{
+  align-items:center;
+  border-radius:8px;
+  display:flex;
+  line-height:1.35;
+  min-height:42px;
+  overflow-wrap:anywhere;
+  white-space:normal;
+  width:100%;
+}
 .topbar .amia-document-nav-menu{overflow-y:auto}
 
 :root{--preview-toolbar-offset:108px}

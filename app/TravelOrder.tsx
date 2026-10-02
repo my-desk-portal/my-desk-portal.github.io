@@ -7,7 +7,7 @@ import { jsPDF } from "jspdf";
 import { addDoc, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { parsePersonnelWorkbook, type PersonnelEntry } from "@/lib/personnel";
+import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
 import DeleteConfirmation from "./DeleteConfirmation";
 import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import "./travel-order.css";
@@ -75,11 +75,8 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const response = await fetch(asset("/Personnel.xlsx"), { cache: "no-store" });
-        if (!response.ok) throw new Error("Personnel.xlsx could not be loaded.");
-        const entries = (await parsePersonnelWorkbook(new Uint8Array(await response.arrayBuffer())))
-          .sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
-        if (!entries.length) throw new Error("The personnel sheet has no names.");
+        const entries = await loadAccountPersonnel();
+        if (!entries.length) throw new Error("No registered accounts have a name.");
         if (!cancelled) {
           setPersonnel(entries);
           setPersonnelStatus("ready");
@@ -134,7 +131,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
       <label className="travel-order-office-field">Office Station<select value={officeStation} onChange={(event) => setOfficeStation(event.target.value as (typeof officeStations)[number])} required>{officeStations.map((station) => <option key={station}>{station}</option>)}</select></label>
       <div className="travel-order-people wide-field">
         <div className="travel-order-people-heading"><strong>Persons traveling</strong><span>Add each person who needs a separate Travel Order page.</span></div>
-        {personnelStatus === "error" && <p className="travel-order-number-error" role="alert">Unable to load Personnel.xlsx. Reload the page to try again.</p>}
+        {personnelStatus === "error" && <p className="travel-order-number-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</p>}
         {people.map((person, index) => <fieldset className="travel-order-person" key={index}>
           <legend>Person {index + 1}</legend>
           <label>Name<select value={person.name} onChange={(event) => { const name = event.target.value; updatePerson(index, { name, position: personnel.find((entry) => entry.name === name)?.position ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((entry) => <option key={entry.name} value={entry.name}>{entry.name}</option>)}</select></label>

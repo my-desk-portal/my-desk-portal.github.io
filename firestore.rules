@@ -24,7 +24,8 @@ service cloud.firestore {
               || (previousMonth == report.month && manilaNow.day() < 6))));
     }
     match /users/{userId} {
-      allow read: if isVerifiedUser() && request.auth.uid == userId;
+      // All verified users can read profiles to populate personnel dropdowns.
+      allow read: if isVerifiedUser();
       // New accounts must save their profile before email verification; only the same UID can write it.
       allow create, update: if request.auth != null
         && request.auth.uid == userId
@@ -37,6 +38,121 @@ service cloud.firestore {
         && request.resource.data.position.size() <= 120
         && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"];
       allow delete: if false;
+    }
+    match /calendarOfActivities/{calendarId} {
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
+        || resource.data.status == "Approved");
+      allow create: if isVerifiedUser()
+        && request.resource.data.keys().hasAll(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"]
+        && request.resource.data.month is string
+        && request.resource.data.month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
+        && request.resource.data.status in ["Pending", "Approved"]
+        && request.resource.data.activities is list
+        && request.resource.data.activities.size() > 0
+        && request.resource.data.activities.size() <= 100
+        && request.resource.data.preparedName is string
+        && request.resource.data.preparedName.size() > 0
+        && request.resource.data.preparedName.size() <= 120
+        && request.resource.data.preparedPosition is string
+        && request.resource.data.preparedPosition.size() > 0
+        && request.resource.data.preparedPosition.size() <= 120
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasAny(["activities", "status"])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["activities", "status"])
+        && (!request.resource.data.keys().hasAny(["status"])
+          || request.resource.data.status in ["Pending", "Approved"])
+        && request.resource.data.activities is list
+        && request.resource.data.activities.size() > 0
+        && request.resource.data.activities.size() <= 100;
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+    }
+    match /calendarActivityApprovalNotifications/{notificationId} {
+      function calendarPath(calendarId) {
+        return /databases/$(database)/documents/calendarOfActivities/$(calendarId);
+      }
+      allow read: if isVerifiedUser() && isPermitAdmin();
+      allow create: if isVerifiedUser()
+        && request.resource.data.keys().hasAll(["calendarId", "ownerId", "unit", "month", "preparedName", "status", "readBy", "createdAt"])
+        && request.resource.data.keys().hasOnly(["calendarId", "ownerId", "unit", "month", "preparedName", "status", "readBy", "createdAt"])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.calendarId is string
+        && exists(calendarPath(request.resource.data.calendarId))
+        && get(calendarPath(request.resource.data.calendarId)).data.ownerId == request.auth.uid
+        && (!get(calendarPath(request.resource.data.calendarId)).data.keys().hasAny(["status"])
+          || get(calendarPath(request.resource.data.calendarId)).data.status == "Pending")
+        && getAfter(calendarPath(request.resource.data.calendarId)).data.ownerId == request.auth.uid
+        && getAfter(calendarPath(request.resource.data.calendarId)).data.status == "Approved"
+        && getAfter(calendarPath(request.resource.data.calendarId)).data.unit == request.resource.data.unit
+        && getAfter(calendarPath(request.resource.data.calendarId)).data.month == request.resource.data.month
+        && getAfter(calendarPath(request.resource.data.calendarId)).data.preparedName == request.resource.data.preparedName
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"]
+        && request.resource.data.month is string
+        && request.resource.data.preparedName is string
+        && request.resource.data.preparedName.size() > 0
+        && request.resource.data.status == "Approved"
+        && request.resource.data.readBy is list
+        && request.resource.data.readBy.size() == 0
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isVerifiedUser()
+        && isPermitAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readBy"])
+        && resource.data.readBy is list
+        && request.resource.data.readBy is list
+        && request.resource.data.readBy.hasAll(resource.data.readBy)
+        && request.auth.uid in request.resource.data.readBy;
+      allow delete: if false;
+    }
+    match /calendarActivityNotifications/{notificationId} {
+      allow read: if isVerifiedUser() && (resource.data.recipientId == request.auth.uid || resource.data.ownerId == request.auth.uid);
+      allow create: if isVerifiedUser()
+        && request.resource.data.keys().hasAll(["recipientId", "ownerId", "calendarId", "unit", "month", "activities", "read", "createdAt"])
+        && request.resource.data.keys().hasOnly(["recipientId", "ownerId", "calendarId", "unit", "month", "activities", "read", "createdAt"])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.recipientId is string
+        && request.resource.data.recipientId != request.auth.uid
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"]
+        && get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.unit == request.resource.data.unit
+        && request.resource.data.calendarId is string
+        && getAfter(/databases/$(database)/documents/calendarOfActivities/$(request.resource.data.calendarId)).data.ownerId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/calendarOfActivities/$(request.resource.data.calendarId)).data.unit == request.resource.data.unit
+        && request.resource.data.month is string
+        && getAfter(/databases/$(database)/documents/calendarOfActivities/$(request.resource.data.calendarId)).data.month == request.resource.data.month
+        && request.resource.data.activities is list
+        && request.resource.data.activities.size() > 0
+        && request.resource.data.activities.size() <= 100
+        && request.resource.data.read == false
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isVerifiedUser() && (
+        (resource.data.recipientId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read", "readAt"])
+          && request.resource.data.read == true
+          && request.resource.data.readAt is timestamp)
+        || (resource.data.ownerId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["month", "activities", "read", "readAt", "createdAt"])
+          && request.resource.data.keys().hasAll(["recipientId", "ownerId", "calendarId", "unit", "month", "activities", "read", "createdAt"])
+          && request.resource.data.keys().hasOnly(["recipientId", "ownerId", "calendarId", "unit", "month", "activities", "read", "createdAt"])
+          && request.resource.data.recipientId == resource.data.recipientId
+          && request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.calendarId == resource.data.calendarId
+          && request.resource.data.unit == resource.data.unit
+          && request.resource.data.ownerId == request.auth.uid
+          && resource.data.calendarId is string
+          && getAfter(/databases/$(database)/documents/calendarOfActivities/$(resource.data.calendarId)).data.ownerId == request.auth.uid
+          && getAfter(/databases/$(database)/documents/calendarOfActivities/$(resource.data.calendarId)).data.unit == request.resource.data.unit
+          && getAfter(/databases/$(database)/documents/calendarOfActivities/$(resource.data.calendarId)).data.month == request.resource.data.month
+          && request.resource.data.month is string
+          && request.resource.data.activities is list
+          && request.resource.data.activities.size() > 0
+          && request.resource.data.activities.size() <= 100
+          && request.resource.data.read == false
+          && request.resource.data.createdAt is timestamp));
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /permits/{permitId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isPermitAdmin());

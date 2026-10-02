@@ -172,7 +172,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
   return <section className="content-section permit-admin-section">
     <div className="section-heading permit-admin-heading">
       <div><p className="eyebrow">Administrator access</p><h2>{title}</h2><p className="muted">{mode === "statistics" ? "Monthly approved and disapproved Permit Slips, grouped by person." : "Review and update each person’s Permit Slip independently."}</p></div>
-      <div className="permit-admin-filters">{mode === "statistics" && <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}<label>Unit<select value={unitFilter} onChange={(event) => setUnitFilter(event.target.value as PermitUnitFilter)}><option value="All">All units</option><option value="AGRISTAT">Agricultural Statistics</option><option value="AMIA">AMIA</option><option value="DRRM">DRRM</option></select></label></div>
+      <div className="permit-admin-filters">{mode === "statistics" && <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}<label>Unit<select value={unitFilter} onChange={(event) => setUnitFilter(event.target.value as PermitUnitFilter)}><option value="All">All Units</option><option value="AGRISTAT">Agricultural Statistics</option><option value="AMIA">AMIA</option><option value="DRRM">DRRM</option></select></label></div>
     </div>
     {error && <div className="permit-admin-error" role="alert">{error}</div>}
     {loading ? <p className="permit-admin-empty">Loading Permit Slips…</p> : mode === "statistics" ? <>
