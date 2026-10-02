@@ -1,0 +1,15 @@
+@media(min-width:721px){
+  .my-notes-date-field{max-width:320px}
+  .my-notes-records-header{gap:14px}
+  .my-notes-records-header{grid-template-columns:minmax(210px,20%) minmax(0,1fr)}
+  .my-notes-record-toolbar>.primary-button{align-self:center;grid-column:2;grid-row:1;justify-self:end}
+  .my-notes-filter-date{grid-column:1;grid-row:2}
+  .my-notes-progress{grid-column:2;grid-row:2}
+  .my-notes-filter-date{min-width:0;max-width:none;width:100%}
+  .my-notes-create-row{grid-template-columns:38px minmax(0,1fr) auto;padding:10px 12px}
+  .my-notes-records-section .empty-state{padding:40px 20px}
+  .my-notes-table-scroll{overflow-x:auto}
+  .my-notes-table{min-width:760px}
+  .my-notes-table-head,.my-notes-table-row{grid-template-columns:42px minmax(0,1.5fr) minmax(120px,.65fr) minmax(0,1fr)}
+  .my-notes-table-row{border-top:1px solid var(--line)}
+}

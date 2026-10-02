@@ -388,6 +388,38 @@ service cloud.firestore {
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
+    match /myNotes/{noteId} {
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && request.resource.data.keys().hasAll(["ownerId", "date", "task", "status", "remarks", "order", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "date", "task", "status", "remarks", "order", "createdAt"])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.date is string
+        && request.resource.data.date.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && request.resource.data.task is string
+        && request.resource.data.task.size() > 0
+        && request.resource.data.task.size() <= 1200
+        && request.resource.data.status == "Pending"
+        && request.resource.data.remarks is string
+        && request.resource.data.remarks.size() <= 1200
+        && request.resource.data.order is int
+        && request.resource.data.order >= 0
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["task", "status", "remarks", "order"])
+        && request.resource.data.keys().hasAll(["ownerId", "date", "task", "status", "remarks", "order", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "date", "task", "status", "remarks", "order", "createdAt"])
+        && request.resource.data.task is string
+        && request.resource.data.task.size() > 0
+        && request.resource.data.task.size() <= 1200
+        && request.resource.data.status in ["Pending", "Done"]
+        && request.resource.data.remarks is string
+        && request.resource.data.remarks.size() <= 1200
+        && request.resource.data.order is int
+        && request.resource.data.order >= 0;
+      allow delete: if false;
+    }
     match /accomplishmentReports/{reportId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
       allow create: if isVerifiedUser()
