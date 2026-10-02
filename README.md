@@ -1,6 +1,6 @@
 # My Desk Portal
 
-A Next.js + Firebase permit-slip portal with email authentication, per-user permit records, automatic permit numbering, and A4 print output.
+A Next.js + Firebase permit-slip portal with email authentication, per-user permit records, automatic permit numbering, and A4 print output
 
 The Firebase client uses the named Firestore database `ps-taguibo`.
 
