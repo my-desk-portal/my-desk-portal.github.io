@@ -39,8 +39,7 @@
 .messenger-gif-grid{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
 .messenger-gif-grid button{background:#f3f6f4;border:0;padding:0}
 .messenger-gif-grid img{display:block;height:90px;object-fit:cover;width:100%}
-.messenger-gif-link{display:flex;gap:8px}
-.messenger-gif-link input{flex:1;min-width:0}
+.messenger-gif-status{color:var(--muted);font-size:12px;margin:0}
 .messenger-composer{align-items:center;border-top:1px solid var(--line);display:flex;gap:8px;padding:10px 16px}
 .messenger-composer input{flex:1;min-width:0;padding:10px 14px}
 .messenger-tool{background:transparent;border:1px solid var(--line);font-size:18px;height:40px;min-width:40px;padding:0 8px}
@@ -131,7 +130,6 @@
   .messenger-composer{flex-wrap:wrap;gap:6px;padding:8px 12px}
   .messenger-composer input{flex:1 1 100%;order:-1}
   .messenger-composer .primary-button{margin-left:auto}
-  .messenger-gif-link{flex-wrap:wrap}
 }
 
 .messenger-delete-chat{margin-left:auto;white-space:nowrap}

@@ -47,6 +47,7 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=ps-taguibo
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 NEXT_PUBLIC_FIREBASE_APP_ID
+NEXT_PUBLIC_GIPHY_API_KEY
 ```
 
 Copy the values from the local `.env` file. After saving the variables, redeploy with `npx vercel --prod`. Make sure the `ps-taguibo` Firestore rules and index are deployed before testing the hosted site.
@@ -62,6 +63,7 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 NEXT_PUBLIC_FIREBASE_APP_ID
+NEXT_PUBLIC_GIPHY_API_KEY
 ```
 
 Enable **Settings > Pages > Source: GitHub Actions**. Pushes to `master` then publish the app at:
