@@ -30,6 +30,7 @@
 .my-notes-create-row label{min-width:0}
 .my-notes-create-row textarea,.my-notes-table textarea{background:transparent;border:1px solid transparent;line-height:1.5;min-height:54px;padding:8px 6px;resize:none;width:100%}
 .my-notes-table textarea{overflow:hidden}
+.my-notes-text-cell{min-width:0}
 .my-notes-create-row textarea:focus,.my-notes-table textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px #f6dfd8}
 .my-notes-drag-grip{align-items:center;background:transparent;border:0;color:var(--muted);cursor:grab;display:flex;height:42px;justify-content:center;padding:7px;touch-action:none}
 .my-notes-drag-grip:active{cursor:grabbing}

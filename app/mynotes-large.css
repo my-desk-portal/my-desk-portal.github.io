@@ -12,4 +12,11 @@
   .my-notes-table{min-width:760px}
   .my-notes-table-head,.my-notes-table-row{grid-template-columns:42px minmax(0,1.5fr) minmax(120px,.65fr) minmax(0,1fr)}
   .my-notes-table-row{border-top:1px solid var(--line)}
+  .my-notes-text-cell{position:relative}
+  .my-notes-text-preview{align-items:center;display:flex;inset:0;line-height:1.5;overflow:hidden;overflow-wrap:anywhere;padding:8px 6px;pointer-events:none;position:absolute;white-space:pre-wrap}
+  .my-notes-text-preview.is-placeholder{color:var(--muted)}
+  .my-notes-text-cell textarea:not(:focus){caret-color:transparent;color:transparent}
+  .my-notes-text-cell textarea:not(:focus)::placeholder{color:transparent}
+  .my-notes-text-cell:focus-within .my-notes-text-preview{visibility:hidden}
+  .my-notes-table-row>[data-label="Task Description"],.my-notes-table-row>[data-label="Remarks"]{align-self:center}
 }
