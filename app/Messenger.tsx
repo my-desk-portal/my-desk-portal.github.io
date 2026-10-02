@@ -120,7 +120,7 @@ export default function MessengerModule({ user }: { user: User }) {
   const [picker, setPicker] = useState<Picker>(null);
   const [gifQuery, setGifQuery] = useState("");
   const [gifResults, setGifResults] = useState<GifResult[]>([]);
-  const [gifUrl, setGifUrl] = useState("");
+  const [gifSearchStatus, setGifSearchStatus] = useState<"loading" | "results" | "empty" | "error" | "unavailable">("loading");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
@@ -205,8 +205,15 @@ export default function MessengerModule({ user }: { user: User }) {
   }, [selectedChatId, needsRead, messages.length, user.uid]);
 
   useEffect(() => {
-    if (picker !== "gif" || !giphyKey) return;
+    if (picker !== "gif") return;
+    if (!giphyKey) {
+      setGifResults([]);
+      setGifSearchStatus("unavailable");
+      return;
+    }
     const controller = new AbortController();
+    setGifResults([]);
+    setGifSearchStatus("loading");
     const timer = window.setTimeout(async () => {
       try {
         const term = gifQuery.trim();
@@ -215,9 +222,14 @@ export default function MessengerModule({ user }: { user: User }) {
         const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) throw new Error("GIF search failed.");
         const body = await response.json() as { data?: { id: string; images?: { fixed_height?: { url?: string } } }[] };
-        setGifResults((body.data ?? []).flatMap((item) => item.images?.fixed_height?.url ? [{ id: item.id, url: item.images.fixed_height.url }] : []));
+        const results = (body.data ?? []).flatMap((item) => item.images?.fixed_height?.url ? [{ id: item.id, url: item.images.fixed_height.url }] : []);
+        setGifResults(results);
+        setGifSearchStatus(results.length ? "results" : "empty");
       } catch {
-        if (!controller.signal.aborted) setGifResults([]);
+        if (!controller.signal.aborted) {
+          setGifResults([]);
+          setGifSearchStatus("error");
+        }
       }
     }, 300);
     return () => { window.clearTimeout(timer); controller.abort(); };
@@ -399,9 +411,15 @@ export default function MessengerModule({ user }: { user: User }) {
         {picker && <div className="messenger-picker">
           {picker === "emoji" && <div className="messenger-emoji-grid">{emojis.map((emoji) => <button type="button" key={emoji} onClick={() => setDraft((current) => `${current}${emoji}`)}>{emoji}</button>)}</div>}
           {picker === "sticker" && <div className="messenger-sticker-grid">{stickers.map((sticker) => <button type="button" key={sticker} onClick={() => void send("sticker", sticker)} disabled={sending}>{sticker}</button>)}</div>}
-          {picker === "gif" && (giphyKey
-            ? <><input type="search" value={gifQuery} onChange={(event) => setGifQuery(event.target.value)} placeholder="Search GIFs" aria-label="Search GIFs" /><div className="messenger-gif-grid">{gifResults.map((gif) => <button type="button" key={gif.id} onClick={() => void send("gif", gif.url)} disabled={sending}><img src={gif.url} alt="GIF result" referrerPolicy="no-referrer" loading="lazy" /></button>)}</div></>
-            : <form className="messenger-gif-link" onSubmit={(event) => { event.preventDefault(); void send("gif", gifUrl); }}><input type="url" value={gifUrl} onChange={(event) => setGifUrl(event.target.value)} placeholder="Paste a GIF link (https://…)" aria-label="GIF link" required /><button className="primary-button" disabled={sending}>Send GIF</button></form>)}
+          {picker === "gif" && <>
+            <input type="search" value={gifQuery} onChange={(event) => setGifQuery(event.target.value)} placeholder="Search GIFs" aria-label="Search GIFs" disabled={!giphyKey} />
+            {!giphyKey ? <p className="messenger-gif-status" role="status">GIF search is unavailable. Configure NEXT_PUBLIC_GIPHY_API_KEY to enable search.</p> : <>
+              {gifSearchStatus === "loading" && <p className="messenger-gif-status" role="status">Searching GIFs…</p>}
+              {gifSearchStatus === "empty" && <p className="messenger-gif-status" role="status">No GIFs found. Try another search.</p>}
+              {gifSearchStatus === "error" && <p className="messenger-gif-status" role="alert">GIF search failed. Try again.</p>}
+              <div className="messenger-gif-grid">{gifResults.map((gif) => <button type="button" key={gif.id} onClick={() => void send("gif", gif.url)} disabled={sending}><img src={gif.url} alt="GIF result" referrerPolicy="no-referrer" loading="lazy" /></button>)}</div>
+            </>}
+          </>}
         </div>}
         {replyTo && <div className="messenger-reply-bar"><span>Replying to <b>{replyTo.senderId === user.uid ? "yourself" : selected.name}</b><em>{replyTo.kind === "text" ? replyTo.text : replyTo.kind === "sticker" ? "Sticker" : "GIF"}</em></span><button type="button" aria-label="Cancel reply" onClick={() => setReplyTo(null)}>×</button></div>}
         <form className="messenger-composer" onSubmit={(event) => { event.preventDefault(); void send("text", draft); }}>
