@@ -159,10 +159,10 @@ export default function MyNotes({ user }: { user: User }) {
   }, [draftNotes, selectedDate]);
 
   function startNewNotes() {
-    if (hasDraftChanges && !savingDraftRef.current && !window.confirm("Discard unsaved changes to this date's notes?")) return;
+    if (savingDraftRef.current) return;
+    if (hasDraftChanges && !window.confirm("Discard unsaved changes to this date's notes?")) return;
     setFormDate(selectedDate || manilaDateKey());
     setFormTasks([""]);
-    if (savingDraftRef.current || !hasDraftChanges) return;
     setMessage(null);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -276,7 +276,7 @@ export default function MyNotes({ user }: { user: User }) {
           </div>)}</div>
           {formTasks.length < MAX_TASKS && <button type="button" className="text-button my-notes-add-task" disabled={saving} onClick={() => setFormTasks((current) => [...current, ""])}>+ Add task</button>}
         </fieldset>
-        <div className="form-actions my-notes-form-actions"><button className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save Notes"}</button></div>
+        <div className="form-actions my-notes-form-actions"><button className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
       </form>
     </section>}
 
