@@ -133,3 +133,5 @@
   .messenger-composer .primary-button{margin-left:auto}
   .messenger-gif-link{flex-wrap:wrap}
 }
+
+.messenger-delete-chat{margin-left:auto;white-space:nowrap}

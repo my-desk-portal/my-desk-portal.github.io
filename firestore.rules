@@ -57,7 +57,7 @@ service cloud.firestore {
       allow update: if isVerifiedUser()
         && request.auth.uid in resource.data.members
         && request.resource.data.members == resource.data.members
-        && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt"])
+        && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt", "clearedAt"])
           || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["lastText", "lastSenderId", "lastAt", "readAt"])
             && request.resource.data.lastSenderId == request.auth.uid
             && request.resource.data.lastText is string

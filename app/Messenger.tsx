@@ -8,7 +8,7 @@ import DeleteConfirmation from "./DeleteConfirmation";
 import "./messenger.css";
 
 type Person = { id: string; name: string; position: string; unit: string };
-type Chat = { id: string; members: string[]; pending?: boolean; lastText?: string; lastSenderId?: string; lastAt?: Timestamp | null; readAt?: Record<string, Timestamp | null> };
+type Chat = { id: string; members: string[]; pending?: boolean; lastText?: string; lastSenderId?: string; lastAt?: Timestamp | null; readAt?: Record<string, Timestamp | null>; clearedAt?: Record<string, Timestamp | null> };
 type MessageKind = "text" | "sticker" | "gif";
 type ReplyRef = { id: string; senderId: string; kind: MessageKind; text: string };
 type Message = { id: string; senderId: string; kind: MessageKind; text: string; deleted?: boolean; reactions?: Record<string, string>; replyTo?: ReplyRef; createdAt?: Timestamp | null };
@@ -126,6 +126,8 @@ export default function MessengerModule({ user }: { user: User }) {
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
   const [deleting, setDeleting] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -157,12 +159,15 @@ export default function MessengerModule({ user }: { user: User }) {
     return map;
   }, [chats, user.uid]);
 
+  // Deleting a chat only clears your own copy: anything at or before clearedAt is hidden from you.
+  const lastVisibleAt = (chat?: Chat) => chat && millis(chat.lastAt) > millis(chat.clearedAt?.[user.uid]) ? millis(chat.lastAt) : 0;
+
   const visiblePeople = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
     return people
       .filter((person) => !term || person.name.toLocaleLowerCase().includes(term))
       .filter((person) => unitFilter === "All" || person.unit === unitFilter)
-      .sort((left, right) => millis(chatByPerson.get(right.id)?.lastAt) - millis(chatByPerson.get(left.id)?.lastAt) || left.name.localeCompare(right.name, "en", { sensitivity: "base" }));
+      .sort((left, right) => lastVisibleAt(chatByPerson.get(right.id)) - lastVisibleAt(chatByPerson.get(left.id)) || left.name.localeCompare(right.name, "en", { sensitivity: "base" }));
   }, [people, search, unitFilter, chatByPerson]);
 
   const selected = people.find((person) => person.id === selectedId) ?? null;
@@ -253,6 +258,25 @@ export default function MessengerModule({ user }: { user: User }) {
     }
   }
 
+  const clearedAtMs = millis(selectedChat?.clearedAt?.[user.uid]);
+  const shownMessages = messages.filter((message) => !hiddenIds.includes(message.id) && (!message.createdAt || millis(message.createdAt) > clearedAtMs));
+
+  async function clearChat() {
+    if (!db || !selectedChatId) return;
+    setClearing(true);
+    setError("");
+    try {
+      await updateDoc(doc(db, "chats", selectedChatId), { [`clearedAt.${user.uid}`]: serverTimestamp(), [`readAt.${user.uid}`]: serverTimestamp() });
+      setReplyTo(null);
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not delete the chat (${code}).` : "Could not delete the chat.");
+    } finally {
+      setClearing(false);
+      setConfirmClear(false);
+    }
+  }
+
   async function react(message: Message, key: string) {
     if (!db || !selectedChatId) return;
     setMenuFor(null);
@@ -329,7 +353,7 @@ export default function MessengerModule({ user }: { user: User }) {
           const unread = chat ? isUnread(chat, user.uid) : false;
           return <li key={person.id}><button type="button" className={`messenger-person${selectedId === person.id ? " active" : ""}${unread ? " unread" : ""}`} onClick={() => { setSelectedId(person.id); setPicker(null); setError(""); }}>
             <span className="messenger-avatar" aria-hidden="true">{person.name.charAt(0).toUpperCase()}</span>
-            <span className="messenger-person-text"><strong>{person.name}</strong><small>{chat?.lastText ? `${chat.lastSenderId === user.uid ? "You: " : ""}${chat.lastText}` : unitLabel(person.unit) || person.position}</small></span>
+            <span className="messenger-person-text"><strong>{person.name}</strong><small>{chat && lastVisibleAt(chat) > 0 && chat.lastText ? `${chat.lastSenderId === user.uid ? "You: " : ""}${chat.lastText}` : unitLabel(person.unit) || person.position}</small></span>
             {unread && <span className="messenger-unread-dot" aria-label="Unread" />}
           </button></li>;
         })}
@@ -341,10 +365,11 @@ export default function MessengerModule({ user }: { user: User }) {
           <button type="button" className="messenger-back" onClick={() => setSelectedId(null)} aria-label="Back to people">‹</button>
           <span className="messenger-avatar" aria-hidden="true">{selected.name.charAt(0).toUpperCase()}</span>
           <div><strong>{selected.name}</strong><small>{[selected.position, unitLabel(selected.unit)].filter(Boolean).join(" · ")}</small></div>
+          {selectedChat && <button type="button" className="ghost-button messenger-delete-chat" onClick={() => setConfirmClear(true)}>Delete chat</button>}
         </header>
         <div className="messenger-thread" ref={threadRef}>
-          {messages.filter((message) => !hiddenIds.includes(message.id)).length === 0 && <p className="messenger-empty">No messages yet. Say hello!</p>}
-          {messages.filter((message) => !hiddenIds.includes(message.id)).map((message) => {
+          {shownMessages.length === 0 && <p className="messenger-empty">No messages yet. Say hello!</p>}
+          {shownMessages.map((message) => {
             const mine = message.senderId === user.uid;
             return <div className={`messenger-message${mine ? " mine" : ""}`} key={message.id}>
               {message.replyTo && !message.deleted && <span className="messenger-reply-quote"><b>{message.replyTo.senderId === user.uid ? "You" : selected.name}</b>{message.replyTo.text}</span>}
@@ -388,6 +413,7 @@ export default function MessengerModule({ user }: { user: User }) {
         </form>
       </>}
     </div>
+    <DeleteConfirmation open={confirmClear} title="Delete chat?" description={`This deletes your copy of the conversation with ${selected?.name ?? "this person"}. They keep theirs, and this cannot be undone.`} busy={clearing} onCancel={() => setConfirmClear(false)} onConfirm={() => void clearChat()} />
     <DeleteConfirmation open={pendingDelete !== null} title="Delete message for everyone?" description={'The message will be replaced with "You deleted a message." for everyone in the conversation. This cannot be undone.'} busy={deleting} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void removeMessage(pendingDelete); }} />
   </section>;
 }
