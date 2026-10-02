@@ -302,7 +302,7 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
   const [previewRenderError, setPreviewRenderError] = useState("");
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [profileDefaults, setProfileDefaults] = useState<{ name: string; office: Office | ""; position: string }>({ name: user.displayName ?? "", office: "", position: "" });
+  const [profileDefaults, setProfileDefaults] = useState<{ name: string; office: Office | ""; position: string; applicant?: { first: string; middle: string; last: string } }>({ name: user.displayName ?? "", office: "", position: "" });
   const [filedDate, setFiledDate] = useState(localDateValue());
   const [firstName, setFirstName] = useState(() => parseName(user.displayName ?? "").first);
   const [middleName, setMiddleName] = useState(() => parseName(user.displayName ?? "").middle);
@@ -347,13 +347,16 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
         const snapshot = await getDoc(doc(db, "users", user.uid));
         if (!active || !snapshot.exists()) return;
         const profile = snapshot.data();
+        const applicant = typeof profile.firstName === "string" && typeof profile.lastName === "string"
+          ? { first: profile.firstName, middle: typeof profile.middleName === "string" ? profile.middleName : "", last: profile.lastName }
+          : parseName(typeof profile.name === "string" && profile.name.trim() ? profile.name : user.displayName ?? "");
         const defaults = {
           name: typeof profile.name === "string" && profile.name.trim() ? profile.name : user.displayName ?? "",
           position: typeof profile.position === "string" ? profile.position : "",
           office: officeFromProfile(profile.unit),
+          applicant,
         };
         setProfileDefaults(defaults);
-        const applicant = parseName(defaults.name);
         setFirstName(applicant.first);
         setMiddleName(applicant.middle);
         setLastName(applicant.last);
@@ -422,7 +425,7 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
   }, [previewUrl]);
 
   function resetForm() {
-    const applicant = parseName(profileDefaults.name);
+    const applicant = profileDefaults.applicant ?? parseName(profileDefaults.name);
     setFiledDate(localDateValue());
     setFirstName(applicant.first);
     setMiddleName(applicant.middle);

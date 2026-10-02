@@ -993,7 +993,10 @@ export default function Home() {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [resetEmailBusy, setResetEmailBusy] = useState(false);
-  const [profileName, setProfileName] = useState("");
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileMiddleName, setProfileMiddleName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [profileGender, setProfileGender] = useState("");
   const [profilePosition, setProfilePosition] = useState("");
   const [profileUnit, setProfileUnit] = useState<Unit>(units[0]);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -1046,14 +1049,20 @@ export default function Home() {
     setProfileOpen(true);
     setProfileLoading(true);
     setProfileMessage(null);
-    setProfileName(user.displayName ?? "");
+    applyProfileName(user.displayName ?? "");
+    setProfileGender("");
     setProfilePosition("");
     setProfileUnit(units[0]);
     try {
       const profileSnapshot = await getDoc(doc(db, "users", user.uid));
       if (profileSnapshot.exists()) {
         const profile = profileSnapshot.data();
-        if (typeof profile.name === "string") setProfileName(profile.name);
+        if (typeof profile.firstName === "string" && typeof profile.lastName === "string") {
+          setProfileFirstName(profile.firstName);
+          setProfileMiddleName(typeof profile.middleName === "string" ? profile.middleName : "");
+          setProfileLastName(profile.lastName);
+        } else if (typeof profile.name === "string") applyProfileName(profile.name);
+        if (typeof profile.gender === "string") setProfileGender(profile.gender);
         if (typeof profile.position === "string") setProfilePosition(profile.position);
         if (units.includes(profile.unit as Unit)) setProfileUnit(profile.unit as Unit);
       }
@@ -1065,14 +1074,34 @@ export default function Home() {
     }
   }
 
+  // Best-effort split of a stored full name such as "James E. Rosales".
+  function applyProfileName(fullName: string) {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    const last = parts.length > 1 ? parts.pop() ?? "" : "";
+    const middle = parts.length > 1 && /^[A-Za-z]\.?$/.test(parts[parts.length - 1]) ? parts.pop() ?? "" : "";
+    setProfileFirstName(parts.join(" "));
+    setProfileMiddleName(middle);
+    setProfileLastName(last);
+  }
+
   async function saveChanges(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setProfileMessage(null);
-    const name = profileName.trim().replace(/\s+/g, " ");
+    const clean = (value: string) => value.trim().replace(/\s+/g, " ");
+    const firstName = clean(profileFirstName);
+    const middleName = clean(profileMiddleName);
+    const lastName = clean(profileLastName);
+    const gender = profileGender;
+    const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
+    const name = [firstName, middleInitial, lastName].filter(Boolean).join(" ");
     const position = profilePosition.trim().replace(/\s+/g, " ");
     const wantsPasswordChange = changePassword.length > 0 || confirmNewPassword.length > 0;
-    if (!name) {
-      setProfileMessage({ kind: "error", text: "Enter your name." });
+    if (!firstName || !lastName) {
+      setProfileMessage({ kind: "error", text: "Enter your first and last name." });
+      return;
+    }
+    if (!gender) {
+      setProfileMessage({ kind: "error", text: "Select your gender." });
       return;
     }
     if (wantsPasswordChange && (!changePassword || !confirmNewPassword)) {
@@ -1095,12 +1124,14 @@ export default function Home() {
     let profileDataSaved = false;
     let accountNameSaved = false;
     try {
-      await setDoc(doc(db, "users", user.uid), { name, position, unit: profileUnit });
+      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit });
       profileDataSaved = true;
       await updateProfile(user, { displayName: name });
       accountNameSaved = true;
       setUser(auth?.currentUser ?? user);
-      setProfileName(name);
+      setProfileFirstName(firstName);
+      setProfileMiddleName(middleName);
+      setProfileLastName(lastName);
       setProfilePosition(position);
       if (wantsPasswordChange) await updatePassword(user, changePassword);
       setChangePassword("");
@@ -1324,7 +1355,10 @@ export default function Home() {
 <button type="button" className="mobile-nav-link" aria-expanded={mobileMyDocsOpen} aria-controls="mobile-mydocs-menu" onClick={() => setMobileMyDocsOpen((open) => !open)}><span>myDocs</span><span className={mobileMyDocsOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
 {mobileMyDocsOpen && <div className="mobile-nav-submenu" id="mobile-mydocs-menu"><button type="button" onClick={() => { setSection("special-orders"); setView("list"); closeMobileNavigation(); }}>Special Order</button><button type="button" onClick={() => { setSection("nta"); setView("list"); closeMobileNavigation(); }}>Notice To Attend</button><button type="button" onClick={() => { setSection("permits"); setView("list"); closeMobileNavigation(); }}>Permit Slip</button><button type="button" onClick={() => { setSection("travel-orders"); setView("list"); closeMobileNavigation(); }}>Travel Order</button><button type="button" onClick={() => { setSection("calendar-activities"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities</button><button type="button" onClick={() => { setSection("myar"); setView("list"); closeMobileNavigation(); }}>myAR</button><button type="button" onClick={() => { setSection("my-notes"); setView("list"); closeMobileNavigation(); }}>myNotes</button><button type="button" onClick={() => { setSection("leave-application"); setView("list"); closeMobileNavigation(); }}>Leave Application</button>{isAdmin && <><span className="mobile-nav-submenu-label">Admin Panel</span><button type="button" onClick={() => { setSection("permit-status"); setView("list"); closeMobileNavigation(); }}>Permit Slip Status</button><button type="button" onClick={() => { setSection("permit-statistics"); setView("list"); closeMobileNavigation(); }}>Permit Slip Statistics</button><button type="button" onClick={() => { setSection("calendar-activity-records"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities Records</button></>}</div>}
 </div><button type="button" className="mobile-sign-out" onClick={() => { closeMobileNavigation(); if (auth) void signOut(auth); }}>Sign Out</button></nav></>}{profileOpen && <div className="profile-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeProfile(); }} onKeyDown={(event) => { if (event.key === "Escape") closeProfile(); }}><section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title"><header className="profile-dialog-header"><div><p className="eyebrow">Account</p><h2 id="profile-title">Profile</h2></div><button type="button" className="ghost-button" onClick={closeProfile}>Close</button></header><form className="profile-form" onSubmit={saveChanges} aria-busy={profileLoading || profileSaving}>
-  <label>Name<input autoComplete="name" maxLength={120} value={profileName} onChange={(event) => setProfileName(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
+  <label>First Name<input autoComplete="given-name" maxLength={60} value={profileFirstName} onChange={(event) => setProfileFirstName(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
+  <label>Middle Name<input autoComplete="additional-name" maxLength={60} value={profileMiddleName} onChange={(event) => setProfileMiddleName(event.target.value)} disabled={profileLoading || profileSaving} /></label>
+  <label>Last Name<input autoComplete="family-name" maxLength={60} value={profileLastName} onChange={(event) => setProfileLastName(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
+  <label>Gender<select value={profileGender} onChange={(event) => setProfileGender(event.target.value)} required disabled={profileLoading || profileSaving}><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
   <label>Position<input autoComplete="organization-title" maxLength={120} value={profilePosition} onChange={(event) => setProfilePosition(event.target.value)} disabled={profileLoading || profileSaving} /></label>
   <label>Unit<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value as Unit)} disabled={profileLoading || profileSaving}>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
   <label>Email<input type="email" value={user.email ?? ""} readOnly /></label>
