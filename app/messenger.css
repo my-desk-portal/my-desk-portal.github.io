@@ -143,3 +143,5 @@
 .app-shell:has(.messenger) .messenger:is(*){flex:1 1 auto;height:auto;max-height:none;min-height:0}
 .app-shell:has(.messenger) .messenger{margin-inline:auto;max-width:var(--messenger-frame-width);width:100%}
 @media(max-width:720px){.app-shell:has(.messenger){--messenger-frame-width:min(1120px,calc(100vw - 40px))}}
+
+@media(max-width:720px){.dashboard-header.hide-on-mobile{display:none}}
