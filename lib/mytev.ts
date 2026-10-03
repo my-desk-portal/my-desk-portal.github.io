@@ -28,7 +28,7 @@ export const tevDivisions = [
   "Integrated Laboratories Division",
 ] as const;
 
-export const tevTransportationMeans = ["RP", "Plane", "Boat", "MCH", "PUV", "PUB"] as const;
+export const tevTransportationMeans = ["RP", "Plane", "Boat", "MCH", "PUV", "PUB", "None"] as const;
 
 export const tevClaims = [
   { id: "lodging", label: "Hotel / Lodging", amount: 750 },

@@ -116,6 +116,18 @@ function itineraryDateRowSpan(rows: Array<TevItineraryRow | undefined>, index: n
   return span;
 }
 
+function cenrrDateRowSpan(rows: Array<ReturnType<typeof cenrrRows>[number] | undefined>, index: number) {
+  const row = rows[index];
+  if (!row || (!row.dateFrom && !row.dateTo)) return 1;
+  let span = 1;
+  for (let next = index + 1; next < rows.length; next += 1) {
+    const nextRow = rows[next];
+    if (!nextRow || (!nextRow.dateFrom && !nextRow.dateTo) || nextRow.dateFrom !== row.dateFrom || nextRow.dateTo !== row.dateTo) break;
+    span += 1;
+  }
+  return span;
+}
+
 function MyTevLetterhead({ appendix }: { appendix?: string }) {
   return <header className="mytev-letterhead">
     <img src={daCaragaLogo} alt="Department of Agriculture Caraga Region" />
@@ -167,7 +179,7 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount }: 
           <td>{row?.visitedPlaces}</td>
           <td className="mytev-itinerary-departure">{row ? formatTevTime(row.departureTimeFrom) : ""}</td>
           <td>{row ? formatTevTime(row.departureTimeTo) : ""}</td>
-          <td>{row?.meansOfTransportation}</td>
+          <td>{row?.meansOfTransportation === "None" ? "" : row?.meansOfTransportation}</td>
           <td className="mytev-itinerary-transportation">{row && transportationForRow(row) ? formatTevAmount(transportationForRow(row)) : ""}</td>
           <td>{row && perDiemForClaims(row.claims) ? formatTevAmount(perDiemForClaims(row.claims)) : ""}</td>
           <td />
@@ -286,6 +298,7 @@ function MyTevCenrrPage({ record, page, pageNumber, pageCount, grandTotal }: { r
   const profile = record.profile;
   const signatory = divisionSignatory(record.divisionName);
   const rows = pageRowsWithFillers(page, maxCenrrRows, 123, 4.2);
+  const pageRows = rows.map(({ row }) => row);
   const pageTotal = page.rows.reduce((sum, row) => sum + row.amount, 0);
   const isFinalPage = pageNumber === pageCount;
   return <article className="mytev-paper mytev-cenrr-paper">
@@ -304,8 +317,9 @@ function MyTevCenrrPage({ record, page, pageNumber, pageCount, grandTotal }: { r
       <table className="mytev-cenrr-table"><thead><tr><th>DATE</th><th>PARTICULARS</th><th>MEANS OF<br />TRANSPORTATION</th><th>AMOUNT</th></tr></thead><tbody>
         {rows.map(({ row, height }, index) => {
           const previousRow = rows[index - 1]?.row;
-          const newDate = row && (!previousRow || row.dateFrom !== previousRow.dateFrom || row.dateTo !== previousRow.dateTo);
-          return <tr key={`cenrr-line-${pageNumber}-${index}`} style={{ height: `${height}mm` }}><td>{newDate && row ? formatTevDateRange(row.dateFrom, row.dateTo) : ""}</td><td>{row?.visitedPlaces}</td><td>{row?.meansOfTransportation}</td><td>{row ? formatTevAmount(row.amount) : ""}</td></tr>;
+          const hasDate = Boolean(row && (row.dateFrom || row.dateTo));
+          const sameDateAsPrevious = Boolean(hasDate && previousRow && (previousRow.dateFrom || previousRow.dateTo) && row?.dateFrom === previousRow.dateFrom && row?.dateTo === previousRow.dateTo);
+          return <tr key={`cenrr-line-${pageNumber}-${index}`} style={{ height: `${height}mm` }}>{!sameDateAsPrevious && <td rowSpan={hasDate ? cenrrDateRowSpan(pageRows, index) : 1}>{row && hasDate ? formatTevDateRange(row.dateFrom, row.dateTo) : ""}</td>}<td>{row?.visitedPlaces}</td><td>{row?.meansOfTransportation}</td><td>{row ? formatTevAmount(row.amount) : ""}</td></tr>;
         })}
       </tbody><tfoot><tr className="mytev-cenrr-total"><th colSpan={3}>{pageCount === 1 ? "Total" : isFinalPage ? "Grand Total" : `Page ${pageNumber} Subtotal — Continued`}</th><th>{formatTevAmount(isFinalPage ? grandTotal : pageTotal)}</th></tr></tfoot></table>
       <p className="mytev-cenrr-purpose"><b>Purpose:</b> <i>Please see attached Travel Orders.</i></p>
