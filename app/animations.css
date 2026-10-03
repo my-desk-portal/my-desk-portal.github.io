@@ -226,3 +226,7 @@ textarea:focus { transition-duration: 120ms; }
   outline: none;
   transform: none;
 }
+
+/* Text-only row links keep the hover motion but have no pill container. */
+.row-action,.delete-button{border-radius:0}
+.row-action:hover:not(:disabled),.delete-button:hover:not(:disabled){background:none;box-shadow:none;filter:none}
