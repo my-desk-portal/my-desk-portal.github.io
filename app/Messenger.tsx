@@ -175,8 +175,10 @@ export default function MessengerModule({ user }: { user: User }) {
   // Listening before the server has the chat document is denied by the rules, so wait for the write to land.
   const selectedChatId = selectedChat && !selectedChat.pending ? selectedChat.id : null;
 
+  // Clear only when switching people; the chat id changing from pending to confirmed must not blank the thread.
+  useEffect(() => { setMessages([]); }, [selectedId]);
+
   useEffect(() => {
-    setMessages([]);
     if (!db || !selectedChatId) return;
     return onSnapshot(query(collection(db, "chats", selectedChatId, "messages"), orderBy("createdAt", "desc"), limit(100)), (snapshot) => {
       setMessages(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Message)).reverse());
@@ -194,9 +196,14 @@ export default function MessengerModule({ user }: { user: User }) {
     }, () => setHiddenIds([]));
   }, [selectedChatId, user.uid]);
 
+  const lastScrolledId = useRef<string | null>(null);
   useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
-  }, [messages, selectedId]);
+    const thread = threadRef.current;
+    if (!thread) return;
+    const switched = lastScrolledId.current !== selectedId;
+    lastScrolledId.current = selectedId;
+    thread.scrollTo({ top: thread.scrollHeight, behavior: switched ? "auto" : "smooth" });
+  }, [messages.length, selectedId]);
 
   const needsRead = Boolean(selectedChat && isUnread(selectedChat, user.uid));
   useEffect(() => {
