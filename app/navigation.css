@@ -195,7 +195,7 @@
   .topbar{border-width:4px;border-radius:22px;margin:8px 8px 0;padding:4px 7px 6px}
   .topbar .brand-logo{height:38px;width:38px}
   .topbar .user-menu{gap:4px}
-  .topbar .notification-button{height:32px;width:32px}
+  .topbar .notification-button{border-radius:0;height:32px;width:32px}
   .topbar .profile-trigger{font-size:11px;max-width:42vw;min-height:38px;padding:7px 10px}
   .topbar .logout-button{height:32px;width:30px}
   .topbar .main-nav{gap:0;justify-content:space-between;scroll-padding-inline:4px}
