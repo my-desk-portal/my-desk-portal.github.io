@@ -41,6 +41,7 @@ import CalendarOfActivitiesModule, { type CalendarActivityApprovalNotification, 
 import MessengerModule, { MessengerButton } from "./Messenger";
 import LeaveApplicationModule from "./LeaveApplication";
 import MyNotesModule from "./MyNotes";
+import MyTevModule from "./MyTev";
 import WhereaboutsCalendarModule from "./WhereaboutsCalendar";
 import DeleteConfirmation from "./DeleteConfirmation";
 import AccomplishmentReportModule from "./AccomplishmentReport";
@@ -168,6 +169,8 @@ function Login({ onError }: { onError: (message: string) => void }) {
   const [gender, setGender] = useState("");
   const [position, setPosition] = useState("");
   const [unit, setUnit] = useState<AccountUnit | "">("");
+  const [address, setAddress] = useState("");
+  const [taxIdentificationNo, setTaxIdentificationNo] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -196,6 +199,14 @@ function Login({ onError }: { onError: (message: string) => void }) {
       setAuthMessage({ kind: "error", text: "Select your unit." });
       return;
     }
+    if (registering && !address.trim()) {
+      setAuthMessage({ kind: "error", text: "Enter your address." });
+      return;
+    }
+    if (registering && !taxIdentificationNo.trim()) {
+      setAuthMessage({ kind: "error", text: "Enter your tax identification number." });
+      return;
+    }
     if (registering && [firstName, middleName, lastName].some((namePart) => namePart.trim().length > 60)) {
       setAuthMessage({ kind: "error", text: "Each name must be 60 characters or fewer." });
       return;
@@ -218,6 +229,8 @@ function Login({ onError }: { onError: (message: string) => void }) {
         const cleanFirstName = clean(firstName);
         const cleanMiddleName = clean(middleName);
         const cleanLastName = clean(lastName);
+        const cleanAddress = clean(address);
+        const cleanTaxIdentificationNo = clean(taxIdentificationNo);
         const name = [cleanFirstName, cleanMiddleName ? `${cleanMiddleName.charAt(0).toUpperCase()}.` : "", cleanLastName].filter(Boolean).join(" ");
         await updateProfile(credential.user, { displayName: name });
         if (!db) throw new Error("Profile storage is unavailable.");
@@ -229,6 +242,8 @@ function Login({ onError }: { onError: (message: string) => void }) {
           gender,
           position: clean(position),
           unit: unit as AccountUnit,
+          address: cleanAddress,
+          taxIdentificationNo: cleanTaxIdentificationNo,
         });
         await sendEmailVerification(credential.user);
         await signOut(auth);
@@ -287,11 +302,11 @@ function Login({ onError }: { onError: (message: string) => void }) {
       </form> : <>
         <form className={registering ? "auth-registration-form" : undefined} onSubmit={submit}>
           {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" maxLength={60} value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Middle Name<input autoComplete="additional-name" maxLength={60} value={middleName} onChange={(event) => setMiddleName(event.target.value)} placeholder="Middle name" /></label><label>Last Name<input autoComplete="family-name" maxLength={60} value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
-          {registering && <div className="auth-gender-position-fields"><label>Gender<select value={gender} onChange={(event) => setGender(event.target.value)} required><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label><label>Position<input autoComplete="organization-title" maxLength={120} value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Your position" required /></label></div>}
-          {registering && <label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as AccountUnit | "")} required><option value="" disabled>Select your unit</option>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
-          <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
-          <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label>
-          {registering && <label>Confirmation Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label>}
+          {registering && <div className="auth-gender-position-fields"><label>Gender<select value={gender} onChange={(event) => setGender(event.target.value)} required><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label><label>Position<input autoComplete="organization-title" maxLength={120} value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Your position" required /></label><label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as AccountUnit | "")} required><option value="" disabled>Select your unit</option>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div>}
+          {registering && <div className="auth-contact-fields"><label>Address<input autoComplete="street-address" maxLength={200} value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Your address" required /></label><label>Tax Identification No.<input autoComplete="off" maxLength={30} value={taxIdentificationNo} onChange={(event) => setTaxIdentificationNo(event.target.value)} placeholder="TIN" required /></label><label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label></div>}
+          {!registering && <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>}
+          {registering && <div className="auth-password-fields"><label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label><label>Confirmation Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label></div>}
+          {!registering && <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete="current-password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label>}
           {registering && confirmPassword && confirmPassword !== password && <p className="auth-validation-message" role="alert">Passwords do not match.</p>}
           <button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button>
         </form>
@@ -1012,7 +1027,7 @@ export default function Home() {
   const [deletingSpecialOrderId, setDeletingSpecialOrderId] = useState<string | null>(null);
   const [pendingSpecialOrderDelete, setPendingSpecialOrderDelete] = useState<SpecialOrder | null>(null);
   const [view, setView] = useState<"list" | "new">("list");
-  const [section, setSection] = useState<"permits" | "messenger" | "special-orders" | "nta" | "travel-orders" | "calendar-activities" | "calendar-activity-records" | "whereabouts-calendar" | "permit-statistics" | "permit-status" | "myar" | "my-notes" | "leave-application" | "certificate-of-appearance" | "completion" | "appreciation" | "participation">("whereabouts-calendar");
+  const [section, setSection] = useState<"permits" | "messenger" | "special-orders" | "nta" | "travel-orders" | "calendar-activities" | "calendar-activity-records" | "whereabouts-calendar" | "permit-statistics" | "permit-status" | "myar" | "my-notes" | "my-tevs" | "leave-application" | "certificate-of-appearance" | "completion" | "appreciation" | "participation">("whereabouts-calendar");
   const [myDocsMenuOpen, setMyDocsMenuOpen] = useState(false);
   const [certificateMenuOpen, setCertificateMenuOpen] = useState(false);
   const [amiaDocumentMenuOpen, setAmiaDocumentMenuOpen] = useState(false);
@@ -1037,6 +1052,8 @@ export default function Home() {
   const [profileLastName, setProfileLastName] = useState("");
   const [profileGender, setProfileGender] = useState("");
   const [profilePosition, setProfilePosition] = useState("");
+  const [profileAddress, setProfileAddress] = useState("");
+  const [profileTaxIdentificationNo, setProfileTaxIdentificationNo] = useState("");
   const [profileUnit, setProfileUnit] = useState<AccountUnit>(units[0]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -1090,6 +1107,8 @@ export default function Home() {
     applyProfileName(user.displayName ?? "");
     setProfileGender("");
     setProfilePosition("");
+    setProfileAddress("");
+    setProfileTaxIdentificationNo("");
     setProfileUnit(units[0]);
     try {
       const profileSnapshot = await getDoc(doc(db, "users", user.uid));
@@ -1102,6 +1121,8 @@ export default function Home() {
         } else if (typeof profile.name === "string") applyProfileName(profile.name);
         if (typeof profile.gender === "string") setProfileGender(profile.gender);
         if (typeof profile.position === "string") setProfilePosition(profile.position);
+        if (typeof profile.address === "string") setProfileAddress(profile.address);
+        if (typeof profile.taxIdentificationNo === "string") setProfileTaxIdentificationNo(profile.taxIdentificationNo);
         if (accountUnitOptions.some((option) => option.value === profile.unit)) setProfileUnit(profile.unit as AccountUnit);
       }
     } catch (cause) {
@@ -1130,6 +1151,8 @@ export default function Home() {
     const middleName = clean(profileMiddleName);
     const lastName = clean(profileLastName);
     const gender = profileGender;
+    const address = clean(profileAddress);
+    const taxIdentificationNo = clean(profileTaxIdentificationNo);
     const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
     const name = [firstName, middleInitial, lastName].filter(Boolean).join(" ");
     const position = profilePosition.trim().replace(/\s+/g, " ");
@@ -1140,6 +1163,14 @@ export default function Home() {
     }
     if (!gender) {
       setProfileMessage({ kind: "error", text: "Select your gender." });
+      return;
+    }
+    if (!address) {
+      setProfileMessage({ kind: "error", text: "Enter your address." });
+      return;
+    }
+    if (!taxIdentificationNo) {
+      setProfileMessage({ kind: "error", text: "Enter your tax identification number." });
       return;
     }
     if (wantsPasswordChange && (!changePassword || !confirmNewPassword)) {
@@ -1162,7 +1193,7 @@ export default function Home() {
     let profileDataSaved = false;
     let accountNameSaved = false;
     try {
-      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit }, { merge: true });
+      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit, address, taxIdentificationNo }, { merge: true });
       profileDataSaved = true;
       await updateProfile(user, { displayName: name });
       accountNameSaved = true;
@@ -1171,6 +1202,8 @@ export default function Home() {
       setProfileMiddleName(middleName);
       setProfileLastName(lastName);
       setProfilePosition(position);
+      setProfileAddress(address);
+      setProfileTaxIdentificationNo(taxIdentificationNo);
       if (wantsPasswordChange) await updatePassword(user, changePassword);
       setChangePassword("");
       setConfirmNewPassword("");
@@ -1369,7 +1402,7 @@ export default function Home() {
   })).sort((left, right) => timestampMillis(right.decidedAt) - timestampMillis(left.decidedAt));
   const notificationCount = pendingPermitNotifications.length;
   return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { closeMobileNavigation(); setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span>My Desk</span></button><nav className="main-nav" aria-label="Main navigation">
-      <div className="nav-dropdown mydocs-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMyDocsMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setMyDocsMenuOpen(false); }}><button type="button" className={section === "special-orders" || section === "nta" || section === "permits" || section === "permit-status" || section === "permit-statistics" || section === "travel-orders" || section === "calendar-activities" || section === "calendar-activity-records" || section === "myar" || section === "my-notes" || section === "leave-application" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={myDocsMenuOpen} aria-controls="mydocs-menu" onClick={() => setMyDocsMenuOpen((open) => !open)}>myDocs <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{myDocsMenuOpen && <div className="nav-dropdown-menu mydocs-nav-menu" id="mydocs-menu">
+      <div className="nav-dropdown mydocs-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMyDocsMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setMyDocsMenuOpen(false); }}><button type="button" className={section === "special-orders" || section === "nta" || section === "permits" || section === "permit-status" || section === "permit-statistics" || section === "travel-orders" || section === "calendar-activities" || section === "calendar-activity-records" || section === "myar" || section === "my-notes" || section === "my-tevs" || section === "leave-application" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={myDocsMenuOpen} aria-controls="mydocs-menu" onClick={() => setMyDocsMenuOpen((open) => !open)}>myDocs <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{myDocsMenuOpen && <div className="nav-dropdown-menu mydocs-nav-menu" id="mydocs-menu">
         <button type="button" className={section === "special-orders" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("special-orders"); setView("list"); setMyDocsMenuOpen(false); }}>Special Order</button>
         <button type="button" className={section === "nta" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("nta"); setView("list"); setMyDocsMenuOpen(false); }}>Notice To Attend</button>
         <button type="button" className={section === "permits" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permits"); setView("list"); setMyDocsMenuOpen(false); }}>Permit Slip</button>
@@ -1377,6 +1410,7 @@ export default function Home() {
         <button type="button" className={section === "calendar-activities" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("calendar-activities"); setView("list"); setMyDocsMenuOpen(false); }}>Calendar of Activities</button>
         <button type="button" className={section === "myar" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("myar"); setView("list"); setMyDocsMenuOpen(false); }}>myAR</button>
         <button type="button" className={section === "my-notes" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("my-notes"); setView("list"); setMyDocsMenuOpen(false); }}>myNotes</button>
+        <button type="button" className={section === "my-tevs" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("my-tevs"); setView("list"); setMyDocsMenuOpen(false); }}>myTEV</button>
         <button type="button" className={section === "leave-application" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("leave-application"); setView("list"); setMyDocsMenuOpen(false); }}>Leave Application</button>
         {isAdmin && <><div className="nav-dropdown-divider" role="separator" /><span className="nav-dropdown-label">Admin Panel</span><button type="button" className={section === "permit-status" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-status"); setMyDocsMenuOpen(false); }}>Permit Slip Status</button><button type="button" className={section === "permit-statistics" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-statistics"); setMyDocsMenuOpen(false); }}>Permit Slip Statistics</button><button type="button" className={section === "calendar-activity-records" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("calendar-activity-records"); setView("list"); setMyDocsMenuOpen(false); }}>Calendar of Activities Records</button></>}
       </div>}</div>
@@ -1391,7 +1425,7 @@ export default function Home() {
 <button type="button" className="mobile-nav-link" aria-expanded={mobileCertificateOpen} aria-controls="mobile-certificate-menu" onClick={() => setMobileCertificateOpen((open) => !open)}><span>Certificate</span><span className={mobileCertificateOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
 {mobileCertificateOpen && <div className="mobile-nav-submenu" id="mobile-certificate-menu"><button type="button" onClick={() => { setSection("certificate-of-appearance"); setView("list"); closeMobileNavigation(); }}>Appearance</button><button type="button" onClick={() => { setSection("completion"); setView("list"); closeMobileNavigation(); }}>Completion</button><button type="button" onClick={() => { setSection("appreciation"); setView("list"); closeMobileNavigation(); }}>Appreciation</button><button type="button" onClick={() => { setSection("participation"); setView("list"); closeMobileNavigation(); }}>Participation</button></div>}
 <button type="button" className="mobile-nav-link" aria-expanded={mobileMyDocsOpen} aria-controls="mobile-mydocs-menu" onClick={() => setMobileMyDocsOpen((open) => !open)}><span>myDocs</span><span className={mobileMyDocsOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
-{mobileMyDocsOpen && <div className="mobile-nav-submenu" id="mobile-mydocs-menu"><button type="button" onClick={() => { setSection("special-orders"); setView("list"); closeMobileNavigation(); }}>Special Order</button><button type="button" onClick={() => { setSection("nta"); setView("list"); closeMobileNavigation(); }}>Notice To Attend</button><button type="button" onClick={() => { setSection("permits"); setView("list"); closeMobileNavigation(); }}>Permit Slip</button><button type="button" onClick={() => { setSection("travel-orders"); setView("list"); closeMobileNavigation(); }}>Travel Order</button><button type="button" onClick={() => { setSection("calendar-activities"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities</button><button type="button" onClick={() => { setSection("myar"); setView("list"); closeMobileNavigation(); }}>myAR</button><button type="button" onClick={() => { setSection("my-notes"); setView("list"); closeMobileNavigation(); }}>myNotes</button><button type="button" onClick={() => { setSection("leave-application"); setView("list"); closeMobileNavigation(); }}>Leave Application</button>{isAdmin && <><span className="mobile-nav-submenu-label">Admin Panel</span><button type="button" onClick={() => { setSection("permit-status"); setView("list"); closeMobileNavigation(); }}>Permit Slip Status</button><button type="button" onClick={() => { setSection("permit-statistics"); setView("list"); closeMobileNavigation(); }}>Permit Slip Statistics</button><button type="button" onClick={() => { setSection("calendar-activity-records"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities Records</button></>}</div>}
+{mobileMyDocsOpen && <div className="mobile-nav-submenu" id="mobile-mydocs-menu"><button type="button" onClick={() => { setSection("special-orders"); setView("list"); closeMobileNavigation(); }}>Special Order</button><button type="button" onClick={() => { setSection("nta"); setView("list"); closeMobileNavigation(); }}>Notice To Attend</button><button type="button" onClick={() => { setSection("permits"); setView("list"); closeMobileNavigation(); }}>Permit Slip</button><button type="button" onClick={() => { setSection("travel-orders"); setView("list"); closeMobileNavigation(); }}>Travel Order</button><button type="button" onClick={() => { setSection("calendar-activities"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities</button><button type="button" onClick={() => { setSection("myar"); setView("list"); closeMobileNavigation(); }}>myAR</button><button type="button" onClick={() => { setSection("my-notes"); setView("list"); closeMobileNavigation(); }}>myNotes</button><button type="button" onClick={() => { setSection("my-tevs"); setView("list"); closeMobileNavigation(); }}>myTEV</button><button type="button" onClick={() => { setSection("leave-application"); setView("list"); closeMobileNavigation(); }}>Leave Application</button>{isAdmin && <><span className="mobile-nav-submenu-label">Admin Panel</span><button type="button" onClick={() => { setSection("permit-status"); setView("list"); closeMobileNavigation(); }}>Permit Slip Status</button><button type="button" onClick={() => { setSection("permit-statistics"); setView("list"); closeMobileNavigation(); }}>Permit Slip Statistics</button><button type="button" onClick={() => { setSection("calendar-activity-records"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities Records</button></>}</div>}
 </div><button type="button" className="mobile-sign-out" onClick={() => { closeMobileNavigation(); if (auth) void signOut(auth); }}>Sign Out</button></nav></>}{profileOpen && <div className="profile-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeProfile(); }} onKeyDown={(event) => { if (event.key === "Escape") closeProfile(); }}><section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title"><header className="profile-dialog-header"><div><p className="eyebrow">Account</p><h2 id="profile-title">Profile</h2></div><button type="button" className="ghost-button" onClick={closeProfile}>Close</button></header><form className="profile-form" onSubmit={saveChanges} aria-busy={profileLoading || profileSaving}>
   <label>First Name<input autoComplete="given-name" maxLength={60} value={profileFirstName} onChange={(event) => setProfileFirstName(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
   <label>Middle Name<input autoComplete="additional-name" maxLength={60} value={profileMiddleName} onChange={(event) => setProfileMiddleName(event.target.value)} disabled={profileLoading || profileSaving} /></label>
@@ -1399,6 +1433,8 @@ export default function Home() {
   <label>Gender<select value={profileGender} onChange={(event) => setProfileGender(event.target.value)} required disabled={profileLoading || profileSaving}><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
   <label>Position<input autoComplete="organization-title" maxLength={120} value={profilePosition} onChange={(event) => setProfilePosition(event.target.value)} disabled={profileLoading || profileSaving} /></label>
   <label>Unit<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value as AccountUnit)} disabled={profileLoading || profileSaving}>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+  <label>Address<input autoComplete="street-address" maxLength={200} value={profileAddress} onChange={(event) => setProfileAddress(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
+  <label>Tax Identification No.<input autoComplete="off" maxLength={30} value={profileTaxIdentificationNo} onChange={(event) => setProfileTaxIdentificationNo(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
   <label>Email<input type="email" value={user.email ?? ""} readOnly /></label>
   <div className="profile-password-fields">
   <label>Change Password<div className="password-field"><input type={showChangePassword ? "text" : "password"} autoComplete="new-password" value={changePassword} onChange={(event) => setChangePassword(event.target.value)} /><button type="button" className="password-toggle" aria-label={showChangePassword ? "Hide new password" : "Show new password"} onClick={() => setShowChangePassword((show) => !show)}>{showChangePassword ? "Hide" : "Show"}</button></div></label>
@@ -1406,5 +1442,5 @@ export default function Home() {
   </div>
   <div className="profile-password-actions"><button type="button" className="ghost-button" disabled={profileSaving || resetEmailBusy} onClick={() => void sendResetLink()}>{resetEmailBusy ? "Sending..." : "Reset Password"}</button><button className="primary-button" disabled={profileLoading || profileSaving || resetEmailBusy}>{profileLoading ? "Loading..." : profileSaving ? "Saving..." : "Save Changes"}</button></div>
   {profileMessage && <p className={`auth-message auth-message-${profileMessage.kind}`} role={profileMessage.kind === "error" ? "alert" : "status"}>{profileMessage.text}</p>}
-  </form></section></div>}<main className="dashboard"><div className={`dashboard-header${section === "messenger" ? " hide-on-mobile" : ""}`}><div><p className="eyebrow">{philippineDateTime && <>{philippineDateTime.split(" | ")[0]} | <span className="dashboard-time">{philippineDateTime.split(" | ")[1]}</span></>}</p><h1>{biometricsGreeting ?? "Good to see you"}{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "appreciation" ? <AppreciationCertificate user={user} /> : section === "completion" ? <CompletionCertificate user={user} /> : section === "participation" ? <ParticipationCertificate user={user} /> : section === "certificate-of-appearance" ? <CertificateOfAppearance user={user} /> : section === "leave-application" ? <LeaveApplicationModule user={user} /> : section === "myar" ? <AccomplishmentReportModule user={user} /> : section === "my-notes" ? <MyNotesModule user={user} /> : section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "calendar-activities" ? <CalendarOfActivitiesModule user={user} /> : section === "calendar-activity-records" && isAdmin ? <CalendarOfActivitiesModule user={user} mode="approved-records" /> : section === "messenger" ? <MessengerModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} approvedPermitNumbers={approvedPermitNumbers} deletingId={deletingPermitId} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} onDelete={setPendingPermitDelete} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} deletingId={deletingSpecialOrderId} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} onDelete={setPendingSpecialOrderDelete} />)}</main><DeleteConfirmation open={Boolean(pendingPermitDelete)} title="Confirm Permit Slip Deletion?" description="Are you sure you want to delete this Permit Slip? This action cannot be undone." busy={Boolean(pendingPermitDelete && deletingPermitId === pendingPermitDelete.id)} onCancel={() => setPendingPermitDelete(null)} onConfirm={() => { if (pendingPermitDelete) void deletePermit(pendingPermitDelete); }} /><DeleteConfirmation open={Boolean(pendingSpecialOrderDelete)} title="Confirm Special Order Deletion?" description="Are you sure you want to delete this Special Order? This action cannot be undone." busy={Boolean(pendingSpecialOrderDelete && deletingSpecialOrderId === pendingSpecialOrderDelete.id)} onCancel={() => setPendingSpecialOrderDelete(null)} onConfirm={() => { if (pendingSpecialOrderDelete) void deleteSpecialOrder(pendingSpecialOrderDelete); }} />{preview && <PrintPreview permit={preview} approvedPermitNumbers={approvedPermitNumbers} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
+  </form></section></div>}<main className="dashboard"><div className={`dashboard-header${section === "messenger" ? " hide-on-mobile" : ""}`}><div><p className="eyebrow">{philippineDateTime && <>{philippineDateTime.split(" | ")[0]} | <span className="dashboard-time">{philippineDateTime.split(" | ")[1]}</span></>}</p><h1>{biometricsGreeting ?? "Good to see you"}{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "appreciation" ? <AppreciationCertificate user={user} /> : section === "completion" ? <CompletionCertificate user={user} /> : section === "participation" ? <ParticipationCertificate user={user} /> : section === "certificate-of-appearance" ? <CertificateOfAppearance user={user} /> : section === "leave-application" ? <LeaveApplicationModule user={user} /> : section === "myar" ? <AccomplishmentReportModule user={user} /> : section === "my-notes" ? <MyNotesModule user={user} /> : section === "my-tevs" ? <MyTevModule user={user} /> : section === "nta" ? <NtaModule user={user} /> : section === "travel-orders" ? <TravelOrderModule user={user} /> : section === "calendar-activities" ? <CalendarOfActivitiesModule user={user} /> : section === "calendar-activity-records" && isAdmin ? <CalendarOfActivitiesModule user={user} mode="approved-records" /> : section === "messenger" ? <MessengerModule user={user} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} approvedPermitNumbers={approvedPermitNumbers} deletingId={deletingPermitId} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} onDelete={setPendingPermitDelete} />) : (view === "new" ? <SpecialOrderForm user={user} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} deletingId={deletingSpecialOrderId} onNew={() => { setError(""); setView("new"); }} onPrint={setSpecialOrderPreview} onDelete={setPendingSpecialOrderDelete} />)}</main><DeleteConfirmation open={Boolean(pendingPermitDelete)} title="Confirm Permit Slip Deletion?" description="Are you sure you want to delete this Permit Slip? This action cannot be undone." busy={Boolean(pendingPermitDelete && deletingPermitId === pendingPermitDelete.id)} onCancel={() => setPendingPermitDelete(null)} onConfirm={() => { if (pendingPermitDelete) void deletePermit(pendingPermitDelete); }} /><DeleteConfirmation open={Boolean(pendingSpecialOrderDelete)} title="Confirm Special Order Deletion?" description="Are you sure you want to delete this Special Order? This action cannot be undone." busy={Boolean(pendingSpecialOrderDelete && deletingSpecialOrderId === pendingSpecialOrderDelete.id)} onCancel={() => setPendingSpecialOrderDelete(null)} onConfirm={() => { if (pendingSpecialOrderDelete) void deleteSpecialOrder(pendingSpecialOrderDelete); }} />{preview && <PrintPreview permit={preview} approvedPermitNumbers={approvedPermitNumbers} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }

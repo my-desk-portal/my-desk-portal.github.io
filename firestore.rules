@@ -30,12 +30,14 @@ service cloud.firestore {
       allow create, update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.keys().hasAll(["name", "position", "unit"])
-        && request.resource.data.keys().hasOnly(["name", "position", "unit", "firstName", "middleName", "lastName", "gender", "photoURL"])
+        && request.resource.data.keys().hasOnly(["name", "position", "unit", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo"])
         && (!request.resource.data.keys().hasAny(["gender"]) || request.resource.data.gender in ["Male", "Female"])
         && (!request.resource.data.keys().hasAny(["firstName"]) || (request.resource.data.firstName is string && request.resource.data.firstName.size() <= 60))
         && (!request.resource.data.keys().hasAny(["middleName"]) || (request.resource.data.middleName is string && request.resource.data.middleName.size() <= 60))
         && (!request.resource.data.keys().hasAny(["lastName"]) || (request.resource.data.lastName is string && request.resource.data.lastName.size() <= 60))
         && (!request.resource.data.keys().hasAny(["photoURL"]) || (request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 2048))
+        && (!request.resource.data.keys().hasAny(["address"]) || (request.resource.data.address is string && request.resource.data.address.size() > 0 && request.resource.data.address.size() <= 200))
+        && (!request.resource.data.keys().hasAny(["taxIdentificationNo"]) || (request.resource.data.taxIdentificationNo is string && request.resource.data.taxIdentificationNo.size() > 0 && request.resource.data.taxIdentificationNo.size() <= 30))
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 120
@@ -562,7 +564,10 @@ service cloud.firestore {
         && request.resource.data.travelOrderId is string
         && get(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.ownerId == request.auth.uid
         && getAfter(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.status == "Approved";
-      allow update: if false;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidMyTevRecord(request.resource.data);
       allow delete: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
         && resource.data.travelOrderId is string
@@ -605,6 +610,81 @@ service cloud.firestore {
         && request.resource.data.order is int
         && request.resource.data.order >= 0;
       allow delete: if false;
+    }
+    match /myTevRecords/{recordId} {
+      function isValidMyTevRecord(recordData) {
+        return recordData.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
+          && recordData.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
+          && recordData.ownerId == request.auth.uid
+          && recordData.profile is map
+          && recordData.profile.keys().hasOnly(["name", "address", "taxIdentificationNo", "position", "unit"])
+          && recordData.profile.name is string
+          && recordData.profile.name.size() > 0
+          && recordData.profile.name.size() <= 120
+          && recordData.profile.address is string
+          && recordData.profile.address.size() > 0
+          && recordData.profile.address.size() <= 200
+          && recordData.profile.taxIdentificationNo is string
+          && recordData.profile.taxIdentificationNo.size() > 0
+          && recordData.profile.taxIdentificationNo.size() <= 30
+          && recordData.profile.position is string
+          && recordData.profile.position.size() > 0
+          && recordData.profile.position.size() <= 120
+          && recordData.profile.unit is string
+          && recordData.month is string
+          && recordData.month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
+          && recordData.officialStation in ["Department of Agriculture - Regional Office XIII", "Department of Agriculture - Integrated Laboratories Division Caraga"]
+          && recordData.travelReferences is list
+          && recordData.travelReferences.size() > 0
+          && recordData.travelReferences.size() <= 8
+          && recordData.evidenceOfTravel is string
+          && recordData.evidenceOfTravel.size() > 0
+          && recordData.evidenceOfTravel.size() <= 240
+          && recordData.divisionName in ["Field Operations Division", "Planning, Monitoring and Evaluation Division", "Administrative Division", "Finance Division", "Agribusiness and Marketing Assistance Division", "Regional Agricultural Engineering Division", "Research Division", "Regulatory Division", "Integrated Laboratories Division"]
+          && recordData.itineraries is list
+          && recordData.itineraries.size() > 0
+          && recordData.itineraries.size() <= 8
+          && recordData.createdAt is timestamp;
+      }
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && request.resource.data.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.profile is map
+        && request.resource.data.profile.keys().hasOnly(["name", "address", "taxIdentificationNo", "position", "unit"])
+        && request.resource.data.profile.name is string
+        && request.resource.data.profile.name.size() > 0
+        && request.resource.data.profile.name.size() <= 120
+        && request.resource.data.profile.address is string
+        && request.resource.data.profile.address.size() > 0
+        && request.resource.data.profile.address.size() <= 200
+        && request.resource.data.profile.taxIdentificationNo is string
+        && request.resource.data.profile.taxIdentificationNo.size() > 0
+        && request.resource.data.profile.taxIdentificationNo.size() <= 30
+        && request.resource.data.profile.position is string
+        && request.resource.data.profile.position.size() > 0
+        && request.resource.data.profile.position.size() <= 120
+        && request.resource.data.profile.unit is string
+        && request.resource.data.month is string
+        && request.resource.data.month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
+        && request.resource.data.officialStation in ["Department of Agriculture - Regional Office XIII", "Department of Agriculture - Integrated Laboratories Division Caraga"]
+        && request.resource.data.travelReferences is list
+        && request.resource.data.travelReferences.size() > 0
+        && request.resource.data.travelReferences.size() <= 8
+        && request.resource.data.evidenceOfTravel is string
+        && request.resource.data.evidenceOfTravel.size() > 0
+        && request.resource.data.evidenceOfTravel.size() <= 240
+        && request.resource.data.divisionName in ["Field Operations Division", "Planning, Monitoring and Evaluation Division", "Administrative Division", "Finance Division", "Agribusiness and Marketing Assistance Division", "Regional Agricultural Engineering Division", "Research Division", "Regulatory Division", "Integrated Laboratories Division"]
+        && request.resource.data.itineraries is list
+        && request.resource.data.itineraries.size() > 0
+        && request.resource.data.itineraries.size() <= 8
+        && request.resource.data.createdAt is timestamp;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isValidMyTevRecord(request.resource.data);
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /accomplishmentReports/{reportId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
