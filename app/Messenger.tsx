@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
-import { arrayUnion, collection, deleteField, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Timestamp } from "firebase/firestore";
+import { arrayUnion, collection, deleteField, doc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./messenger.css";
 
-type Person = { id: string; name: string; position: string; unit: string };
+type Person = { id: string; name: string; position: string; unit: string; photoURL: string };
 type Chat = { id: string; members: string[]; pending?: boolean; lastText?: string; lastSenderId?: string; lastAt?: Timestamp | null; readAt?: Record<string, Timestamp | null>; clearedAt?: Record<string, Timestamp | null> };
 type MessageKind = "text" | "sticker" | "gif";
 type ReplyRef = { id: string; senderId: string; kind: MessageKind; text: string };
@@ -38,6 +38,22 @@ const millis = (value?: Timestamp | null) => value?.toMillis?.() ?? 0;
 const isUnread = (chat: Chat, userId: string) => Boolean(chat.lastSenderId && chat.lastSenderId !== userId && millis(chat.lastAt) > millis(chat.readAt?.[userId]));
 const unitLabel = (unit: string) => unit === "Field Operations Division" ? unit : unit ? `FOD-${unit}` : "";
 const isHttpsUrl = (value: string) => { try { return new URL(value).protocol === "https:" && value.length <= 500; } catch { return false; } };
+const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+
+function defaultAvatarForUnit(unit: string) {
+  const file = unit === "AGRISTAT" || unit === "FOD-AGRISTAT" ? "agristat-default-dp.png"
+    : unit === "AMIA" || unit === "FOD-AMIA" ? "amia-default-dp.png"
+      : unit === "DRRM" || unit === "FOD-DRRM" ? "drrm-default-dp.png"
+        : unit === "Field Operations Division" ? "fod-default-dp.png"
+          : "da-default-dp.png";
+  return publicAsset(`/${file}`);
+}
+
+function PersonAvatar({ person, className = "" }: { person: Person; className?: string }) {
+  const fallback = defaultAvatarForUnit(person.unit);
+  const src = person.photoURL && isHttpsUrl(person.photoURL) ? person.photoURL : fallback;
+  return <img className={`messenger-avatar ${className}`} src={src} alt="" aria-hidden="true" onError={(event) => { event.currentTarget.src = fallback; }} />;
+}
 
 type LinkPreviewData = { title?: string; description?: string; image?: string; publisher?: string };
 const urlPattern = /https?:\/\/[^\s<>"']+/gi;
@@ -133,24 +149,17 @@ export default function MessengerModule({ user }: { user: User }) {
   const threadRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let active = true;
-    async function loadPeople() {
-      if (!db) { setLoadingPeople(false); return; }
-      try {
-        const snapshot = await getDocs(collection(db, "users"));
-        if (!active) return;
-        setPeople(snapshot.docs.filter((item) => item.id !== user.uid).map((item) => {
-          const data = item.data();
-          return { id: item.id, name: typeof data.name === "string" ? data.name : "", position: typeof data.position === "string" ? data.position : "", unit: typeof data.unit === "string" ? data.unit : "" };
-        }).filter((person) => person.name));
-      } catch {
-        if (active) setError("Could not load people. Refresh and try again.");
-      } finally {
-        if (active) setLoadingPeople(false);
-      }
-    }
-    void loadPeople();
-    return () => { active = false; };
+    if (!db) { setLoadingPeople(false); return; }
+    return onSnapshot(collection(db, "users"), (snapshot) => {
+      setPeople(snapshot.docs.filter((item) => item.id !== user.uid).map((item) => {
+        const data = item.data();
+        return { id: item.id, name: typeof data.name === "string" ? data.name : "", position: typeof data.position === "string" ? data.position : "", unit: typeof data.unit === "string" ? data.unit : "", photoURL: typeof data.photoURL === "string" ? data.photoURL : "" };
+      }).filter((person) => person.name));
+      setLoadingPeople(false);
+    }, () => {
+      setError("Could not load people. Refresh and try again.");
+      setLoadingPeople(false);
+    });
   }, [user.uid]);
 
   const chatByPerson = useMemo(() => {
@@ -370,7 +379,7 @@ export default function MessengerModule({ user }: { user: User }) {
           const chat = chatByPerson.get(person.id);
           const unread = chat ? isUnread(chat, user.uid) : false;
           return <li key={person.id}><button type="button" className={`messenger-person${selectedId === person.id ? " active" : ""}${unread ? " unread" : ""}`} onClick={() => { setSelectedId(person.id); setPicker(null); setError(""); }}>
-            <span className="messenger-avatar" aria-hidden="true">{person.name.charAt(0).toUpperCase()}</span>
+            <PersonAvatar person={person} />
             <span className="messenger-person-text"><strong>{person.name}</strong><small>{chat && lastVisibleAt(chat) > 0 && chat.lastText ? `${chat.lastSenderId === user.uid ? "You: " : ""}${chat.lastText}` : unitLabel(person.unit) || person.position}</small></span>
             {unread && <span className="messenger-unread-dot" aria-label="Unread" />}
           </button></li>;
@@ -381,7 +390,7 @@ export default function MessengerModule({ user }: { user: User }) {
       {!selected ? <div className="messenger-placeholder"><strong>Select a person</strong><p>Choose someone from the list to start a conversation.</p></div> : <>
         <header className="messenger-chat-header">
           <button type="button" className="messenger-back" onClick={() => setSelectedId(null)} aria-label="Back to people">‹</button>
-          <span className="messenger-avatar" aria-hidden="true">{selected.name.charAt(0).toUpperCase()}</span>
+          <PersonAvatar person={selected} />
           <div><strong>{selected.name}</strong><small>{[selected.position, unitLabel(selected.unit)].filter(Boolean).join(" · ")}</small></div>
           {selectedChat && <button type="button" className="ghost-button messenger-delete-chat" onClick={() => setConfirmClear(true)}>Delete chat</button>}
         </header>
@@ -390,6 +399,7 @@ export default function MessengerModule({ user }: { user: User }) {
           {shownMessages.map((message) => {
             const mine = message.senderId === user.uid;
             return <div className={`messenger-message${mine ? " mine" : ""}`} key={message.id}>
+              {!mine && <PersonAvatar person={selected} className="messenger-message-avatar" />}
               {message.replyTo && !message.deleted && <span className="messenger-reply-quote"><b>{message.replyTo.senderId === user.uid ? "You" : selected.name}</b>{message.replyTo.text}</span>}
               <div className="messenger-message-row" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenuFor(null); }}>
                 <span className={`messenger-actions${menuFor?.endsWith(`:${message.id}`) ? " is-open" : ""}`}>

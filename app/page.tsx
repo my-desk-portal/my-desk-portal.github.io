@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import {
@@ -33,7 +33,8 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
+import { auth, db, isFirebaseConfigured, storage } from "@/lib/firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
 import NtaModule from "./Nta";
 import TravelOrderModule from "./TravelOrder";
@@ -54,6 +55,7 @@ import "./special-order.css";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
+type AccountUnit = Unit | "Field Operations Division";
 type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string };
 type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; signatoryName?: string; signatoryDesignation?: string; createdAt?: unknown };
@@ -91,7 +93,21 @@ const profileUnitOptions: { value: Unit; label: string }[] = [
   { value: "AMIA", label: "FOD-AMIA" },
   { value: "DRRM", label: "FOD-DRRM" },
 ];
+const accountUnitOptions: { value: AccountUnit; label: string }[] = [
+  ...profileUnitOptions,
+  { value: "Field Operations Division", label: "Field Operations Division" },
+];
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+const maxProfilePhotoBytes = 5 * 1024 * 1024;
+
+function defaultProfilePhoto(unit: string) {
+  const file = unit === "AGRISTAT" || unit === "FOD-AGRISTAT" ? "agristat-default-dp.png"
+    : unit === "AMIA" || unit === "FOD-AMIA" ? "amia-default-dp.png"
+      : unit === "DRRM" || unit === "FOD-DRRM" ? "drrm-default-dp.png"
+        : unit === "Field Operations Division" ? "fod-default-dp.png"
+          : "da-default-dp.png";
+  return publicAsset(`/${file}`);
+}
 
 function permitUnitForPersonnel(person?: PersonnelEntry): Unit | "" {
   const value = person?.unit.trim().toUpperCase();
@@ -163,7 +179,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
   const [lastName, setLastName] = useState("");
   const [gender, setGender] = useState("");
   const [position, setPosition] = useState("");
-  const [unit, setUnit] = useState<Unit | "">("");
+  const [unit, setUnit] = useState<AccountUnit | "">("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -224,7 +240,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
           lastName: cleanLastName,
           gender,
           position: clean(position),
-          unit: unit as Unit,
+          unit: unit as AccountUnit,
         });
         await sendEmailVerification(credential.user);
         await signOut(auth);
@@ -284,7 +300,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
         <form className={registering ? "auth-registration-form" : undefined} onSubmit={submit}>
           {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" maxLength={60} value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Middle Name<input autoComplete="additional-name" maxLength={60} value={middleName} onChange={(event) => setMiddleName(event.target.value)} placeholder="Middle name" /></label><label>Last Name<input autoComplete="family-name" maxLength={60} value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
           {registering && <div className="auth-gender-position-fields"><label>Gender<select value={gender} onChange={(event) => setGender(event.target.value)} required><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label><label>Position<input autoComplete="organization-title" maxLength={120} value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Your position" required /></label></div>}
-          {registering && <label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit | "")} required><option value="" disabled>Select your unit</option>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
+          {registering && <label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as AccountUnit | "")} required><option value="" disabled>Select your unit</option>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
           <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
           <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label>
           {registering && <label>Confirmation Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label>}
@@ -1031,12 +1047,22 @@ export default function Home() {
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileMiddleName, setProfileMiddleName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
+  const [profilePhotoURL, setProfilePhotoURL] = useState("");
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState("");
+  const [profilePhotoSaving, setProfilePhotoSaving] = useState(false);
   const [profileGender, setProfileGender] = useState("");
   const [profilePosition, setProfilePosition] = useState("");
-  const [profileUnit, setProfileUnit] = useState<Unit>(units[0]);
+  const [profileUnit, setProfileUnit] = useState<AccountUnit>(units[0]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement>(null);
+  const profilePhotoPreviewRef = useRef<string | null>(null);
+
+  useEffect(() => () => {
+    if (profilePhotoPreviewRef.current) URL.revokeObjectURL(profilePhotoPreviewRef.current);
+  }, []);
 
   useEffect(() => {
     const updateClock = () => {
@@ -1070,6 +1096,10 @@ export default function Home() {
   }, []);
 
   function closeProfile() {
+    if (profilePhotoPreviewRef.current) URL.revokeObjectURL(profilePhotoPreviewRef.current);
+    profilePhotoPreviewRef.current = null;
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview("");
     setProfileOpen(false);
     setProfileMessage(null);
     setChangePassword("");
@@ -1085,6 +1115,9 @@ export default function Home() {
     setProfileLoading(true);
     setProfileMessage(null);
     applyProfileName(user.displayName ?? "");
+    setProfilePhotoURL(user.photoURL ?? "");
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview("");
     setProfileGender("");
     setProfilePosition("");
     setProfileUnit(units[0]);
@@ -1092,6 +1125,7 @@ export default function Home() {
       const profileSnapshot = await getDoc(doc(db, "users", user.uid));
       if (profileSnapshot.exists()) {
         const profile = profileSnapshot.data();
+        if (typeof profile.photoURL === "string") setProfilePhotoURL(profile.photoURL);
         if (typeof profile.firstName === "string" && typeof profile.lastName === "string") {
           setProfileFirstName(profile.firstName);
           setProfileMiddleName(typeof profile.middleName === "string" ? profile.middleName : "");
@@ -1099,13 +1133,70 @@ export default function Home() {
         } else if (typeof profile.name === "string") applyProfileName(profile.name);
         if (typeof profile.gender === "string") setProfileGender(profile.gender);
         if (typeof profile.position === "string") setProfilePosition(profile.position);
-        if (units.includes(profile.unit as Unit)) setProfileUnit(profile.unit as Unit);
+        if (accountUnitOptions.some((option) => option.value === profile.unit)) setProfileUnit(profile.unit as AccountUnit);
       }
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       setProfileMessage({ kind: "error", text: code ? `Could not load your profile (${code}).` : "Could not load your profile. Try again." });
     } finally {
       setProfileLoading(false);
+    }
+  }
+
+  function selectProfilePhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0] ?? null;
+    setProfileMessage(null);
+    if (profilePhotoPreviewRef.current) URL.revokeObjectURL(profilePhotoPreviewRef.current);
+    profilePhotoPreviewRef.current = null;
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview("");
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setProfileMessage({ kind: "error", text: "Choose an image file for your profile photo." });
+      event.currentTarget.value = "";
+      return;
+    }
+    if (file.size > maxProfilePhotoBytes) {
+      setProfileMessage({ kind: "error", text: "Profile photos must be 5 MB or smaller." });
+      event.currentTarget.value = "";
+      return;
+    }
+    const preview = URL.createObjectURL(file);
+    profilePhotoPreviewRef.current = preview;
+    setProfilePhotoFile(file);
+    setProfilePhotoPreview(preview);
+  }
+
+  async function uploadProfilePhoto() {
+    if (!user || !db || !storage || !profilePhotoFile) {
+      setProfileMessage({ kind: "error", text: "Choose a profile photo before uploading." });
+      return;
+    }
+    if (!profilePhotoFile.type.startsWith("image/") || profilePhotoFile.size > maxProfilePhotoBytes) {
+      setProfileMessage({ kind: "error", text: "Choose an image file that is 5 MB or smaller." });
+      return;
+    }
+    setProfilePhotoSaving(true);
+    setProfileMessage(null);
+    try {
+      const photoRef = ref(storage, `profile-photos/${user.uid}/avatar`);
+      await uploadBytes(photoRef, profilePhotoFile, { contentType: profilePhotoFile.type });
+      const photoURL = await getDownloadURL(photoRef);
+      await setDoc(doc(db, "users", user.uid), { photoURL }, { merge: true });
+      await updateProfile(user, { photoURL });
+      setUser(auth?.currentUser ?? user);
+      setProfilePhotoURL(photoURL);
+      setProfilePhotoFile(null);
+      setProfilePhotoPreview("");
+      if (profilePhotoPreviewRef.current) URL.revokeObjectURL(profilePhotoPreviewRef.current);
+      profilePhotoPreviewRef.current = null;
+      if (profilePhotoInputRef.current) profilePhotoInputRef.current.value = "";
+      setProfileMessage({ kind: "success", text: "Your display photo has been updated." });
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setProfileMessage({ kind: "error", text: code ? `Could not upload your profile photo (${code}).` : "Could not upload your profile photo. Try again." });
+    } finally {
+      setProfilePhotoSaving(false);
     }
   }
 
@@ -1159,7 +1250,7 @@ export default function Home() {
     let profileDataSaved = false;
     let accountNameSaved = false;
     try {
-      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit });
+      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit }, { merge: true });
       profileDataSaved = true;
       await updateProfile(user, { displayName: name });
       accountNameSaved = true;
@@ -1390,12 +1481,13 @@ export default function Home() {
 <button type="button" className="mobile-nav-link" aria-expanded={mobileMyDocsOpen} aria-controls="mobile-mydocs-menu" onClick={() => setMobileMyDocsOpen((open) => !open)}><span>myDocs</span><span className={mobileMyDocsOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
 {mobileMyDocsOpen && <div className="mobile-nav-submenu" id="mobile-mydocs-menu"><button type="button" onClick={() => { setSection("special-orders"); setView("list"); closeMobileNavigation(); }}>Special Order</button><button type="button" onClick={() => { setSection("nta"); setView("list"); closeMobileNavigation(); }}>Notice To Attend</button><button type="button" onClick={() => { setSection("permits"); setView("list"); closeMobileNavigation(); }}>Permit Slip</button><button type="button" onClick={() => { setSection("travel-orders"); setView("list"); closeMobileNavigation(); }}>Travel Order</button><button type="button" onClick={() => { setSection("calendar-activities"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities</button><button type="button" onClick={() => { setSection("myar"); setView("list"); closeMobileNavigation(); }}>myAR</button><button type="button" onClick={() => { setSection("my-notes"); setView("list"); closeMobileNavigation(); }}>myNotes</button><button type="button" onClick={() => { setSection("leave-application"); setView("list"); closeMobileNavigation(); }}>Leave Application</button>{isAdmin && <><span className="mobile-nav-submenu-label">Admin Panel</span><button type="button" onClick={() => { setSection("permit-status"); setView("list"); closeMobileNavigation(); }}>Permit Slip Status</button><button type="button" onClick={() => { setSection("permit-statistics"); setView("list"); closeMobileNavigation(); }}>Permit Slip Statistics</button><button type="button" onClick={() => { setSection("calendar-activity-records"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities Records</button></>}</div>}
 </div><button type="button" className="mobile-sign-out" onClick={() => { closeMobileNavigation(); if (auth) void signOut(auth); }}>Sign Out</button></nav></>}{profileOpen && <div className="profile-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeProfile(); }} onKeyDown={(event) => { if (event.key === "Escape") closeProfile(); }}><section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title"><header className="profile-dialog-header"><div><p className="eyebrow">Account</p><h2 id="profile-title">Profile</h2></div><button type="button" className="ghost-button" onClick={closeProfile}>Close</button></header><form className="profile-form" onSubmit={saveChanges} aria-busy={profileLoading || profileSaving}>
+<div className="profile-photo-section"><img className="profile-photo-preview" src={profilePhotoPreview || profilePhotoURL || defaultProfilePhoto(profileUnit)} alt="" onError={(event) => { event.currentTarget.src = defaultProfilePhoto(profileUnit); }} /><div className="profile-photo-controls"><label>Display Photo<input ref={profilePhotoInputRef} type="file" accept="image/*" onChange={selectProfilePhoto} disabled={profileLoading || profileSaving || profilePhotoSaving} /></label><small>Use an image up to 5 MB. Your unit’s default photo appears until you upload one.</small><button type="button" className="ghost-button" onClick={() => void uploadProfilePhoto()} disabled={!profilePhotoFile || profileLoading || profileSaving || profilePhotoSaving}>{profilePhotoSaving ? "Uploading..." : profilePhotoURL ? "Update Photo" : "Upload Photo"}</button></div></div>
   <label>First Name<input autoComplete="given-name" maxLength={60} value={profileFirstName} onChange={(event) => setProfileFirstName(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
   <label>Middle Name<input autoComplete="additional-name" maxLength={60} value={profileMiddleName} onChange={(event) => setProfileMiddleName(event.target.value)} disabled={profileLoading || profileSaving} /></label>
   <label>Last Name<input autoComplete="family-name" maxLength={60} value={profileLastName} onChange={(event) => setProfileLastName(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
   <label>Gender<select value={profileGender} onChange={(event) => setProfileGender(event.target.value)} required disabled={profileLoading || profileSaving}><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
   <label>Position<input autoComplete="organization-title" maxLength={120} value={profilePosition} onChange={(event) => setProfilePosition(event.target.value)} disabled={profileLoading || profileSaving} /></label>
-  <label>Unit<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value as Unit)} disabled={profileLoading || profileSaving}>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+  <label>Unit<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value as AccountUnit)} disabled={profileLoading || profileSaving}>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
   <label>Email<input type="email" value={user.email ?? ""} readOnly /></label>
   <div className="profile-password-fields">
   <label>Change Password<div className="password-field"><input type={showChangePassword ? "text" : "password"} autoComplete="new-password" value={changePassword} onChange={(event) => setChangePassword(event.target.value)} /><button type="button" className="password-toggle" aria-label={showChangePassword ? "Hide new password" : "Show new password"} onClick={() => setShowChangePassword((show) => !show)}>{showChangePassword ? "Hide" : "Show"}</button></div></label>
