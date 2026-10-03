@@ -159,7 +159,9 @@ function Login({ onError }: { onError: (message: string) => void }) {
   const [registering, setRegistering] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [gender, setGender] = useState("");
   const [position, setPosition] = useState("");
   const [unit, setUnit] = useState<Unit | "">("");
   const [email, setEmail] = useState("");
@@ -182,11 +184,19 @@ function Login({ onError }: { onError: (message: string) => void }) {
       setAuthMessage({ kind: "error", text: "Enter your position." });
       return;
     }
+    if (registering && !gender) {
+      setAuthMessage({ kind: "error", text: "Select your gender." });
+      return;
+    }
     if (registering && !unit) {
       setAuthMessage({ kind: "error", text: "Select your unit." });
       return;
     }
-    if (registering && `${firstName.trim()} ${lastName.trim()}`.replace(/\s+/g, " ").length > 120) {
+    if (registering && [firstName, middleName, lastName].some((namePart) => namePart.trim().length > 60)) {
+      setAuthMessage({ kind: "error", text: "Each name must be 60 characters or fewer." });
+      return;
+    }
+    if (registering && [firstName, middleName, lastName].filter(Boolean).join(" ").replace(/\s+/g, " ").length > 120) {
       setAuthMessage({ kind: "error", text: "Your name must be 120 characters or fewer." });
       return;
     }
@@ -200,10 +210,22 @@ function Login({ onError }: { onError: (message: string) => void }) {
     try {
       if (registering) {
         const credential = await createUserWithEmailAndPassword(auth, email, password);
-        const name = `${firstName.trim()} ${lastName.trim()}`.replace(/\s+/g, " ");
+        const clean = (value: string) => value.trim().replace(/\s+/g, " ");
+        const cleanFirstName = clean(firstName);
+        const cleanMiddleName = clean(middleName);
+        const cleanLastName = clean(lastName);
+        const name = [cleanFirstName, cleanMiddleName ? `${cleanMiddleName.charAt(0).toUpperCase()}.` : "", cleanLastName].filter(Boolean).join(" ");
         await updateProfile(credential.user, { displayName: name });
         if (!db) throw new Error("Profile storage is unavailable.");
-        await setDoc(doc(db, "users", credential.user.uid), { name, position: position.trim(), unit: unit as Unit });
+        await setDoc(doc(db, "users", credential.user.uid), {
+          name,
+          firstName: cleanFirstName,
+          middleName: cleanMiddleName,
+          lastName: cleanLastName,
+          gender,
+          position: clean(position),
+          unit: unit as Unit,
+        });
         await sendEmailVerification(credential.user);
         await signOut(auth);
         setAuthMessage({ kind: "success", text: `A verification email was sent to ${email}. Verify your email before signing in.` });
@@ -252,20 +274,20 @@ function Login({ onError }: { onError: (message: string) => void }) {
 
   return <main className="auth-shell">
     <section className="auth-intro"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><p className="eyebrow">MD Administration</p><h1>Keep every<br /><em>movement</em> accounted for.</h1><p className="intro-copy">A clear, dependable desk for creating and retrieving official docs.</p><div className="intro-note"><span>01</span><p>Authenticated access for your unit</p></div></section>
-    <section className="auth-panel"><div className="auth-form-wrap"><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span>My Desk</span></div><p className="eyebrow">{forgotPasswordOpen ? "Password reset" : registering ? "New account" : "Welcome back"}</p><h2>{forgotPasswordOpen ? "Reset your password" : registering ? "Create your account" : <>Sign in to <img className="auth-title-logo" src="/my%20desk%20logo.png" alt="My Desk" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /></>}</h2>{(forgotPasswordOpen || registering) && <p className="muted">{forgotPasswordOpen ? "Enter your account email and we will send a password reset link." : "Create your account and verify your email to get started."}</p>}
+    <section className="auth-panel"><div className={`auth-form-wrap${registering ? " auth-register-wrap" : ""}`}><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span>My Desk</span></div><p className="eyebrow">{forgotPasswordOpen ? "Password reset" : registering ? "New account" : "Welcome back"}</p><h2>{forgotPasswordOpen ? "Reset your password" : registering ? "Create your account" : <>Sign in to <img className="auth-title-logo" src="/my%20desk%20logo.png" alt="My Desk" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /></>}</h2>{(forgotPasswordOpen || registering) && <p className="muted">{forgotPasswordOpen ? "Enter your account email and we will send a password reset link." : "Create your account and verify your email to get started."}</p>}
       {authMessage && <div className={`auth-message auth-message-${authMessage.kind}`} role={authMessage.kind === "error" ? "alert" : "status"}>{authMessage.text}</div>}
       {forgotPasswordOpen ? <form className="auth-reset-form" onSubmit={sendLoginReset}>
         <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
         <button className="primary-button" disabled={busy}>{busy ? "Sending..." : "Reset"}</button>
         <button type="button" className="text-button" onClick={() => { setForgotPasswordOpen(false); setAuthMessage(null); }}>Back to Sign In</button>
       </form> : <>
-        <form onSubmit={submit}>
-          {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Last Name<input autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
-          {registering && <label>Position<input autoComplete="organization-title" maxLength={120} value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Your position" required /></label>}
-          {registering && <label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit | "")} required><option value="" disabled>Select your unit</option>{units.map((option) => <option key={option}>{option}</option>)}</select></label>}
+        <form className={registering ? "auth-registration-form" : undefined} onSubmit={submit}>
+          {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" maxLength={60} value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Middle Name<input autoComplete="additional-name" maxLength={60} value={middleName} onChange={(event) => setMiddleName(event.target.value)} placeholder="Middle name" /></label><label>Last Name<input autoComplete="family-name" maxLength={60} value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
+          {registering && <div className="auth-gender-position-fields"><label>Gender<select value={gender} onChange={(event) => setGender(event.target.value)} required><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label><label>Position<input autoComplete="organization-title" maxLength={120} value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Your position" required /></label></div>}
+          {registering && <label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as Unit | "")} required><option value="" disabled>Select your unit</option>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
           <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
           <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label>
-          {registering && <label>Confirm Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label>}
+          {registering && <label>Confirmation Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label>}
           {registering && confirmPassword && confirmPassword !== password && <p className="auth-validation-message" role="alert">Passwords do not match.</p>}
           <button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button>
         </form>
