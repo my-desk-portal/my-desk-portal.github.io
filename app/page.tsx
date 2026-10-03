@@ -232,7 +232,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
         });
         await sendEmailVerification(credential.user);
         await signOut(auth);
-        setAuthMessage({ kind: "success", text: `A verification email was sent to ${email}. Verify your email before signing in.` });
+        setAuthMessage({ kind: "success", text: "A verification link was sent to your email. Please check your spam from myD." });
       } else {
         const credential = await signInWithEmailAndPassword(auth, email, password);
         await reload(credential.user);
