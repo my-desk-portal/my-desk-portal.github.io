@@ -185,6 +185,8 @@ textarea:focus { transition-duration: 120ms; }
   transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease, color .18s ease, filter .18s ease, transform .18s ease;
 }
 
+.document-create-action { border-radius: 0; }
+
 :where(button, [role="button"]):not(:disabled):hover {
   box-shadow: 0 4px 12px #18211f1f;
   filter: brightness(.97);
