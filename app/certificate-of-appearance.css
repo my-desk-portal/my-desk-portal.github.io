@@ -46,3 +46,4 @@
 }
 .coa-import-input{display:none}.coa-success{background:#edf7f0;border-left:3px solid #4c9b68;color:#28633b;font-size:13px;margin:0 0 20px;padding:13px 16px}.coa-template-link{color:var(--accent-dark);text-decoration:none}
 .coa-list-actions,.coa-empty-actions{align-items:center;display:flex;gap:10px}.coa-empty-actions{justify-content:center;margin-top:8px}@media(max-width:720px){.coa-list-actions{align-items:stretch;flex-direction:column}.coa-empty-actions{align-items:center;flex-direction:column}}
+
