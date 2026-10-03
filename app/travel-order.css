@@ -9,6 +9,9 @@
 .travel-order-people-heading span,.muted-inline{color:var(--muted);font-size:11px;font-weight:400}
 .travel-order-person{align-items:end;border:1px solid var(--line);display:grid;gap:14px;grid-template-columns:1fr 1fr 1fr;margin:0;min-width:0;padding:16px}
 .travel-order-person legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:11px;padding:0 7px}
+.travel-order-currency-field{align-items:stretch;display:flex;min-width:0}
+.travel-order-currency-field>span{align-items:center;background:#f7faf6;border:1px solid var(--line);border-right:0;color:var(--muted);display:flex;font-size:14px;padding:0 14px}
+.travel-order-currency-field>input{flex:1;font-size:14px;min-width:0}
 .travel-order-person .remove-participant{grid-column:1/-1;justify-self:start}
 .travel-order-list-head,.travel-order-list-row{grid-template-columns:1.15fr 1.7fr 1.7fr 1.2fr 1.1fr}
 .travel-order-list-row{align-items:center}
