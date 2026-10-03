@@ -135,12 +135,11 @@
 .messenger-delete-chat{margin-left:auto;white-space:nowrap}
 
 /* Single-screen layout: the page fills the viewport and only the people list and thread scroll. */
-.app-shell:has(.messenger){display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+.app-shell:has(.messenger){--messenger-frame-width:min(1120px,calc(min(100vw,1200px) - 2 * clamp(24px,5vw,76px)));display:flex;flex-direction:column;height:100dvh;overflow:hidden}
 .app-shell:has(.messenger)>.topbar{flex:0 0 auto}
-.app-shell:has(.messenger)>.dashboard{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;padding-bottom:16px;padding-top:16px}
-.app-shell:has(.messenger) .dashboard-header{flex:0 0 auto;margin-bottom:12px}
-.app-shell:has(.messenger) .dashboard-header h1{font-size:clamp(22px,4.5vh,44px);margin:0}
+.app-shell:has(.messenger)>.dashboard{display:flex;flex:1 1 auto;flex-direction:column;margin:0 auto;max-width:1800px;min-height:0;width:100%}
+.app-shell:has(.messenger) .dashboard-header{flex:0 0 auto;margin-inline:auto;max-width:var(--messenger-frame-width);width:100%}
 .app-shell:has(.messenger) .messenger,
 .app-shell:has(.messenger) .messenger:is(*){flex:1 1 auto;height:auto;max-height:none;min-height:0}
-@media(max-width:720px){.app-shell:has(.messenger)>.dashboard{padding:10px 12px}}
-.app-shell:has(.messenger)>.dashboard{margin:0 auto;max-width:1800px;width:100%}
+.app-shell:has(.messenger) .messenger{margin-inline:auto;max-width:var(--messenger-frame-width);width:100%}
+@media(max-width:720px){.app-shell:has(.messenger){--messenger-frame-width:min(1120px,calc(100vw - 40px))}}
