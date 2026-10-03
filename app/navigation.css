@@ -217,7 +217,7 @@
   .topbar{
     align-items:center;
     border:2px solid #f1d0c5;
-    border-radius:999px;
+    border-radius:0;
     flex-wrap:nowrap;
     gap:0;
     margin:calc(18px + env(safe-area-inset-top,0px)) calc(16px + env(safe-area-inset-right,0px)) 0 calc(16px + env(safe-area-inset-left,0px));
