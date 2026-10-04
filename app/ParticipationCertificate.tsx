@@ -385,7 +385,7 @@ function ParticipationForm({ onCancel, onSubmit, saving, error }: { onCancel: ()
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Participation</h2><p className="muted">Enter participant and event details. Each participant gets a separate A4 landscape certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="participation-error" role="alert">{error}</p>}
     <form className="permit-form participation-form" onSubmit={onSubmit}>
-      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AMIA">AMIA</option><option value="DRRM" disabled>DRRM</option><option value="AGRISTAT" disabled>AGRISTAT</option></select><small>DRRM and AGRISTAT participation templates are on hold.</small></label>
+      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM" disabled>FOD-DRRM</option></select><small>DRRM and AGRISTAT participation templates are on hold.</small></label>
       <ParticipationParticipantsFieldset participants={participants} onChange={(index, values) => setParticipants((current) => current.map((person, personIndex) => personIndex === index ? { ...person, ...values } : person))} onAdd={() => setParticipants((current) => [...current, { name: "", gender: "" }])} onRemove={(index) => setParticipants((current) => current.filter((_, personIndex) => personIndex !== index))} />
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field participation-schedule">

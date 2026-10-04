@@ -9,7 +9,7 @@
 .mytev-loading{padding:16px 0}
 .mytev-empty{min-height:230px}
 .mytev-table{border:0;border-top:1px solid var(--line);overflow:visible}
-.mytev-table-head,.mytev-table-row{align-items:center;display:grid;gap:14px;grid-template-columns:1fr 1.3fr 2fr .55fr 1fr 1.15fr;padding:14px 8px}
+.mytev-table-head,.mytev-table-row{align-items:center;display:grid;gap:14px;grid-template-columns:1fr 1.6fr 1.1fr 1.15fr;padding:14px 8px}
 .mytev-table-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
 .mytev-table-row{background:#fff;border-top:1px solid var(--line);font-size:12px;min-height:70px}
 .mytev-table-row>strong{font-size:12px}

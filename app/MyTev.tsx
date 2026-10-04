@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -46,6 +46,23 @@ function monthLabel(value: string) {
   return new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}-01T00:00:00Z`));
 }
 
+function monthDateBounds(value: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const monthNumber = Number(match[2]);
+  if (monthNumber < 1 || monthNumber > 12) return null;
+  const nextMonth = new Date(`${value}-01T00:00:00.000Z`);
+  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+  nextMonth.setUTCDate(0);
+  const lastDay = nextMonth.getUTCDate();
+  return { first: `${value}-01`, last: `${value}-${String(lastDay).padStart(2, "0")}` };
+}
+
+function isDateWithinMonth(value: string, month: string) {
+  const bounds = monthDateBounds(month);
+  return Boolean(bounds && value && value >= bounds.first && value <= bounds.last);
+}
+
 function documentId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -69,7 +86,7 @@ function initialItinerary() {
   return blankTevItinerary(documentId());
 }
 
-function MyTevForm({ profile, ownerId, initialRecord, onCancel, onSaved }: { profile: TevProfile; ownerId: string; initialRecord?: MyTevRecord; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
+function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, onSaved }: { profile: TevProfile; ownerId: string; initialRecord?: MyTevRecord; existingMonths: string[]; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
   const [step, setStep] = useState<"details" | "itineraries">("details");
   const [month, setMonth] = useState(() => initialRecord?.month ?? localMonthValue());
   const [officialStation, setOfficialStation] = useState<TevOfficialStation>(() => initialRecord?.officialStation ?? tevOfficialStations[0]);
@@ -84,6 +101,24 @@ function MyTevForm({ profile, ownerId, initialRecord, onCancel, onSaved }: { pro
 
   function updateReference(index: number, changes: Partial<TevTravelReference>) {
     setReferences((current) => current.map((reference, itemIndex) => itemIndex === index ? { ...reference, ...changes } : reference));
+    setMessage("");
+  }
+
+  function updateMonth(value: string) {
+    setMonth(value);
+    setReferences((current) => current.map((reference) => {
+      const dateFrom = isDateWithinMonth(reference.dateFrom, value) ? reference.dateFrom : "";
+      let dateTo = isDateWithinMonth(reference.dateTo, value) ? reference.dateTo : "";
+      if (dateFrom && dateTo && dateTo < dateFrom) dateTo = "";
+      return { ...reference, dateFrom, dateTo };
+    }));
+    setItineraries((current) => current.map((itinerary) => ({
+      ...itinerary,
+      rows: itinerary.rows.map((row) => {
+        if (isDateWithinMonth(row.dateFrom, value) && isDateWithinMonth(row.dateTo, value) && row.dateTo >= row.dateFrom) return row;
+        return { ...row, dateFrom: "", dateTo: "" };
+      }),
+    })));
     setMessage("");
   }
 
@@ -113,8 +148,20 @@ function MyTevForm({ profile, ownerId, initialRecord, onCancel, onSaved }: { pro
       setMessage("Complete your name, address, Tax Identification No., and position in Profile first.");
       return;
     }
+    if (!monthDateBounds(month)) {
+      setMessage("Choose a valid Month and Year.");
+      return;
+    }
+    if (existingMonths.includes(month)) {
+      setMessage(`A myTEV record already exists for ${monthLabel(month)}. Only one record is allowed per month and year.`);
+      return;
+    }
     if (!references.length || references.some((reference) => !reference.travelOrderNo.trim() || !reference.dateFrom || !reference.dateTo)) {
       setMessage("Enter a Travel Order No. and date range for each travel reference.");
+      return;
+    }
+    if (references.some((reference) => !isDateWithinMonth(reference.dateFrom, month) || !isDateWithinMonth(reference.dateTo, month))) {
+      setMessage(`Travel Order dates must fall within ${monthLabel(month)}.`);
       return;
     }
     if (references.some((reference) => reference.dateTo < reference.dateFrom)) {
@@ -138,6 +185,9 @@ function MyTevForm({ profile, ownerId, initialRecord, onCancel, onSaved }: { pro
         transportation: row.transportation.trim(),
       }));
       if (!rows.length) return { error: `Add at least one travel line to Itinerary ${itineraryIndex + 1}.` };
+      if (rows.some((row) => (row.dateFrom && !isDateWithinMonth(row.dateFrom, month)) || (row.dateTo && !isDateWithinMonth(row.dateTo, month)))) {
+        return { error: `Each date in Itinerary ${itineraryIndex + 1} must fall within ${monthLabel(month)}.` };
+      }
       for (const [rowIndex, row] of rows.entries()) {
         if (!row.dateFrom || !row.dateTo || !row.visitedPlaces || !row.departureTimeFrom || !row.departureTimeTo) {
           return { error: `Complete the date, destination, and times for Itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}.` };
@@ -156,6 +206,10 @@ function MyTevForm({ profile, ownerId, initialRecord, onCancel, onSaved }: { pro
     event.preventDefault();
     setMessage("");
     if (!db) { setMessage("myTEV storage is unavailable."); return; }
+    if (existingMonths.includes(month)) {
+      setMessage(`A myTEV record already exists for ${monthLabel(month)}. Only one record is allowed per month and year.`);
+      return;
+    }
     const result = normalizedItineraries();
     if (result.error || !result.itineraries?.length) { setMessage(result.error ?? "Add at least one itinerary."); return; }
     const recordData = {
@@ -175,10 +229,22 @@ function MyTevForm({ profile, ownerId, initialRecord, onCancel, onSaved }: { pro
         await updateDoc(doc(firestore, "myTevRecords", initialRecord.id), recordData);
         onSaved({ ...initialRecord, ...recordData });
       } else {
-        const reference = await addDoc(collection(firestore, "myTevRecords"), { ...recordData, createdAt: serverTimestamp() });
-        onSaved({ ...recordData, id: reference.id, createdAt: undefined });
+        const ownerRecords = await getDocs(query(collection(firestore, "myTevRecords"), where("ownerId", "==", ownerId)));
+        if (ownerRecords.docs.some((item) => item.data().month === month)) throw new Error("MYTEV_MONTH_EXISTS");
+        const recordId = `${ownerId}_${month}`;
+        const reference = doc(firestore, "myTevRecords", recordId);
+        await runTransaction(firestore, async (transaction) => {
+          const existing = await transaction.get(reference);
+          if (existing.exists()) throw new Error("MYTEV_MONTH_EXISTS");
+          transaction.set(reference, { ...recordData, createdAt: serverTimestamp() });
+        });
+        onSaved({ ...recordData, id: recordId, createdAt: undefined });
       }
     } catch (cause) {
+      if (cause instanceof Error && cause.message === "MYTEV_MONTH_EXISTS") {
+        setMessage(`A myTEV record already exists for ${monthLabel(month)}. Only one record is allowed per month and year.`);
+        return;
+      }
       const code = (cause as { code?: string }).code;
       setMessage(code ? `Could not save myTEV (${code}).` : "Could not save myTEV. Try again.");
     } finally {
@@ -193,14 +259,21 @@ function MyTevForm({ profile, ownerId, initialRecord, onCancel, onSaved }: { pro
     {step === "details" ? <form className="mytev-form" onSubmit={continueToItineraries}>
       <section className="mytev-form-group"><h3>Official travel</h3><div className="mytev-trip-fields">
         <label>Official Station<select value={officialStation} onChange={(event) => setOfficialStation(event.target.value as TevOfficialStation)} required>{tevOfficialStations.map((station) => <option key={station} value={station}>{station}</option>)}</select></label>
-        <label>Month and Year<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} required /></label>
+        <label>Month and Year<input type="month" value={month} onChange={(event) => updateMonth(event.target.value)} disabled={Boolean(initialRecord)} required /></label>
         <label>Division<select value={divisionName} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division}>{division}</option>)}</select></label>
       </div></section>
       <section className="mytev-form-group"><div className="mytev-form-group-heading"><div><h3>Travel Order references</h3><p>Enter the travel order number and approved date range for each trip.</p></div><button type="button" className="ghost-button mytev-add-reference" disabled={references.length >= maxTravelReferences} onClick={() => setReferences((current) => [...current, blankTevTravelReference()])}>Add reference</button></div>
         <div className="mytev-reference-list">{references.map((reference, index) => <fieldset className="mytev-reference-row" key={`travel-reference-${index}`}><legend>Travel reference {index + 1}</legend>
           <label>Travel No.<input value={reference.travelOrderNo} onChange={(event) => updateReference(index, { travelOrderNo: event.target.value })} maxLength={40} required /></label>
-          <label>Date From<input type="date" value={reference.dateFrom} onChange={(event) => updateReference(index, { dateFrom: event.target.value })} required /></label>
-          <label>Date To<input type="date" min={reference.dateFrom || undefined} value={reference.dateTo} onChange={(event) => updateReference(index, { dateTo: event.target.value })} required /></label>
+          <label>Date From<input type="date" min={monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={reference.dateFrom} onChange={(event) => {
+            const value = isDateWithinMonth(event.target.value, month) ? event.target.value : "";
+            const dateTo = reference.dateTo && isDateWithinMonth(reference.dateTo, month) && reference.dateTo >= value ? reference.dateTo : value;
+            updateReference(index, { dateFrom: value, dateTo });
+          }} required /></label>
+          <label>Date To<input type="date" min={reference.dateFrom || monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={reference.dateTo} onChange={(event) => {
+            const value = isDateWithinMonth(event.target.value, month) && (!reference.dateFrom || event.target.value >= reference.dateFrom) ? event.target.value : "";
+            updateReference(index, { dateTo: value });
+          }} required /></label>
           {references.length > 1 && <button type="button" className="mytev-remove-reference" aria-label={`Remove travel reference ${index + 1}`} onClick={() => setReferences((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
         </fieldset>)}</div>
         <label className="mytev-evidence-field">Evidence of Travel<textarea rows={2} maxLength={240} value={evidenceOfTravel} onChange={(event) => setEvidenceOfTravel(event.target.value)} placeholder="Approved Itinerary of Travel, Approved Travel Order, bus tickets, certificate of appearance" required /></label>
@@ -215,7 +288,10 @@ function MyTevForm({ profile, ownerId, initialRecord, onCancel, onSaved }: { pro
             {itinerary.rows.map((row, rowIndex) => <fieldset className="mytev-itinerary-line" key={`${itinerary.id}-row-${rowIndex}`}>
               <legend>Row {String(rowIndex + 1).padStart(2, "0")}</legend>
               <div className="mytev-itinerary-row-top">
-                <label>Date<input type="date" value={row.dateFrom} onChange={(event) => updateRow(itinerary.id, rowIndex, { dateFrom: event.target.value, dateTo: event.target.value })} /></label>
+                <label>Date<input type="date" min={monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={row.dateFrom} onChange={(event) => {
+                  const value = isDateWithinMonth(event.target.value, month) ? event.target.value : "";
+                  updateRow(itinerary.id, rowIndex, { dateFrom: value, dateTo: value });
+                }} /></label>
                 <label className="mytev-row-places">Visited Places<input value={row.visitedPlaces} maxLength={180} onChange={(event) => updateRow(itinerary.id, rowIndex, { visitedPlaces: event.target.value })} /></label>
                 <label>Departure Time From<input type="time" value={row.departureTimeFrom} onChange={(event) => updateRow(itinerary.id, rowIndex, { departureTimeFrom: event.target.value })} /></label>
                 <label>Departure Time To<input type="time" value={row.departureTimeTo} onChange={(event) => updateRow(itinerary.id, rowIndex, { departureTimeTo: event.target.value })} /></label>
@@ -241,9 +317,9 @@ function MyTevList({ records, loading, deletingId, onNew, onEdit, onView, onDele
   return <section className="content-section mytev-list-section">
     <div className="section-heading"><div><p className="eyebrow">myDocs · Travel expenses</p><h2>myTEV</h2><p className="muted">Create and retrieve travel expense forms as one coordinated A4 document set.</p></div><button type="button" className="primary-button" onClick={onNew}>Add</button></div>
     {loading ? <p className="muted mytev-loading">Loading myTEV records...</p> : records.length === 0 ? <div className="empty-state mytev-empty"><span className="empty-number">00</span><h3>No myTEV records yet</h3><p>Create a travel expense voucher and its itinerary pages.</p><button type="button" className="text-button document-create-action" onClick={onNew}>Create a myTEV record</button></div> : <div className="permit-table mytev-table">
-      <div className="mytev-table-head"><span>Travel month</span><span>Employee</span><span>Official station</span><span>Itineraries</span><span>Total amount</span><span aria-hidden="true" /></div>
+      <div className="mytev-table-head"><span>Travel month</span><span>Employee</span><span>Total amount</span><span aria-hidden="true" /></div>
       {records.map((record) => <div className="mytev-table-row" key={record.id}>
-        <strong>{monthLabel(record.month)}</strong><span>{record.profile.name}</span><span>{record.officialStation}</span><span>{record.itineraries.length}</span><strong>₱{formatTevAmount(totalsForRecord(record.itineraries).grandTotal)}</strong>
+        <strong>{monthLabel(record.month)}</strong><span>{record.profile.name}</span><strong>₱{formatTevAmount(totalsForRecord(record.itineraries).grandTotal)}</strong>
         <span className="mytev-row-actions"><button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button><button type="button" className="row-action" onClick={() => onView(record)}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></span>
       </div>)}
     </div>}
@@ -403,7 +479,7 @@ export default function MyTevModule({ user }: { user: User }) {
 
   return <div className="mytev-module">
     {loadError && <p className="error-message mytev-error" role="alert">{loadError}</p>}
-    {(view === "new" || view === "edit") && formProfile ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <>
+    {(view === "new" || view === "edit") && formProfile ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} existingMonths={records.filter((record) => record.id !== editingRecord?.id).map((record) => record.month)} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <>
       {!profileComplete && !loading && <div className="mytev-profile-warning" role="status"><strong>Complete your Profile before creating myTEV records.</strong><span>Address, Tax Identification No., position, and name are used to prepare these forms.</span></div>}
       <MyTevList records={records} loading={loading} deletingId={deletingId} onNew={() => { setLoadError(""); setEditingRecord(null); setView("new"); }} onEdit={(record) => { setLoadError(""); setEditingRecord(record); setView("edit"); }} onView={(record) => { setPreview(record); setPreviewError(""); }} onDelete={setPendingDelete} />
     </>}

@@ -372,7 +372,7 @@ function AppreciationForm({ onCancel, onSubmit, saving, error }: { onCancel: () 
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Appreciation</h2><p className="muted">Enter one or more resource speakers and the event details. AMIA certificates print on A4; DRRM certificates print on landscape Letter paper. Each speaker gets a separate certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="appreciation-error" role="alert">{error}</p>}
     <form className="permit-form appreciation-form" onSubmit={onSubmit}>
-      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AMIA">AMIA</option><option value="AGRISTAT" disabled>AGRISTAT</option><option value="DRRM">DRRM</option></select><small>AGRISTAT appreciation templates are on hold.</small></label>
+      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT appreciation templates are on hold.</small></label>
       <AppreciationSpeakersFieldset speakers={speakers} onChange={updateSpeaker} onAdd={() => setSpeakers((current) => [...current, { name: "", gender: "", position: "", office: "" }])} onRemove={(index) => setSpeakers((current) => current.filter((_, row) => row !== index))} />
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field appreciation-schedule">

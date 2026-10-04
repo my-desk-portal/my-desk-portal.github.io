@@ -644,6 +644,7 @@ service cloud.firestore {
       }
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
       allow create: if isVerifiedUser()
+        && recordId == request.auth.uid + "_" + request.resource.data.month
         && request.resource.data.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
         && request.resource.data.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
         && request.resource.data.ownerId == request.auth.uid
@@ -678,6 +679,7 @@ service cloud.firestore {
         && request.resource.data.createdAt is timestamp;
       allow update: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
+        && request.resource.data.month == resource.data.month
         && request.resource.data.createdAt == resource.data.createdAt
         && isValidMyTevRecord(request.resource.data);
       allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
