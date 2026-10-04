@@ -133,6 +133,13 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
     }));
   }
 
+  function removeRow(itineraryId: string, rowIndex: number) {
+    setItineraries((current) => current.map((itinerary) => itinerary.id !== itineraryId ? itinerary : {
+      ...itinerary,
+      rows: itinerary.rows.filter((_, itemIndex) => itemIndex !== rowIndex),
+    }));
+  }
+
   function toggleClaim(itineraryId: string, rowIndex: number, claimId: TevItineraryRow["claims"][number], checked: boolean) {
     const itinerary = itineraries.find((item) => item.id === itineraryId);
     const row = itinerary?.rows[rowIndex];
@@ -287,6 +294,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
           <div className="mytev-itinerary-rows" role="group" aria-label={`Itinerary ${itineraryIndex + 1} fixed rows`}>
             {itinerary.rows.map((row, rowIndex) => <fieldset className="mytev-itinerary-line" key={`${itinerary.id}-row-${rowIndex}`}>
               <legend>Row {String(rowIndex + 1).padStart(2, "0")}</legend>
+              <button type="button" className="mytev-remove-row" aria-label={`Remove itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}`} onClick={() => removeRow(itinerary.id, rowIndex)}>Remove row</button>
               <div className="mytev-itinerary-row-top">
                 <label>Date<input type="date" min={monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={row.dateFrom} onChange={(event) => {
                   const value = isDateWithinMonth(event.target.value, month) ? event.target.value : "";
@@ -303,7 +311,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
               <div className="mytev-itinerary-row-claims"><fieldset className="mytev-claim-picker"><legend>Claim / Per Diem</legend>{tevClaims.map((claim) => <label key={claim.id}><input type="checkbox" checked={row.claims.includes(claim.id)} onChange={(event) => toggleClaim(itinerary.id, rowIndex, claim.id, event.target.checked)} /><span>{claim.label}</span></label>)}</fieldset></div>
             </fieldset>)}
           </div>
-          <div className="mytev-add-row-control"><button type="button" className="ghost-button mytev-add-row" onClick={() => setItineraries((current) => current.map((item) => item.id === itinerary.id ? { ...item, rows: [...item.rows, blankTevItineraryRow()] } : item))}>Add row</button><span>{itinerary.rows.length} rows · page breaks are automatic</span></div>
+          <div className="mytev-add-row-control"><button type="button" className="ghost-button mytev-add-row" onClick={() => setItineraries((current) => current.map((item) => item.id === itinerary.id ? { ...item, rows: [...item.rows, blankTevItineraryRow()] } : item))}>Add row</button><span>{itinerary.rows.length} {itinerary.rows.length === 1 ? "row" : "rows"} · page breaks are automatic</span></div>
           <div className="mytev-itinerary-totals"><span>Per Diem Grand Total<strong>₱{formatTevAmount(totals.perDiem)}</strong></span><span>Transportation Grand Total<strong>₱{formatTevAmount(totals.transportation)}</strong></span><span>Itinerary Grand Total<strong>₱{formatTevAmount(totals.grandTotal)}</strong></span></div>
         </section>;
       })}

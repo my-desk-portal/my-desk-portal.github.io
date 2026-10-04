@@ -51,8 +51,11 @@
 .mytev-remove-itinerary{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:12px;min-height:40px;padding:8px 12px}
 .mytev-remove-itinerary:hover{background:#fff0eb;border-color:#e5b2a2;color:#9e3824}
 .mytev-itinerary-rows{display:grid;gap:10px;min-width:0;padding-bottom:5px}
-.mytev-itinerary-line{align-items:start;background:#fff;border:1px solid var(--line);display:grid;gap:14px;grid-template-columns:minmax(0,1fr);margin:0;min-width:0;padding:13px}
+.mytev-itinerary-line{align-items:start;background:#fff;border:1px solid var(--line);display:grid;gap:14px;grid-template-columns:minmax(0,1fr);margin:0;min-width:0;padding:13px;position:relative}
 .mytev-itinerary-line legend,.mytev-claim-picker legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.06em;padding:0 6px;text-transform:uppercase}
+.mytev-remove-row{background:#fff;border:0;border-radius:0;box-shadow:none;color:#d85532;filter:none;font-size:11px;min-height:28px;padding:4px 8px;position:absolute;right:13px;top:-9px;transform:none;transition:none}
+.mytev-remove-row:hover,.mytev-remove-row:active{box-shadow:none;color:#d85532;filter:none;transform:none}
+.mytev-remove-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .mytev-itinerary-row-top{display:grid;gap:12px;grid-template-columns:minmax(100px,.9fr) minmax(160px,1.6fr) minmax(125px,1.1fr) minmax(125px,1.1fr);min-width:0}
 .mytev-itinerary-row-bottom{align-items:start;display:grid;gap:12px;grid-template-columns:minmax(220px,1fr) minmax(160px,.75fr);min-width:0}
 .mytev-itinerary-row-claims{min-width:0}
