@@ -7,6 +7,7 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
 import { parseCertificateImportWorkbook } from "@/lib/certificate-import";
+import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./certificate-of-appearance.css";
 
@@ -30,6 +31,11 @@ type CertificateRecord = {
 
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const blankCertificateAsset = publicAsset("/certificate-of-appearance-blank.jpg");
+const certificateDivisionDisplayNames: Record<string, string> = {
+  "Planning, Monitoring and Evaluation Division": "PMED",
+  "Agribusiness and Marketing Assistance Division": "AMAD",
+  "Regional Agricultural Engineering Division": "RAED",
+};
 const newPerson = (): CertificatePerson => ({ name: "", gender: "", office: "" });
 
 function displayDate(value: string) {
@@ -123,15 +129,18 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     const form = new FormData(event.currentTarget);
     const personNames = form.getAll("person-name").map((name) => String(name).trim());
     const genders = form.getAll("person-gender").map((gender) => String(gender) as CertificateGender);
+    const division = String(form.get("division-name") ?? "") as TevDivision;
+    if (!tevDivisions.includes(division)) { setError("Select a valid division."); return; }
+    const signatory = divisionSignatory(division);
     const recordData = {
       eventTitle: String(form.get("event-title") ?? "").trim(),
       destination: String(form.get("destination") ?? "").trim(),
       eventDateFrom: String(form.get("event-date-from") ?? ""),
       eventDateTo: String(form.get("event-date-to") ?? ""),
       people: personNames.map((name, index) => ({ name, gender: genders[index] || "unspecified", office: String(form.getAll("person-office")[index] ?? "").trim() })),
-      signatoryName: String(form.get("signatory-name") ?? "").trim(),
-      designation: String(form.get("designation") ?? "").trim(),
-      division: String(form.get("division") ?? "").trim(),
+      signatoryName: signatory.name,
+      designation: signatory.position,
+      division,
       ownerId: user.uid,
       createdAt: serverTimestamp(),
     };
@@ -296,6 +305,7 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
 function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
   const [people, setPeople] = useState([newPerson()]);
   const [eventDateFrom, setEventDateFrom] = useState("");
+  const [divisionName, setDivisionName] = useState<TevDivision>(tevDivisions[0]);
   return <section className="content-section form-section coa-form-section">
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Appearance</h2><p className="muted">Enter the event details and one or more attendees. Two certificates fit on each A4 page.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="coa-error" role="alert">{error}</p>}
@@ -309,9 +319,7 @@ function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () =
         <label>Office<input name="person-office" maxLength={180} value={person.office ?? ""} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, office: event.target.value } : item))} required /></label>
         {people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}
       </div>)}<button type="button" className="text-button add-item-text-button" onClick={() => setPeople((current) => [...current, newPerson()])}>+ Add person</button></fieldset>
-      <label>Signatory Name<input name="signatory-name" maxLength={160} required /></label>
-      <label>Designation<input name="designation" maxLength={160} required /></label>
-      <label className="wide-field">Division<input name="division" maxLength={180} required /></label>
+      <label className="wide-field">Division Name<select name="division-name" value={divisionName} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division} value={division}>{division}</option>)}</select></label>
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
@@ -342,6 +350,6 @@ function CertificatePaper({ record, person }: { record: CertificateRecord; perso
       <p>This is to certify that <strong className="coa-name">{person.name}</strong> of the <strong className="coa-office">{person.office ?? record.office}</strong> has attended the <strong><em>“{record.eventTitle}”</em></strong> held in <strong>{record.destination}</strong> <strong>{eventPeriod(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</strong>.</p>
       <p>This certification is issued upon the request of the above-named person for whatever legal purpose it may serve {pronoun(person.gender)} best.</p>
     </div>
-    <footer className="coa-signatory"><strong>{record.signatoryName}</strong><div className="coa-signatory-role"><em>{record.designation},</em> <span>{record.division}</span></div></footer>
+    <footer className="coa-signatory"><strong>{record.signatoryName}</strong><div className="coa-signatory-role"><em>{record.designation},</em> <span>{certificateDivisionDisplayNames[record.division] ?? record.division}</span></div></footer>
   </article>;
 }

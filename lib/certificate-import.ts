@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
 
 export type ImportedAppearancePerson = {
   name: string;
@@ -25,9 +26,6 @@ const requiredColumns = [
   "office",
   "datefrom",
   "dateto",
-  "signatoryname",
-  "designation",
-  "division",
 ] as const;
 
 function normalizeHeader(value: string) {
@@ -109,8 +107,9 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
   const headerCells = readRow(rows[0]);
   const columns = new Map([...headerCells].map(([index, value]) => [normalizeHeader(value), index] as const));
   const missingColumns = requiredColumns.filter((column) => !columns.has(column));
-  if (missingColumns.length) {
-    throw new Error("Use the CA_Importing_Template.xlsx columns: Title, Destination, Name, Gender, Office, Date From, Date To, Signatory Name, Designation, and Division.");
+  const divisionNameColumn = columns.get("divisionname") ?? columns.get("division");
+  if (missingColumns.length || divisionNameColumn === undefined) {
+    throw new Error("Use the CA_Importing_Template.xlsx columns: Title, Destination, Date From, Date To, Name, Gender, Office, and Division Name.");
   }
 
   const recordsByEvent = new Map<string, ImportedAppearanceRecord>();
@@ -128,13 +127,13 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
     const office = valueFor(values, "office");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
-    const signatoryName = valueFor(values, "signatoryname");
-    const designation = valueFor(values, "designation");
-    const division = valueFor(values, "division");
+    const division = (values.get(divisionNameColumn)?.trim() ?? "") as TevDivision;
+    if (!tevDivisions.includes(division)) throw new Error(`Row ${rowNumber}: choose a valid Division Name from myTEV.`);
+    const signatory = divisionSignatory(division);
 
     if (!name) throw new Error(`Row ${rowNumber}: enter a Name for each certificate.`);
-    if (!eventTitle || !destination || !eventDateFrom || !eventDateTo || !office || !signatoryName || !designation || !division) {
-      throw new Error(`Row ${rowNumber}: complete the event details, attendee Office, and signatory fields.`);
+    if (!eventTitle || !destination || !eventDateFrom || !eventDateTo || !office) {
+      throw new Error(`Row ${rowNumber}: complete the event details and attendee Office.`);
     }
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
 
@@ -148,7 +147,7 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
           : "unspecified";
     if (!gender) throw new Error(`Row ${rowNumber}: Gender must be Female, Male, or blank.`);
 
-    const eventKey = JSON.stringify([eventTitle, destination, eventDateFrom, eventDateTo, signatoryName, designation, division]);
+    const eventKey = JSON.stringify([eventTitle, destination, eventDateFrom, eventDateTo, division]);
     let groupKey = eventKey;
     let existing = recordsByEvent.get(groupKey);
     if (existing && existing.people.length >= 100) {
@@ -166,8 +165,8 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
         eventDateFrom,
         eventDateTo,
         people: [{ name, gender, office }],
-        signatoryName,
-        designation,
+        signatoryName: signatory.name,
+        designation: signatory.position,
         division,
       });
     }
