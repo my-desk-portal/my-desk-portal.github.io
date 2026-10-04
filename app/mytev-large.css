@@ -65,9 +65,9 @@
 .mytev-claim-picker>label input{accent-color:var(--accent);height:14px;margin:0;padding:0;width:14px}
 .mytev-claim-picker>label span{overflow-wrap:anywhere}
 .mytev-not-applicable{align-items:center;background:#f5f7f5;border:1px solid var(--line);color:var(--muted);display:flex;font-size:11px;min-height:44px;padding:8px}
-.mytev-itinerary-totals{border-top:1px solid var(--line);display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));padding-top:14px}
-.mytev-itinerary-totals>span{color:var(--muted);display:grid;font-size:11px;gap:5px}
-.mytev-itinerary-totals strong{color:var(--ink);font-family:'DM Mono',monospace;font-size:13px}
+.mytev-record-totals{border-top:1px solid var(--line);display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));padding-top:14px}
+.mytev-record-totals>span{color:var(--muted);display:grid;font-size:11px;gap:5px}
+.mytev-record-totals strong{color:var(--ink);font-family:'DM Mono',monospace;font-size:13px}
 .mytev-add-row-control{align-items:center;display:flex;gap:10px}
 .mytev-add-row-control>span{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px}
 .mytev-add-row:disabled{cursor:not-allowed;opacity:.55}

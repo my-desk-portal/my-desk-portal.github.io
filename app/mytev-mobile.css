@@ -22,7 +22,7 @@
   .mytev-row-places{grid-column:1/-1}
   .mytev-claim-picker{grid-template-columns:repeat(2,minmax(0,1fr))}
   .mytev-claim-picker>legend{grid-column:1/-1}
-  .mytev-itinerary-totals{grid-template-columns:1fr}
+  .mytev-record-totals{grid-template-columns:1fr}
   .mytev-itinerary-editor-heading{align-items:flex-start}
   .mytev-form-actions{align-items:stretch}
   .mytev-form-actions button{flex:1 1 auto}

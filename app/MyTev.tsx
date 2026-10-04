@@ -18,7 +18,6 @@ import {
   tevDivisions,
   tevOfficialStations,
   tevTransportationMeans,
-  totalsForItinerary,
   totalsForRecord,
   type MyTevRecord,
   type TevDivision,
@@ -263,6 +262,8 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
     }
   }
 
+  const recordTotals = totalsForRecord(itineraries);
+
   return <section className="content-section mytev-form-section">
     <div className="section-heading"><div><p className="eyebrow">{initialRecord ? "Edit record · myTEV" : "New record · myTEV"}</p><h2>{initialRecord ? "Edit Travel Expense Voucher" : "Create Travel Expense Voucher"}</h2><p className="muted">Complete the trip details, then add itinerary lines. Long entries continue onto additional A4 pages automatically.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     <ol className="mytev-stepper" aria-label="myTEV creation steps"><li className={step === "details" ? "is-current" : "is-complete"} aria-current={step === "details" ? "step" : undefined}><span>01</span>Trip details</li><li className={step === "itineraries" ? "is-current" : ""} aria-current={step === "itineraries" ? "step" : undefined}><span>02</span>Itineraries</li></ol>
@@ -292,7 +293,6 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
       <div className="mytev-form-actions"><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button><button className="primary-button">Continue to Itineraries</button></div>
     </form> : <form className="mytev-form mytev-itinerary-form" onSubmit={saveRecord}>
       {itineraries.map((itinerary, itineraryIndex) => {
-        const totals = totalsForItinerary(itinerary);
         const rowLimitReached = itinerary.rows.length >= maxItineraryRows;
         const rowThirteenFilled = Boolean(itinerary.rows[maxItineraryRows - 1] && hasRowData(itinerary.rows[maxItineraryRows - 1]));
         return <section className="mytev-itinerary-editor" key={itinerary.id}>
@@ -318,10 +318,10 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
             </fieldset>)}
           </div>
           <div className="mytev-add-row-control">{!rowThirteenFilled && <button type="button" className="ghost-button mytev-add-row" disabled={rowLimitReached} onClick={() => setItineraries((current) => current.map((item) => item.id === itinerary.id && item.rows.length < maxItineraryRows ? { ...item, rows: [...item.rows, blankTevItineraryRow()] } : item))}>Add row</button>}<span>{itinerary.rows.length} {itinerary.rows.length === 1 ? "row" : "rows"} · {rowLimitReached ? "maximum reached" : "page breaks are automatic"}</span></div>
-          <div className="mytev-itinerary-totals"><span>Per Diem Grand Total<strong>₱{formatTevAmount(totals.perDiem)}</strong></span><span>Transportation Grand Total<strong>₱{formatTevAmount(totals.transportation)}</strong></span><span>Itinerary Grand Total<strong>₱{formatTevAmount(totals.grandTotal)}</strong></span></div>
         </section>;
       })}
       <button type="button" className="ghost-button mytev-add-itinerary" disabled={itineraries.length >= maxItineraries} onClick={() => setItineraries((current) => [...current, blankTevItinerary(documentId())])}>{itineraries.length >= maxItineraries ? "Maximum itineraries added" : "Add another itinerary"}</button>
+      <div className="mytev-record-totals"><span>Per Diem Grand Total<strong>₱{formatTevAmount(recordTotals.perDiem)}</strong></span><span>Transportation Grand Total<strong>₱{formatTevAmount(recordTotals.transportation)}</strong></span><span>Itinerary Grand Total<strong>₱{formatTevAmount(recordTotals.grandTotal)}</strong></span></div>
       <div className="mytev-form-actions"><button type="button" className="ghost-button" onClick={() => { setMessage(""); setStep("details"); }}>Back to Trip Details</button><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? "Saving..." : initialRecord ? "Save changes" : "Save myTEV"}</button></div>
     </form>}
   </section>;
