@@ -9,7 +9,7 @@
 .mytev-loading{padding:16px 0}
 .mytev-empty{min-height:230px}
 .mytev-table{border:0;border-top:1px solid var(--line);overflow:visible}
-.mytev-table-head,.mytev-table-row{align-items:center;display:grid;gap:14px;grid-template-columns:1fr 1.6fr 1.1fr 1.15fr;padding:14px 8px}
+.mytev-table-head,.mytev-table-row{align-items:center;display:grid;gap:14px;grid-template-columns:1fr 1.1fr 1.15fr;padding:14px 8px}
 .mytev-table-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
 .mytev-table-row{background:#fff;border-top:1px solid var(--line);font-size:12px;min-height:70px}
 .mytev-table-row>strong{font-size:12px}
@@ -383,7 +383,7 @@
 .mytev-cenrr-table td{font-size:var(--mytev-font-12);height:4.2mm;line-height:1.08;padding:.3mm .5mm;white-space:normal}
 .mytev-cenrr-table tfoot tr{height:5mm}
 .mytev-cenrr-table th{font-size:var(--mytev-font-12)}
-.mytev-cenrr-table td:nth-child(3){text-align:center}
+.mytev-cenrr-table .mytev-cenrr-means{text-align:center}
 .mytev-cenrr-table td:last-child,.mytev-cenrr-table th:last-child{text-align:right}
 .mytev-cenrr-total th{font-size:var(--mytev-font-12);text-align:right}
 .mytev-cenrr-purpose,.mytev-cenrr-declaration{border:var(--mytev-medium-line);font-size:var(--mytev-font-12);line-height:1.15;margin:0;padding:0 1mm}

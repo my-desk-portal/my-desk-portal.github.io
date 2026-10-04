@@ -41,6 +41,10 @@ function hasItineraryData(row: TevItineraryRow) {
   return Boolean(row.dateFrom || row.dateTo || row.visitedPlaces || row.departureTimeFrom || row.departureTimeTo || row.meansOfTransportation);
 }
 
+function formatTevAmountIfNonZero(value: number) {
+  return value === 0 ? "" : formatTevAmount(value);
+}
+
 type DocumentRowPage<T> = { rows: T[]; heights: number[]; usedHeight: number };
 
 function paginateRows<T>(rows: T[], maxRows: number, maxHeight: number, minRowHeight: number, estimateHeight: (row: T) => number): DocumentRowPage<T>[] {
@@ -136,7 +140,7 @@ function MyTevLetterhead({ appendix }: { appendix?: string }) {
   </header>;
 }
 
-function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount }: { record: MyTevRecord; itinerary: TevItinerary; page: DocumentRowPage<TevItineraryRow>; pageNumber: number; pageCount: number }) {
+function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount, isLastDocumentPage, documentPageCount, recordTotals }: { record: MyTevRecord; itinerary: TevItinerary; page: DocumentRowPage<TevItineraryRow>; pageNumber: number; pageCount: number; isLastDocumentPage: boolean; documentPageCount: number; recordTotals: ReturnType<typeof totalsForRecord> }) {
   const profile = record.profile;
   const signatory = divisionSignatory(record.divisionName);
   const datesOfTravel = formatTevTravelDateRanges(record.travelReferences);
@@ -144,7 +148,7 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount }: 
   const isContinuation = pageNumber > 1;
   const isFinalPage = pageNumber === pageCount;
   const pageTotals = totalsForItinerary({ ...itinerary, rows: page.rows });
-  const totals = isFinalPage ? totalsForItinerary(itinerary) : pageTotals;
+  const totals = isLastDocumentPage ? recordTotals : pageTotals;
   return <div className="mytev-paper-frame" key={itinerary.id}><article className="mytev-paper mytev-itinerary-paper">
     <div className="mytev-itinerary-document">
       <header className="mytev-itinerary-letterhead">
@@ -180,12 +184,12 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount }: 
           <td className="mytev-itinerary-departure">{row ? formatTevTime(row.departureTimeFrom) : ""}</td>
           <td>{row ? formatTevTime(row.departureTimeTo) : ""}</td>
           <td>{row?.meansOfTransportation === "None" ? "" : row?.meansOfTransportation}</td>
-          <td className="mytev-itinerary-transportation">{row && transportationForRow(row) ? formatTevAmount(transportationForRow(row)) : ""}</td>
-          <td>{row && perDiemForClaims(row.claims) ? formatTevAmount(perDiemForClaims(row.claims)) : ""}</td>
+          <td className="mytev-itinerary-transportation">{row ? formatTevAmountIfNonZero(transportationForRow(row)) : ""}</td>
+          <td>{row ? formatTevAmountIfNonZero(perDiemForClaims(row.claims)) : ""}</td>
           <td />
-          <td>{row && hasItineraryData(row) ? formatTevAmount(perDiemForClaims(row.claims) + transportationForRow(row)) : ""}</td>
+          <td>{row && hasItineraryData(row) ? formatTevAmountIfNonZero(perDiemForClaims(row.claims) + transportationForRow(row)) : ""}</td>
         </tr>})}</tbody>
-        <tfoot><tr><td className={isFinalPage ? "mytev-itinerary-total-label" : undefined} colSpan={5}>{isFinalPage ? "TOTAL" : `PAGE ${pageNumber} SUBTOTAL — CONTINUED`}</td><td>{formatTevAmount(totals.transportation)}</td><td>{formatTevAmount(totals.perDiem)}</td><td>-</td><td>{formatTevAmount(totals.grandTotal)}</td></tr></tfoot>
+        {!isFinalPage ? <tfoot><tr><td colSpan={5}>PAGE {pageNumber} SUBTOTAL — CONTINUED</td><td>{formatTevAmountIfNonZero(pageTotals.transportation)}</td><td>{formatTevAmountIfNonZero(pageTotals.perDiem)}</td><td>-</td><td>{formatTevAmountIfNonZero(pageTotals.grandTotal)}</td></tr></tfoot> : isLastDocumentPage ? <tfoot><tr><td className="mytev-itinerary-total-label" colSpan={5}>{documentPageCount > 1 ? "GRAND TOTAL" : "TOTAL"}</td><td>{formatTevAmountIfNonZero(totals.transportation)}</td><td>{formatTevAmountIfNonZero(totals.perDiem)}</td><td>-</td><td>{formatTevAmountIfNonZero(totals.grandTotal)}</td></tr></tfoot> : null}
       </table>
       <div className="mytev-itinerary-footer">
         <section className="mytev-itinerary-certified">
@@ -319,7 +323,7 @@ function MyTevCenrrPage({ record, page, pageNumber, pageCount, grandTotal }: { r
           const previousRow = rows[index - 1]?.row;
           const hasDate = Boolean(row && (row.dateFrom || row.dateTo));
           const sameDateAsPrevious = Boolean(hasDate && previousRow && (previousRow.dateFrom || previousRow.dateTo) && row?.dateFrom === previousRow.dateFrom && row?.dateTo === previousRow.dateTo);
-          return <tr key={`cenrr-line-${pageNumber}-${index}`} style={{ height: `${height}mm` }}>{!sameDateAsPrevious && <td rowSpan={hasDate ? cenrrDateRowSpan(pageRows, index) : 1}>{row && hasDate ? formatTevDateRange(row.dateFrom, row.dateTo) : ""}</td>}<td>{row?.visitedPlaces}</td><td>{row?.meansOfTransportation}</td><td>{row ? formatTevAmount(row.amount) : ""}</td></tr>;
+          return <tr key={`cenrr-line-${pageNumber}-${index}`} style={{ height: `${height}mm` }}>{!sameDateAsPrevious && <td rowSpan={hasDate ? cenrrDateRowSpan(pageRows, index) : 1}>{row && hasDate ? formatTevDateRange(row.dateFrom, row.dateTo) : ""}</td>}<td>{row?.visitedPlaces}</td><td className="mytev-cenrr-means">{row?.meansOfTransportation}</td><td>{row ? formatTevAmount(row.amount) : ""}</td></tr>;
         })}
       </tbody><tfoot><tr className="mytev-cenrr-total"><th colSpan={3}>{pageCount === 1 ? "Total" : isFinalPage ? "Grand Total" : `Page ${pageNumber} Subtotal — Continued`}</th><th>{formatTevAmount(isFinalPage ? grandTotal : pageTotal)}</th></tr></tfoot></table>
       <p className="mytev-cenrr-purpose"><b>Purpose:</b> <i>Please see attached Travel Orders.</i></p>
@@ -361,14 +365,16 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
 }
 
 export default function MyTevDocuments({ record }: { record: MyTevRecord }) {
+  const itineraryPages = record.itineraries.flatMap((itinerary) => {
+    const pages = paginateRows(itinerary.rows, maxItineraryRows, 134, 7, itineraryRowHeight);
+    return pages.map((page, index) => ({ itinerary, page, pageNumber: index + 1, pageCount: pages.length }));
+  });
+  const itineraryTotals = totalsForRecord(record.itineraries);
   const cenrrList = cenrrRows(record.itineraries);
   const cenrrPages = paginateRows(cenrrList, maxCenrrRows, 123, 4.2, cenrrRowHeight);
   const cenrrGrandTotal = cenrrList.reduce((sum, row) => sum + row.amount, 0);
   return <div className="mytev-preview-pages">
-    {record.itineraries.flatMap((itinerary) => {
-      const pages = paginateRows(itinerary.rows, maxItineraryRows, 134, 7, itineraryRowHeight);
-      return pages.map((page, index) => <MyTevItineraryPage key={`${itinerary.id}-${index}`} record={record} itinerary={itinerary} page={page} pageNumber={index + 1} pageCount={pages.length} />);
-    })}
+    {itineraryPages.map(({ itinerary, page, pageNumber, pageCount }, index) => <MyTevItineraryPage key={`${itinerary.id}-${pageNumber - 1}`} record={record} itinerary={itinerary} page={page} pageNumber={pageNumber} pageCount={pageCount} isLastDocumentPage={index === itineraryPages.length - 1} documentPageCount={itineraryPages.length} recordTotals={itineraryTotals} />)}
     <MyTevOrsPage record={record} />
     <MyTevDisbursementPage record={record} />
     {cenrrPages.map((page, index) => <MyTevCenrrPage key={`cenrr-${index}`} record={record} page={page} pageNumber={index + 1} pageCount={cenrrPages.length} grandTotal={cenrrGrandTotal} />)}

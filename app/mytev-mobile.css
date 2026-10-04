@@ -1,6 +1,6 @@
 @media(max-width:960px){
   .mytev-table{overflow-x:auto;overscroll-behavior-x:contain}
-  .mytev-table-head,.mytev-table-row{min-width:700px}
+  .mytev-table-head,.mytev-table-row{min-width:560px}
 }
 
 @media(max-width:720px){

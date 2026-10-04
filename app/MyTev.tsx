@@ -13,6 +13,7 @@ import {
   formatTevAmount,
   formatTevDateRange,
   formatTaxIdentificationNo,
+  maxItineraryRows,
   tevClaims,
   tevDivisions,
   tevOfficialStations,
@@ -199,6 +200,9 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
         if (!row.dateFrom || !row.dateTo || !row.visitedPlaces || !row.departureTimeFrom || !row.departureTimeTo) {
           return { error: `Complete the date, destination, and times for Itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}.` };
         }
+        if (!row.meansOfTransportation) {
+          return { error: `Select the means of transportation for Itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}.` };
+        }
         if (isTransportAmountRequired(row.meansOfTransportation) && !row.transportation) {
           return { error: `Enter the transportation amount for Itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}.` };
         }
@@ -289,6 +293,8 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
     </form> : <form className="mytev-form mytev-itinerary-form" onSubmit={saveRecord}>
       {itineraries.map((itinerary, itineraryIndex) => {
         const totals = totalsForItinerary(itinerary);
+        const rowLimitReached = itinerary.rows.length >= maxItineraryRows;
+        const rowThirteenFilled = Boolean(itinerary.rows[maxItineraryRows - 1] && hasRowData(itinerary.rows[maxItineraryRows - 1]));
         return <section className="mytev-itinerary-editor" key={itinerary.id}>
           <div className="mytev-itinerary-editor-heading"><div><p className="eyebrow">Itinerary {String(itineraryIndex + 1).padStart(2, "0")}</p><h3>Itinerary of Travel</h3><p className="muted">Add travel lines as needed. Dense entries continue onto additional A4 pages automatically.</p></div>{itineraries.length > 1 && <button type="button" className="mytev-remove-itinerary" onClick={() => setItineraries((current) => current.filter((item) => item.id !== itinerary.id))}>Remove itinerary</button>}</div>
           <div className="mytev-itinerary-rows" role="group" aria-label={`Itinerary ${itineraryIndex + 1} fixed rows`}>
@@ -305,13 +311,13 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
                 <label>Departure Time To<input type="time" value={row.departureTimeTo} onChange={(event) => updateRow(itinerary.id, rowIndex, { departureTimeTo: event.target.value })} /></label>
               </div>
               <div className="mytev-itinerary-row-bottom">
-                <label className="mytev-row-means">Means of Transportation<select value={row.meansOfTransportation} onChange={(event) => updateRow(itinerary.id, rowIndex, { meansOfTransportation: event.target.value as TevItineraryRow["meansOfTransportation"], transportation: isTransportAmountRequired(event.target.value as TevItineraryRow["meansOfTransportation"]) ? row.transportation : "" })}><option value="">Select mode</option>{tevTransportationMeans.map((means) => <option key={means}>{means}</option>)}</select></label>
+                <label className="mytev-row-means">Means of Transportation<select required={hasRowData(row)} value={row.meansOfTransportation} onChange={(event) => updateRow(itinerary.id, rowIndex, { meansOfTransportation: event.target.value as TevItineraryRow["meansOfTransportation"], transportation: isTransportAmountRequired(event.target.value as TevItineraryRow["meansOfTransportation"]) ? row.transportation : "" })}><option value="">Select mode</option>{tevTransportationMeans.map((means) => <option key={means}>{means}</option>)}</select></label>
                 <label className="mytev-row-transportation">Transportation{isTransportAmountRequired(row.meansOfTransportation) ? <input type="number" min="0" step="0.01" inputMode="decimal" value={row.transportation} onChange={(event) => updateRow(itinerary.id, rowIndex, { transportation: event.target.value })} placeholder="0.00" /> : <span className="mytev-not-applicable">Not applicable</span>}</label>
               </div>
               <div className="mytev-itinerary-row-claims"><fieldset className="mytev-claim-picker"><legend>Claim / Per Diem</legend>{tevClaims.map((claim) => <label key={claim.id}><input type="checkbox" checked={row.claims.includes(claim.id)} onChange={(event) => toggleClaim(itinerary.id, rowIndex, claim.id, event.target.checked)} /><span>{claim.label}</span></label>)}</fieldset></div>
             </fieldset>)}
           </div>
-          <div className="mytev-add-row-control"><button type="button" className="ghost-button mytev-add-row" onClick={() => setItineraries((current) => current.map((item) => item.id === itinerary.id ? { ...item, rows: [...item.rows, blankTevItineraryRow()] } : item))}>Add row</button><span>{itinerary.rows.length} {itinerary.rows.length === 1 ? "row" : "rows"} · page breaks are automatic</span></div>
+          <div className="mytev-add-row-control">{!rowThirteenFilled && <button type="button" className="ghost-button mytev-add-row" disabled={rowLimitReached} onClick={() => setItineraries((current) => current.map((item) => item.id === itinerary.id && item.rows.length < maxItineraryRows ? { ...item, rows: [...item.rows, blankTevItineraryRow()] } : item))}>Add row</button>}<span>{itinerary.rows.length} {itinerary.rows.length === 1 ? "row" : "rows"} · {rowLimitReached ? "maximum reached" : "page breaks are automatic"}</span></div>
           <div className="mytev-itinerary-totals"><span>Per Diem Grand Total<strong>₱{formatTevAmount(totals.perDiem)}</strong></span><span>Transportation Grand Total<strong>₱{formatTevAmount(totals.transportation)}</strong></span><span>Itinerary Grand Total<strong>₱{formatTevAmount(totals.grandTotal)}</strong></span></div>
         </section>;
       })}
@@ -325,9 +331,9 @@ function MyTevList({ records, loading, deletingId, onNew, onEdit, onView, onDele
   return <section className="content-section mytev-list-section">
     <div className="section-heading"><div><p className="eyebrow">myDocs · Travel expenses</p><h2>myTEV</h2><p className="muted">Create and retrieve travel expense forms as one coordinated A4 document set.</p></div><button type="button" className="primary-button" onClick={onNew}>Add</button></div>
     {loading ? <p className="muted mytev-loading">Loading myTEV records...</p> : records.length === 0 ? <div className="empty-state mytev-empty"><span className="empty-number">00</span><h3>No myTEV records yet</h3><p>Create a travel expense voucher and its itinerary pages.</p><button type="button" className="text-button document-create-action" onClick={onNew}>Create a myTEV record</button></div> : <div className="permit-table mytev-table">
-      <div className="mytev-table-head"><span>Travel month</span><span>Employee</span><span>Total amount</span><span aria-hidden="true" /></div>
+      <div className="mytev-table-head"><span>Travel month</span><span>Total amount</span><span aria-hidden="true" /></div>
       {records.map((record) => <div className="mytev-table-row" key={record.id}>
-        <strong>{monthLabel(record.month)}</strong><span>{record.profile.name}</span><strong>₱{formatTevAmount(totalsForRecord(record.itineraries).grandTotal)}</strong>
+        <strong>{monthLabel(record.month)}</strong><strong>₱{formatTevAmount(totalsForRecord(record.itineraries).grandTotal)}</strong>
         <span className="mytev-row-actions"><button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button><button type="button" className="row-action" onClick={() => onView(record)}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></span>
       </div>)}
     </div>}

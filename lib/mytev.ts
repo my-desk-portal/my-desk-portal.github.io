@@ -4,7 +4,7 @@ export const tevPurpose = "Please see attached Travel Orders";
 export const tevOrsOffice = "Department of Agriculture - Regional Field Office XIII";
 export const tevOrsOfficeAddress = "Capitol Site, Butuan City, Agusan del Norte";
 export const tevCtcDirector = "Engr. Ricardo M. Oñate Jr.";
-export const maxItineraryRows = 18;
+export const maxItineraryRows = 13;
 export const maxCenrrRows = 28;
 export const maxOrsStatusRows = 27;
 export function formatTaxIdentificationNo(value: string) {
