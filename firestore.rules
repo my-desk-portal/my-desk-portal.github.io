@@ -564,10 +564,6 @@ service cloud.firestore {
         && request.resource.data.travelOrderId is string
         && get(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.ownerId == request.auth.uid
         && getAfter(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.status == "Approved";
-      allow update: if isVerifiedUser()
-        && resource.data.ownerId == request.auth.uid
-        && request.resource.data.createdAt == resource.data.createdAt
-        && isValidMyTevRecord(request.resource.data);
       allow delete: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
         && resource.data.travelOrderId is string
@@ -633,7 +629,7 @@ service cloud.firestore {
           && recordData.profile.unit is string
           && recordData.month is string
           && recordData.month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
-          && recordData.officialStation in ["Department of Agriculture - Regional Office XIII", "Department of Agriculture - Integrated Laboratories Division Caraga"]
+          && recordData.officialStation in ["Department of Agriculture - Regional Office XIII", "DA - Integrated Laboratories Division Caraga"]
           && recordData.travelReferences is list
           && recordData.travelReferences.size() > 0
           && recordData.travelReferences.size() <= 8
@@ -668,7 +664,7 @@ service cloud.firestore {
         && request.resource.data.profile.unit is string
         && request.resource.data.month is string
         && request.resource.data.month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
-        && request.resource.data.officialStation in ["Department of Agriculture - Regional Office XIII", "Department of Agriculture - Integrated Laboratories Division Caraga"]
+        && request.resource.data.officialStation in ["Department of Agriculture - Regional Office XIII", "DA - Integrated Laboratories Division Caraga"]
         && request.resource.data.travelReferences is list
         && request.resource.data.travelReferences.size() > 0
         && request.resource.data.travelReferences.size() <= 8

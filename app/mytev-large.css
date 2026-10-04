@@ -101,6 +101,7 @@
 .mytev-itinerary-title{font-family:'Times New Roman',serif;font-size:var(--mytev-font-22);line-height:1;margin:0;position:absolute;text-align:center;text-transform:uppercase;top:15%;width:100%}
 .mytev-itinerary-meta{inset:0;position:absolute}
 .mytev-itinerary-meta-basic{font-family:'Times New Roman',serif;font-size:12pt;font-weight:400;height:3%;left:4.85%;position:absolute;right:4.05%;top:18.25%}
+.mytev-itinerary-meta-entity,.mytev-itinerary-meta-fund{font-size:8pt}
 .mytev-itinerary-meta-basic>div{align-items:center;display:flex;height:47%;min-height:3.8mm;position:absolute;white-space:nowrap}
 .mytev-itinerary-meta-basic b,.mytev-itinerary-meta-details b{font-weight:700}
 .mytev-itinerary-meta-basic b{padding-left:.5mm}
@@ -120,7 +121,7 @@
 .mytev-itinerary-meta-details>div{align-items:center;display:grid;grid-template-columns:12% 34.5% 19.5% 34%;min-height:0;white-space:nowrap}
 .mytev-itinerary-meta-details>div:first-child{border-bottom:var(--mytev-medium-line)}
 .mytev-itinerary-meta-details>div>b{padding-left:.5mm}
-.mytev-itinerary-meta-details>div>b:nth-of-type(2),.mytev-itinerary-meta-details>div>span:last-child{border-left:var(--mytev-medium-line);padding-left:1mm}
+.mytev-itinerary-meta-details>div>b:nth-of-type(2){border-left:var(--mytev-medium-line);padding-left:1mm}
 .mytev-itinerary-meta-details>div>span{align-items:center;display:flex;height:100%;line-height:1;overflow:hidden;padding:0 .5mm;white-space:nowrap}
 .mytev-itinerary-table,.mytev-ors-detail table,.mytev-ors-status table,.mytev-dv-particulars,.mytev-dv-accounting table,.mytev-cenrr-table{border-collapse:collapse;table-layout:fixed;width:100%}
 .mytev-itinerary-table{height:53.7%;left:4.85%;position:absolute;top:24%;width:91.1%}
@@ -140,8 +141,9 @@
 .mytev-itinerary-table thead tr:nth-child(2){height:2.4mm}
 .mytev-itinerary-table thead tr:nth-child(3){height:3.3mm}
 .mytev-itinerary-table thead .mytev-itinerary-station{height:4.2mm}
-.mytev-itinerary-table thead .mytev-itinerary-station th{font-size:calc(var(--mytev-font-16) * 1.12);font-weight:700;text-align:left}
-.mytev-itinerary-table thead .mytev-itinerary-station td{font-size:calc(var(--mytev-font-16) * 1.12);font-weight:700;text-align:left}
+.mytev-itinerary-table thead .mytev-itinerary-station th{border-right:hidden;font-size:calc(var(--mytev-font-16) * 1.12);font-weight:700;text-align:left}
+.mytev-itinerary-table thead .mytev-itinerary-station td{border-left-style:hidden;font-size:calc(var(--mytev-font-16) * 1.12);font-weight:700;position:relative;text-align:left}
+.mytev-itinerary-table thead .mytev-itinerary-station td::before{border-left:var(--mytev-medium-line);bottom:0;content:"";left:39.2%;pointer-events:none;position:absolute;top:0}
 .mytev-itinerary-table td{background:transparent;border:var(--mytev-thin-line);font-family:'Times New Roman',serif;font-size:calc(var(--mytev-font-16) * 1.12);height:8mm;line-height:1.05;overflow-wrap:anywhere;padding:0 .45mm;vertical-align:middle;white-space:normal}
 .mytev-itinerary-table tbody td{height:7mm}
 .mytev-itinerary-table thead .mytev-itinerary-station td{height:4.2mm}

@@ -18,7 +18,7 @@ export const tevDvApprovingSignatory = { name: "Primitiva O. Arquion", position:
 
 export const tevOfficialStations = [
   "Department of Agriculture - Regional Office XIII",
-  "Department of Agriculture - Integrated Laboratories Division Caraga",
+  "DA - Integrated Laboratories Division Caraga",
 ] as const;
 
 export const tevDivisions = [
@@ -222,7 +222,7 @@ function joinTevList(values: string[], conjunction = "and") {
 }
 
 export function formatTevTravelOrderNumbers(references: TevTravelReference[]) {
-  return joinTevList(references.map((reference) => reference.travelOrderNo.trim()).filter(Boolean));
+  return joinTevList(references.map((reference) => reference.travelOrderNo.trim()).filter(Boolean), "&");
 }
 
 export function formatTevTravelDateRanges(references: TevTravelReference[]) {
@@ -235,7 +235,7 @@ export function formatTevTravelDateRanges(references: TevTravelReference[]) {
   };
   const parsed = ranges.map((reference) => ({ from: parse(reference.dateFrom), to: parse(reference.dateTo) }));
   if (parsed.some((range) => !range.from || !range.to)) {
-    return joinTevList(ranges.map((reference) => formatTevDateRange(reference.dateFrom, reference.dateTo)), "&");
+    return joinTevList(ranges.map((reference) => formatTevDateRange(reference.dateFrom, reference.dateTo)));
   }
   const years = new Set(parsed.flatMap((range) => [range.from!.getUTCFullYear(), range.to!.getUTCFullYear()]));
   const months = ["Jan.", "Feb.", "Mar.", "Apr.", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."];
@@ -253,7 +253,7 @@ export function formatTevTravelDateRanges(references: TevTravelReference[]) {
     return years.size === 1 ? label : `${label}, ${end.getUTCFullYear()}`;
   });
   const year = years.size === 1 ? `, ${parsed[parsed.length - 1].to!.getUTCFullYear()}` : "";
-  return `${joinTevList(labels, "&")}${year}`;
+  return `${joinTevList(labels)}${year}`;
 }
 
 export function formatTevTravelReferences(references: TevTravelReference[]) {
