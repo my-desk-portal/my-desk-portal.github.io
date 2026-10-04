@@ -145,7 +145,7 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount }: 
   const isFinalPage = pageNumber === pageCount;
   const pageTotals = totalsForItinerary({ ...itinerary, rows: page.rows });
   const totals = isFinalPage ? totalsForItinerary(itinerary) : pageTotals;
-  return <article className="mytev-paper mytev-itinerary-paper" key={itinerary.id}>
+  return <div className="mytev-paper-frame" key={itinerary.id}><article className="mytev-paper mytev-itinerary-paper">
     <div className="mytev-itinerary-document">
       <header className="mytev-itinerary-letterhead">
         <img src={daCaragaLogo} alt="Department of Agriculture Caraga Region" />
@@ -198,7 +198,7 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount }: 
         </div>
       </div>
     </div>
-  </article>;
+  </article></div>;
 }
 
 function MyTevOrsPage({ record }: { record: MyTevRecord }) {
@@ -208,7 +208,7 @@ function MyTevOrsPage({ record }: { record: MyTevRecord }) {
   const totals = totalsForRecord(record.itineraries);
   const travelDates = formatTevTravelDateRanges(record.travelReferences);
   const orderNumbers = formatTevTravelOrderNumbers(record.travelReferences);
-  return <article className="mytev-paper mytev-ors-paper">
+  return <div className="mytev-paper-frame"><article className="mytev-paper mytev-ors-paper">
     <div className="mytev-ors-document">
       <div className="mytev-ors-top"><MyTevLetterhead appendix="COA Circular 2015-002: Annex F" /></div>
       <div className="mytev-ors-title-row"><h1>OBLIGATION REQUEST AND STATUS</h1><div className="mytev-ors-number-fields"><span>Serial No.:</span><i /><span>Date:</span><i /><span>Fund Cluster:</span><b>{tevFundCluster}</b></div></div>
@@ -231,7 +231,7 @@ function MyTevOrsPage({ record }: { record: MyTevRecord }) {
         <table><colgroup><col /><col /><col /><col /><col /><col /><col /><col /><col /></colgroup><thead><tr className="mytev-ors-status-title"><th>C</th><th colSpan={8}>STATUS OF OBLIGATION</th></tr><tr><th rowSpan={2}>Date</th><th rowSpan={2}>Particulars</th><th colSpan={2}>Reference</th><th colSpan={5}>Amount</th></tr><tr><th>ORS/JEV/Check No.</th><th>ADA/TRA</th><th>Obligation<br />(a)</th><th>Payable<br />(b)</th><th>Payment<br />(c)</th><th>Balance<br />Not Yet Due<br />(a-b)</th><th>Balance<br />Due and Demandable<br />(b-c)</th></tr></thead><tbody>{Array.from({ length: maxOrsStatusRows }, (_, index) => <tr key={`ors-status-${index}`}>{Array.from({ length: 9 }, (_, cellIndex) => <td key={`ors-status-${index}-${cellIndex}`} />)}</tr>)}</tbody></table>
       </div>
     </div>
-  </article>;
+  </article></div>;
 }
 
 function MyTevDisbursementPage({ record }: { record: MyTevRecord }) {
@@ -242,7 +242,7 @@ function MyTevDisbursementPage({ record }: { record: MyTevRecord }) {
   const orderNumbers = formatTevTravelOrderNumbers(record.travelReferences);
   const [approvingPosition, ...approvingOfficeParts] = tevDvApprovingSignatory.position.split(", ");
   const approvingOffice = approvingOfficeParts.join(", ");
-  return <article className="mytev-paper mytev-dv-paper">
+  return <div className="mytev-paper-frame"><article className="mytev-paper mytev-dv-paper">
     <div className="mytev-dv-document">
       <div className="mytev-dv-top"><div className="mytev-dv-letterhead"><MyTevLetterhead /><h1>DISBURSEMENT VOUCHER</h1></div><div className="mytev-dv-number-fields"><span className="mytev-dv-appendix">Appendix 32</span><div className="mytev-dv-fund-cluster"><b>Fund Cluster :</b><span>{tevFundCluster}</span></div><div className="mytev-dv-number-field"><b>Date :</b><i /></div><div className="mytev-dv-number-field"><b>DV No. :</b><i /></div></div></div>
       <div className="mytev-dv-payment-mode"><strong>Mode of Payment</strong>{["MDS Check", "Commercial Check", "ADA", "Others (Please specify)"].map((mode) => <span key={mode}><i />{mode}</span>)}</div>
@@ -291,7 +291,7 @@ function MyTevDisbursementPage({ record }: { record: MyTevRecord }) {
         <div className="mytev-dv-receipt-jev"><strong>JEV No.</strong><strong>Date</strong></div>
       </div>
     </div>
-  </article>;
+  </article></div>;
 }
 
 function MyTevCenrrPage({ record, page, pageNumber, pageCount, grandTotal }: { record: MyTevRecord; page: DocumentRowPage<ReturnType<typeof cenrrRows>[number]>; pageNumber: number; pageCount: number; grandTotal: number }) {
@@ -301,7 +301,7 @@ function MyTevCenrrPage({ record, page, pageNumber, pageCount, grandTotal }: { r
   const pageRows = rows.map(({ row }) => row);
   const pageTotal = page.rows.reduce((sum, row) => sum + row.amount, 0);
   const isFinalPage = pageNumber === pageCount;
-  return <article className="mytev-paper mytev-cenrr-paper">
+  return <div className="mytev-paper-frame"><article className="mytev-paper mytev-cenrr-paper">
     <div className="mytev-cenrr-document">
       <MyTevLetterhead />
       <div className="mytev-cenrr-heading">
@@ -333,7 +333,7 @@ function MyTevCenrrPage({ record, page, pageNumber, pageCount, grandTotal }: { r
         <tr><td /><td /><td /></tr>
       </tbody></table>
     </div>
-  </article>;
+  </article></div>;
 }
 
 function MyTevCtcPage({ record }: { record: MyTevRecord }) {
@@ -341,7 +341,7 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
   const signatory = divisionSignatory(record.divisionName);
   const references = formatTevTravelReferences(record.travelReferences);
   const denseContent = references.length > 120 || record.evidenceOfTravel.length > 140;
-  return <article className="mytev-paper mytev-ctc-paper">
+  return <div className="mytev-paper-frame"><article className="mytev-paper mytev-ctc-paper">
     <div className={`mytev-ctc-document${denseContent ? " mytev-ctc-document-dense" : ""}`}>
       <span className="mytev-ctc-appendix">Appendix 47</span>
       <h1>CERTIFICATION OF TRAVEL COMPLETED</h1>
@@ -357,7 +357,7 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
       <p className="mytev-ctc-noted">Noted:</p>
       <div className="mytev-ctc-signatory"><strong style={fitTextStyle(signatory.name, 36)}>{signatory.name.toLocaleUpperCase("en-PH")}</strong><span style={{ ...fitTextStyle(`${signatory.position}, ${record.divisionName}`, 42), whiteSpace: "nowrap" }}><em>{signatory.position}</em>, {record.divisionName}</span></div>
     </div>
-  </article>;
+  </article></div>;
 }
 
 export default function MyTevDocuments({ record }: { record: MyTevRecord }) {

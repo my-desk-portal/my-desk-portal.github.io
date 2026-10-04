@@ -7,6 +7,11 @@ export const tevCtcDirector = "Engr. Ricardo M. Oñate Jr.";
 export const maxItineraryRows = 18;
 export const maxCenrrRows = 28;
 export const maxOrsStatusRows = 27;
+export function formatTaxIdentificationNo(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 9);
+  return digits.replace(/(\d{3})(?=\d)/g, "$1-");
+}
+
 export const tevOrsBudgetSignatory = { name: "Fatima D. Campos", position: "Chief, Budget Section" };
 export const tevDvAccountingSignatory = { name: "Jane V. Mamba", position: "Accounting Section", designation: "Head, Accounting Unit/Authorized Representative" };
 export const tevDvApprovingSignatory = { name: "Primitiva O. Arquion", position: "Chief, Admin and Finance Division", designation: "Agency Head/Authorized Representative" };

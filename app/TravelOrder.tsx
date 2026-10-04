@@ -139,7 +139,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
           <label>Monthly Salary <span className="muted-inline">(optional)</span><div className="travel-order-currency-field"><span aria-hidden="true">₱</span><input type="number" inputMode="decimal" min="0" step="0.01" value={person.salary} onChange={(event) => updatePerson(index, { salary: event.target.value })} onBlur={() => { if (person.salary !== "") updatePerson(index, { salary: Number(person.salary).toFixed(2) }); }} aria-label="Monthly salary amount in Philippine pesos" placeholder="0.00" /></div></label>
           {people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}
         </fieldset>)}
-        <button type="button" className="text-button" onClick={() => setPeople((current) => [...current, { name: "", position: "", salary: "" }])}>+ Add a Person</button>
+        <button type="button" className="text-button add-item-text-button" onClick={() => setPeople((current) => [...current, { name: "", position: "", salary: "" }])}>+ Add a Person</button>
       </div>
       <div className="date-range-field wide-field travel-order-date-range"><span>Departure Date to Return Date</span><div><input aria-label="Departure date" type="date" value={departureDate} onChange={(event) => setDepartureDate(event.target.value)} required /><span>to</span><input aria-label="Return date" type="date" min={departureDate} value={returnDate} onChange={(event) => setReturnDate(event.target.value)} required /></div></div>
       <label className="wide-field">Place of Travel<input value={placeOfTravel} onChange={(event) => setPlaceOfTravel(event.target.value)} required /></label>
@@ -187,7 +187,7 @@ function TravelOrderList({ orders, onNew, onPreview, onDelete, onStatusChange, u
 
   return <section className="content-section travel-order-list-section">
     <div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Travel Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "Travel Order" : "Travel Orders"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>
-    {orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Travel Orders yet</h3><p>Create a Travel Order for one or more personnel.</p><button className="text-button document-create-action" onClick={onNew}>Add a Travel Order</button></div> : <div className="permit-table">
+    {orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Travel Orders yet</h3><p>Create a Travel Order for one or more personnel.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Travel Order</button></div> : <div className="permit-table">
       <div className="table-head travel-order-list-head"><span>Date</span><span>Personnel</span><span>Place of Travel</span><span>Status</span></div>
       {orders.map((order) => <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">

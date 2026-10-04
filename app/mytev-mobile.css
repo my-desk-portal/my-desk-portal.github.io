@@ -1,3 +1,8 @@
+@media(max-width:960px){
+  .mytev-table{overflow-x:auto;overscroll-behavior-x:contain}
+  .mytev-table-head,.mytev-table-row{min-width:860px}
+}
+
 @media(max-width:720px){
   .mytev-module{gap:14px}
   .mytev-form-section,.mytev-list-section{padding:20px 16px}
@@ -19,24 +24,12 @@
   .mytev-claim-picker>legend{grid-column:1/-1}
   .mytev-itinerary-totals{grid-template-columns:1fr}
   .mytev-itinerary-editor-heading{align-items:flex-start}
-  .mytev-table-head{display:none}
-  .mytev-table-row{align-items:start;border:0;border-top:1px solid var(--line);grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;padding:16px 0}
-  .mytev-table-row>strong:first-child{align-self:center;grid-column:1;grid-row:1}
-  .mytev-table-row>span:nth-child(2),.mytev-table-row>span:nth-child(3),.mytev-table-row>span:nth-child(4){grid-column:1/-1;min-width:0}
-  .mytev-table-row>span:nth-child(2)::before,.mytev-table-row>span:nth-child(3)::before,.mytev-table-row>span:nth-child(4)::before{color:var(--muted);content:attr(data-label);display:block;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.06em;margin-bottom:3px;text-transform:uppercase}
-  .mytev-table-row>span:nth-child(2)::before{content:"Employee"}
-  .mytev-table-row>span:nth-child(3)::before{content:"Official station"}
-  .mytev-table-row>span:nth-child(4)::before{content:"Itinerary pages"}
-  .mytev-table-row>strong:nth-child(5){grid-column:1;grid-row:1;justify-self:end;margin-right:132px}
-  .mytev-table-row>.mytev-row-actions{grid-column:2;grid-row:1;justify-self:end}
-  .mytev-row-actions{gap:8px}
   .mytev-form-actions{align-items:stretch}
   .mytev-form-actions button{flex:1 1 auto}
-  .mytev-preview-backdrop{padding:10px}
+  .mytev-preview-backdrop{padding:12px}
   .mytev-preview-backdrop>.preview-toolbar{align-items:center;flex-wrap:wrap;gap:8px}
   .mytev-preview-backdrop .preview-toolbar>span{flex:1 0 100%;margin-bottom:2px}
   .mytev-preview-backdrop .preview-toolbar .download-error{flex:1 0 100%;margin:0}
-  .mytev-paper{width:min(94vw,210mm)}
 }
 
 @media(max-width:480px){
@@ -52,10 +45,9 @@
   .mytev-itinerary-row-top,.mytev-itinerary-row-bottom{grid-template-columns:minmax(0,1fr)}
   .mytev-row-places,.mytev-row-means,.mytev-row-transportation{grid-column:1}
   .mytev-itinerary-editor-heading{flex-direction:column}
-  .mytev-table-row>strong:nth-child(5){grid-column:1/-1;grid-row:2;justify-self:start;margin:0}
-  .mytev-table-row>.mytev-row-actions{grid-column:2;grid-row:1}
   .mytev-form-actions{flex-direction:column-reverse}
   .mytev-form-actions button{width:100%}
   .mytev-preview-backdrop{padding:8px}
-  .mytev-paper{width:min(96vw,210mm)}
+  .mytev-preview-pages{gap:14px}
+  .mytev-paper-frame{width:min(94vw,210mm)}
 }

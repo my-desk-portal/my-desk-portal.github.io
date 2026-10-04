@@ -12,6 +12,7 @@ import {
   blankTevTravelReference,
   formatTevAmount,
   formatTevDateRange,
+  formatTaxIdentificationNo,
   tevClaims,
   tevDivisions,
   tevOfficialStations,
@@ -265,6 +266,39 @@ export default function MyTevModule({ user }: { user: User }) {
   const [previewError, setPreviewError] = useState("");
 
   useEffect(() => {
+    const pages = pagesRef.current;
+    if (!preview || !pages) return;
+
+    const updatePageScale = () => {
+      const frame = pages.querySelector<HTMLElement>(".mytev-paper-frame");
+      const paper = frame?.querySelector<HTMLElement>(".mytev-paper");
+      if (!frame || !paper) return;
+      const paperWidth = Number.parseFloat(window.getComputedStyle(paper).width);
+      if (!Number.isFinite(paperWidth) || paperWidth <= 0) return;
+      const viewportWidth = window.innerWidth;
+      const targetViewportWidth = viewportWidth * (viewportWidth <= 480 ? 0.94 : 0.9);
+      const targetWidth = Math.min(paperWidth, targetViewportWidth, pages.clientWidth);
+      pages.style.setProperty("--mytev-page-scale", String(targetWidth / paperWidth));
+      pages.querySelectorAll<HTMLElement>(".mytev-paper-frame").forEach((pageFrame) => {
+        pageFrame.style.width = `${targetWidth}px`;
+      });
+    };
+
+    updatePageScale();
+    const observer = new ResizeObserver(updatePageScale);
+    observer.observe(pages);
+    window.addEventListener("resize", updatePageScale);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updatePageScale);
+      pages.style.removeProperty("--mytev-page-scale");
+      pages.querySelectorAll<HTMLElement>(".mytev-paper-frame").forEach((pageFrame) => {
+        pageFrame.style.removeProperty("width");
+      });
+    };
+  }, [preview]);
+
+  useEffect(() => {
     let active = true;
     const firestore = db;
     if (!firestore) {
@@ -281,11 +315,17 @@ export default function MyTevModule({ user }: { user: User }) {
       setProfile({
         name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : user.displayName ?? "",
         address: typeof data.address === "string" ? data.address.trim() : "",
-        taxIdentificationNo: typeof data.taxIdentificationNo === "string" ? data.taxIdentificationNo.trim() : "",
+        taxIdentificationNo: typeof data.taxIdentificationNo === "string" ? formatTaxIdentificationNo(data.taxIdentificationNo) : "",
         position: typeof data.position === "string" ? data.position.trim() : "",
         unit: typeof data.unit === "string" ? data.unit : "",
       });
-      const loaded = recordsSnapshot.docs.map((item) => ({ id: item.id, ...item.data() } as MyTevRecord));
+      const loaded = recordsSnapshot.docs.map((item) => {
+        const record = { id: item.id, ...item.data() } as MyTevRecord;
+        return {
+          ...record,
+          profile: { ...record.profile, taxIdentificationNo: formatTaxIdentificationNo(record.profile.taxIdentificationNo) },
+        };
+      });
       loaded.sort((first, second) => timestampMillis(second.createdAt) - timestampMillis(first.createdAt));
       setRecords(loaded);
     }).catch((cause) => {
@@ -329,6 +369,7 @@ export default function MyTevModule({ user }: { user: User }) {
   async function downloadPdf() {
     setDownloading(true);
     setPreviewError("");
+    pagesRef.current?.classList.add("mytev-document-pages-export");
     try {
       const pages = await preparePages();
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -340,7 +381,10 @@ export default function MyTevModule({ user }: { user: User }) {
       pdf.save(`mytev-${preview?.month ?? "travel"}-${preview?.id ?? "record"}.pdf`);
     } catch (cause) {
       setPreviewError(cause instanceof Error ? cause.message : "Unable to create the myTEV PDF.");
-    } finally { setDownloading(false); }
+    } finally {
+      pagesRef.current?.classList.remove("mytev-document-pages-export");
+      setDownloading(false);
+    }
   }
 
   async function printPages() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import {
@@ -53,6 +53,7 @@ import ParticipationCertificate from "./ParticipationCertificate";
 import { normalizeWorkflowStatus } from "./workflow-status";
 import "./special-order.css";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
+import { formatTaxIdentificationNo } from "@/lib/mytev";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type AccountUnit = Unit | "Field Operations Division";
@@ -98,6 +99,51 @@ const accountUnitOptions: { value: AccountUnit; label: string }[] = [
   { value: "Field Operations Division", label: "Field Operations Division" },
 ];
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+function tinCaretPosition(value: string, digitsBeforeCaret: number) {
+  let position = 0;
+  let digitsSeen = 0;
+  while (position < value.length && digitsSeen < digitsBeforeCaret) {
+    if (/\d/.test(value[position])) digitsSeen += 1;
+    position += 1;
+  }
+  if (digitsSeen === digitsBeforeCaret && value[position] === "-") position += 1;
+  return position;
+}
+
+function updateTaxIdentificationNo(event: ChangeEvent<HTMLInputElement>, setValue: (value: string) => void) {
+  const input = event.currentTarget;
+  const caret = input.selectionStart ?? input.value.length;
+  const digitsBeforeCaret = input.value.slice(0, caret).replace(/\D/g, "").length;
+  const formatted = formatTaxIdentificationNo(input.value);
+  setValue(formatted);
+  requestAnimationFrame(() => {
+    const nextCaret = tinCaretPosition(formatted, digitsBeforeCaret);
+    input.setSelectionRange(nextCaret, nextCaret);
+  });
+}
+
+function handleTaxIdentificationNoKeyDown(event: KeyboardEvent<HTMLInputElement>, setValue: (value: string) => void) {
+  const input = event.currentTarget;
+  const caret = input.selectionStart;
+  if (caret === null || caret !== input.selectionEnd) return;
+  const isBackspaceAtDash = event.key === "Backspace" && input.value[caret - 1] === "-";
+  const isDeleteAtDash = event.key === "Delete" && input.value[caret] === "-";
+  if (!isBackspaceAtDash && !isDeleteAtDash) return;
+
+  const digits = input.value.replace(/\D/g, "");
+  const digitsBeforeCaret = input.value.slice(0, caret).replace(/\D/g, "").length;
+  const removeIndex = isBackspaceAtDash ? digitsBeforeCaret - 1 : digitsBeforeCaret;
+  if (removeIndex < 0 || removeIndex >= digits.length) return;
+
+  event.preventDefault();
+  const formatted = formatTaxIdentificationNo(`${digits.slice(0, removeIndex)}${digits.slice(removeIndex + 1)}`);
+  setValue(formatted);
+  requestAnimationFrame(() => {
+    const nextCaret = tinCaretPosition(formatted, removeIndex);
+    input.setSelectionRange(nextCaret, nextCaret);
+  });
+}
+
 function permitUnitForPersonnel(person?: PersonnelEntry): Unit | "" {
   const value = person?.unit.trim().toUpperCase();
   if (units.includes(value as Unit)) return value as Unit;
@@ -203,8 +249,8 @@ function Login({ onError }: { onError: (message: string) => void }) {
       setAuthMessage({ kind: "error", text: "Enter your address." });
       return;
     }
-    if (registering && !taxIdentificationNo.trim()) {
-      setAuthMessage({ kind: "error", text: "Enter your tax identification number." });
+    if (registering && !/^\d{3}-\d{3}-\d{3}$/.test(formatTaxIdentificationNo(taxIdentificationNo))) {
+      setAuthMessage({ kind: "error", text: "Enter a 9-digit tax identification number in 123-123-123 format." });
       return;
     }
     if (registering && [firstName, middleName, lastName].some((namePart) => namePart.trim().length > 60)) {
@@ -230,7 +276,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
         const cleanMiddleName = clean(middleName);
         const cleanLastName = clean(lastName);
         const cleanAddress = clean(address);
-        const cleanTaxIdentificationNo = clean(taxIdentificationNo);
+        const cleanTaxIdentificationNo = formatTaxIdentificationNo(taxIdentificationNo);
         const name = [cleanFirstName, cleanMiddleName ? `${cleanMiddleName.charAt(0).toUpperCase()}.` : "", cleanLastName].filter(Boolean).join(" ");
         await updateProfile(credential.user, { displayName: name });
         if (!db) throw new Error("Profile storage is unavailable.");
@@ -303,7 +349,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
         <form className={registering ? "auth-registration-form" : undefined} onSubmit={submit}>
           {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" maxLength={60} value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Middle Name<input autoComplete="additional-name" maxLength={60} value={middleName} onChange={(event) => setMiddleName(event.target.value)} placeholder="Middle name" /></label><label>Last Name<input autoComplete="family-name" maxLength={60} value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
           {registering && <div className="auth-gender-position-fields"><label>Gender<select value={gender} onChange={(event) => setGender(event.target.value)} required><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label><label>Position<input autoComplete="organization-title" maxLength={120} value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Your position" required /></label><label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as AccountUnit | "")} required><option value="" disabled>Select your unit</option>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div>}
-          {registering && <div className="auth-contact-fields"><label>Address<input autoComplete="street-address" maxLength={200} value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Your address" required /></label><label>Tax Identification No.<input autoComplete="off" maxLength={30} value={taxIdentificationNo} onChange={(event) => setTaxIdentificationNo(event.target.value)} placeholder="TIN" required /></label><label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label></div>}
+          {registering && <div className="auth-contact-fields"><label>Address<input autoComplete="street-address" maxLength={200} value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Your address" required /></label><label>Tax Identification No.<input type="text" inputMode="numeric" autoComplete="off" maxLength={11} value={taxIdentificationNo} onChange={(event) => updateTaxIdentificationNo(event, setTaxIdentificationNo)} onKeyDown={(event) => handleTaxIdentificationNoKeyDown(event, setTaxIdentificationNo)} required /></label><label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label></div>}
           {!registering && <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>}
           {registering && <div className="auth-password-fields"><label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label><label>Confirmation Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label></div>}
           {!registering && <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete="current-password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label>}
@@ -391,11 +437,11 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="permit-person-fields wide-field">{people.map((person, index) => { const personnelRecord = personnel.find((candidate) => candidate.name === person.name); const personnelUnit = permitUnitForPersonnel(personnelRecord); const unitNeedsManualSelection = Boolean(person.name) && !personnelUnit && !person.unit; return <div className="permit-person-entry" key={index}><label>Full name<select aria-label={`Full name ${index + 1}`} value={person.name} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Select person ${index + 1}`}</option>{personnel.map((candidate) => <option key={candidate.name} value={candidate.name}>{candidate.name}</option>)}</select></label><label>Unit<select aria-label={`Unit for ${person.name || `person ${index + 1}`}`} value={person.unit} onChange={(event) => selectPersonUnit(index, event.target.value as Unit | "")} required={Boolean(person.name)} disabled={personnelStatus !== "ready" || !person.name || Boolean(personnelUnit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : person.name ? "Select unit" : "Choose a name first"}</option>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{unitNeedsManualSelection && <span className="permit-person-unit-warning" role="status">No supported unit is listed for this person. Select a unit.</span>}</label>{people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => removePerson(index)}>Delete</button>}</div>; })}<button type="button" className="text-button add-participant" onClick={() => setPeople((current) => [...current, { name: "", unit: "" }])}>+ Add name</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={1} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
+  return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="permit-person-fields wide-field">{people.map((person, index) => { const personnelRecord = personnel.find((candidate) => candidate.name === person.name); const personnelUnit = permitUnitForPersonnel(personnelRecord); const unitNeedsManualSelection = Boolean(person.name) && !personnelUnit && !person.unit; return <div className="permit-person-entry" key={index}><label>Full name<select aria-label={`Full name ${index + 1}`} value={person.name} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Select person ${index + 1}`}</option>{personnel.map((candidate) => <option key={candidate.name} value={candidate.name}>{candidate.name}</option>)}</select></label><label>Unit<select aria-label={`Unit for ${person.name || `person ${index + 1}`}`} value={person.unit} onChange={(event) => selectPersonUnit(index, event.target.value as Unit | "")} required={Boolean(person.name)} disabled={personnelStatus !== "ready" || !person.name || Boolean(personnelUnit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : person.name ? "Select unit" : "Choose a name first"}</option>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{unitNeedsManualSelection && <span className="permit-person-unit-warning" role="status">No supported unit is listed for this person. Select a unit.</span>}</label>{people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => removePerson(index)}>Delete</button>}</div>; })}<button type="button" className="text-button add-item-text-button add-participant" onClick={() => setPeople((current) => [...current, { name: "", unit: "" }])}>+ Add name</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={1} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
 function PermitList({ permits, approvedPermitNumbers, deletingId, onNew, onPrint, onDelete }: { permits: Permit[]; approvedPermitNumbers: Record<string, string>; deletingId: string | null; onNew: () => void; onPrint: (permit: Permit) => void; onDelete: (permit: Permit) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button document-create-action" onClick={onNew}>Create a Permit Slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span aria-hidden="true" /></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.names.map((_, index) => {
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Permit Slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span aria-hidden="true" /></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.names.map((_, index) => {
     const originalNumber = permit.permitNos?.[index] ?? permit.permitNo;
     if (normalizeWorkflowStatus(permit.personStatuses?.[permitDecisionKey(permit, index)]?.status) !== "Approved") return "Pending";
     const key = displayPermitNumber(originalNumber);
@@ -774,11 +820,11 @@ function SpecialOrderForm({ user, onSaved, onCancel, onError }: { user: User; on
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated participants.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Participant</span>{participants.map((participant, index) => <div className="participant-input" key={index}><select aria-label={`Designated participant ${index + 1}`} value={participant} onChange={(event) => setParticipants((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Participant ${index + 1}`}</option>{personnel.map((person) => <option key={person.name} value={person.name}>{person.name}</option>)}</select>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete participant ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button add-participant" onClick={() => setParticipants((current) => [...current, ""])}>+ Add participant</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label>Signatory Name<select value={signatoryName} onChange={(event) => setSignatoryName(event.target.value)} required><option value="" disabled>Select a signatory</option>{specialOrderSignatories.map((signatory) => <option key={signatory.name} value={signatory.name}>{signatory.name}</option>)}</select></label><label>Signatory Designation<input value={selectedSignatory?.designation ?? ""} readOnly required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
+  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated participants.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Participant</span>{participants.map((participant, index) => <div className="participant-input" key={index}><select aria-label={`Designated participant ${index + 1}`} value={participant} onChange={(event) => setParticipants((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Participant ${index + 1}`}</option>{personnel.map((person) => <option key={person.name} value={person.name}>{person.name}</option>)}</select>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete participant ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, ""])}>+ Add participant</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label>Signatory Name<select value={signatoryName} onChange={(event) => setSignatoryName(event.target.value)} required><option value="" disabled>Select a signatory</option>{specialOrderSignatories.map((signatory) => <option key={signatory.name} value={signatory.name}>{signatory.name}</option>)}</select></label><label>Signatory Designation<input value={selectedSignatory?.designation ?? ""} readOnly required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
 function SpecialOrderList({ orders, deletingId, onNew, onPrint, onDelete }: { orders: SpecialOrder[]; deletingId: string | null; onNew: () => void; onPrint: (order: SpecialOrder) => void; onDelete: (order: SpecialOrder) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button document-create-action" onClick={onNew}>Create a Special Order</button></div> : <div className="permit-table"><div className="table-head special-order-list-head"><span>Subject</span><span>Activity</span><span>Date</span><span>Participants</span><span></span></div>{orders.map((order) => <div className="table-row special-order-list-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span>{order.participants.length}</span><span className="permit-row-actions"><button type="button" className="row-action" onClick={() => onPrint(order)}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button></span></div>)}</div>}</section>;
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Special Order</button></div> : <div className="permit-table"><div className="table-head special-order-list-head"><span>Subject</span><span>Activity</span><span>Date</span><span>Participants</span><span></span></div>{orders.map((order) => <div className="table-row special-order-list-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span>{order.participants.length}</span><span className="permit-row-actions"><button type="button" className="row-action" onClick={() => onPrint(order)}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button></span></div>)}</div>}</section>;
 }
 
 function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose: () => void }) {
@@ -1122,7 +1168,7 @@ export default function Home() {
         if (typeof profile.gender === "string") setProfileGender(profile.gender);
         if (typeof profile.position === "string") setProfilePosition(profile.position);
         if (typeof profile.address === "string") setProfileAddress(profile.address);
-        if (typeof profile.taxIdentificationNo === "string") setProfileTaxIdentificationNo(profile.taxIdentificationNo);
+        if (typeof profile.taxIdentificationNo === "string") setProfileTaxIdentificationNo(formatTaxIdentificationNo(profile.taxIdentificationNo));
         if (accountUnitOptions.some((option) => option.value === profile.unit)) setProfileUnit(profile.unit as AccountUnit);
       }
     } catch (cause) {
@@ -1152,7 +1198,7 @@ export default function Home() {
     const lastName = clean(profileLastName);
     const gender = profileGender;
     const address = clean(profileAddress);
-    const taxIdentificationNo = clean(profileTaxIdentificationNo);
+    const taxIdentificationNo = formatTaxIdentificationNo(profileTaxIdentificationNo);
     const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
     const name = [firstName, middleInitial, lastName].filter(Boolean).join(" ");
     const position = profilePosition.trim().replace(/\s+/g, " ");
@@ -1169,8 +1215,8 @@ export default function Home() {
       setProfileMessage({ kind: "error", text: "Enter your address." });
       return;
     }
-    if (!taxIdentificationNo) {
-      setProfileMessage({ kind: "error", text: "Enter your tax identification number." });
+    if (!/^\d{3}-\d{3}-\d{3}$/.test(taxIdentificationNo)) {
+      setProfileMessage({ kind: "error", text: "Enter a 9-digit tax identification number in 123-123-123 format." });
       return;
     }
     if (wantsPasswordChange && (!changePassword || !confirmNewPassword)) {
@@ -1434,7 +1480,7 @@ export default function Home() {
   <label>Position<input autoComplete="organization-title" maxLength={120} value={profilePosition} onChange={(event) => setProfilePosition(event.target.value)} disabled={profileLoading || profileSaving} /></label>
   <label>Unit<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value as AccountUnit)} disabled={profileLoading || profileSaving}>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
   <label>Address<input autoComplete="street-address" maxLength={200} value={profileAddress} onChange={(event) => setProfileAddress(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
-  <label>Tax Identification No.<input autoComplete="off" maxLength={30} value={profileTaxIdentificationNo} onChange={(event) => setProfileTaxIdentificationNo(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
+  <label>Tax Identification No.<input type="text" inputMode="numeric" autoComplete="off" maxLength={11} value={profileTaxIdentificationNo} onChange={(event) => updateTaxIdentificationNo(event, setProfileTaxIdentificationNo)} onKeyDown={(event) => handleTaxIdentificationNoKeyDown(event, setProfileTaxIdentificationNo)} required disabled={profileLoading || profileSaving} /></label>
   <label>Email<input type="email" value={user.email ?? ""} readOnly /></label>
   <div className="profile-password-fields">
   <label>Change Password<div className="password-field"><input type={showChangePassword ? "text" : "password"} autoComplete="new-password" value={changePassword} onChange={(event) => setChangePassword(event.target.value)} /><button type="button" className="password-toggle" aria-label={showChangePassword ? "Hide new password" : "Show new password"} onClick={() => setShowChangePassword((show) => !show)}>{showChangePassword ? "Hide" : "Show"}</button></div></label>

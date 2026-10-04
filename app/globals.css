@@ -36,7 +36,7 @@
 .special-order-expenses{margin:3.81cqi 0}
 .special-order-done{margin:4.76cqi 0}
 .special-order-signatory{margin-top:5.71cqi}
-.date-range-field{color:#4e5b55;display:grid;font-size:12px;font-weight:600;gap:8px}.date-range-field>div{align-items:center;display:flex;gap:8px}.date-range-field input{min-width:0}.date-range-field>div>span{color:var(--muted);font-size:12px;font-weight:400}.participant-fields{color:#4e5b55;display:grid;font-size:12px;font-weight:600;gap:8px}.participant-input{align-items:center;display:flex;gap:8px}.participant-input input,.participant-input select{flex:1;min-width:0}.remove-participant,.ar-remove-activity,.my-notes-remove-task{align-items:center;background:transparent;border:1px solid var(--line);border-radius:12px;color:var(--ink);display:inline-flex;font-size:13px;justify-content:center;min-height:40px;min-width:0;padding:11px 16px;white-space:nowrap}.remove-participant:hover,.ar-remove-activity:hover,.my-notes-remove-task:hover{background:#f6f8f7}.remove-participant:focus-visible,.ar-remove-activity:focus-visible,.my-notes-remove-task:focus-visible{outline:2px solid #a61e26;outline-offset:2px}.add-participant{justify-self:start}
+.date-range-field{color:#4e5b55;display:grid;font-size:12px;font-weight:600;gap:8px}.date-range-field>div{align-items:center;display:flex;gap:8px}.date-range-field input{min-width:0}.date-range-field>div>span{color:var(--muted);font-size:12px;font-weight:400}.participant-fields{color:#4e5b55;display:grid;font-size:12px;font-weight:600;gap:8px}.participant-input{align-items:center;display:flex;gap:8px}.participant-input input,.participant-input select{flex:1;min-width:0}.remove-participant,.ar-remove-activity,.my-notes-remove-task{align-items:center;background:transparent;border:1px solid var(--line);border-radius:12px;color:var(--ink);display:inline-flex;font-size:13px;justify-content:center;min-height:40px;min-width:0;padding:11px 16px;white-space:nowrap}.ar-remove-activity:hover,.my-notes-remove-task:hover{background:#f6f8f7}.remove-participant:focus-visible,.ar-remove-activity:focus-visible,.my-notes-remove-task:focus-visible{outline:2px solid #a61e26;outline-offset:2px}.add-participant{justify-self:start}
 @media print{
   @page { size: A4; margin: 0; }
   html, body {
@@ -291,8 +291,8 @@
 img{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 
 .permit-row-actions,.travel-order-row-actions{align-items:center;display:flex;gap:10px;justify-content:flex-end;white-space:nowrap}
-.delete-button{background:none;border:0;color:#a23d2d;font-size:12px;padding:0}
-.delete-button:hover:not(:disabled){text-decoration:none}
+.delete-button{background:none;border:0;color:#a23d2d;font-size:12px;padding:0}.delete-button:hover:not(:disabled){text-decoration:none}
+
 .delete-button:disabled{cursor:wait;opacity:.65}
 @media(max-width:720px){.permit-row-actions{grid-column:1/-1;justify-content:flex-start}}
 

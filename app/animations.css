@@ -98,7 +98,7 @@ textarea {
     transform var(--motion-quick) ease;
 }
 
-button:not(:disabled):active { transform: scale(.985); }
+button:not(:disabled):not(.brand-home):not(.plain-action):not(.row-action):not(.delete-button):not(.remove-participant):active { transform: scale(.985); }
 
 .primary-button:hover:not(:disabled),
 .pdf-button:hover:not(:disabled) {
@@ -120,8 +120,7 @@ button:not(:disabled):active { transform: scale(.985); }
 
 .nav-button:hover:not(.active) { background: #f0f5f1; color: var(--ink); }
 .nav-button.active { animation: ui-fade-in 180ms ease both; }
-.row-action:hover { color: var(--accent); transform: translateX(2px); }
-.text-button:hover { color: var(--ink); }
+.text-button:hover:not(.plain-action) { color: var(--ink); }
 .table-row { transition: background-color var(--motion-quick) ease; }
 .table-row:hover { background-color: #f8faf8; }
 
@@ -187,13 +186,13 @@ textarea:focus { transition-duration: 120ms; }
 
 .document-create-action { border-radius: 0; }
 
-:where(button, [role="button"]):not(:disabled):hover {
+:where(button:not(.brand-home):not(.plain-action):not(.row-action):not(.delete-button):not(.remove-participant), [role="button"]):not(:disabled):hover {
   box-shadow: 0 4px 12px #18211f1f;
   filter: brightness(.97);
   transform: translateY(-1px);
 }
 
-:where(button, [role="button"]):not(:disabled):active {
+:where(button:not(.brand-home):not(.plain-action):not(.row-action):not(.delete-button):not(.remove-participant), [role="button"]):not(:disabled):active {
   box-shadow: none;
   filter: brightness(.94);
   transform: translateY(0) scale(.98);
@@ -218,17 +217,11 @@ textarea:focus { transition-duration: 120ms; }
   min-height: 46px;
 }
 
-/* The logo button is exempt from the global button effects. */
-.topbar .brand-home,
-.topbar .brand-home:hover,
-.topbar .brand-home:active,
-.topbar .brand-home:focus-visible {
-  box-shadow: none;
-  filter: none;
-  outline: none;
-  transform: none;
-}
-
-/* Text-only row links keep the hover motion but have no pill container. */
+/* Text-only add/create actions and row links keep their resting appearance. */
 .row-action,.delete-button{border-radius:0}
-.row-action:hover:not(:disabled),.delete-button:hover:not(:disabled){background:none;box-shadow:none;filter:none}
+
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--accent, #d9532e) !important;
+  outline-offset: 2px !important;
+}
