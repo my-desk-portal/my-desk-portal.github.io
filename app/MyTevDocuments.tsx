@@ -185,7 +185,7 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount }: 
           <td />
           <td>{row && hasItineraryData(row) ? formatTevAmount(perDiemForClaims(row.claims) + transportationForRow(row)) : ""}</td>
         </tr>})}</tbody>
-        <tfoot><tr><td colSpan={5}>{isFinalPage ? "ITINERARY TOTAL" : `PAGE ${pageNumber} SUBTOTAL — CONTINUED`}</td><td>{formatTevAmount(totals.transportation)}</td><td>{formatTevAmount(totals.perDiem)}</td><td>-</td><td>{formatTevAmount(totals.grandTotal)}</td></tr></tfoot>
+        <tfoot><tr><td className={isFinalPage ? "mytev-itinerary-total-label" : undefined} colSpan={5}>{isFinalPage ? "TOTAL" : `PAGE ${pageNumber} SUBTOTAL — CONTINUED`}</td><td>{formatTevAmount(totals.transportation)}</td><td>{formatTevAmount(totals.perDiem)}</td><td>-</td><td>{formatTevAmount(totals.grandTotal)}</td></tr></tfoot>
       </table>
       <div className="mytev-itinerary-footer">
         <section className="mytev-itinerary-certified">

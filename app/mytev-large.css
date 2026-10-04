@@ -156,6 +156,7 @@
 .mytev-itinerary-table tfoot tr{height:5mm}
 .mytev-itinerary-table tfoot td{font-size:calc(var(--mytev-font-16) * 1.12);font-weight:700;height:5mm;text-align:right}
 .mytev-itinerary-table tfoot td:first-child{text-align:left}
+.mytev-itinerary-table tfoot td.mytev-itinerary-total-label{text-align:center}
 .mytev-itinerary-footer{display:grid;grid-template-columns:46.5% 53.5%;height:14%;left:4.85%;position:absolute;top:81.5%;width:91.1%}
 .mytev-itinerary-certified,.mytev-itinerary-approvals{font-family:'Times New Roman',serif;min-width:0;position:relative}
 .mytev-itinerary-certified{border:var(--mytev-medium-line)}
