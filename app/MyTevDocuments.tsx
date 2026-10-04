@@ -166,7 +166,7 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount }: 
       <table className="mytev-itinerary-table">
         <colgroup><col /><col /><col /><col /><col /><col /><col /><col /><col /></colgroup>
         <thead>
-          <tr className="mytev-itinerary-station"><th>Official Station</th><td colSpan={8}>{record.officialStation}</td></tr>
+          <tr className="mytev-itinerary-station"><th>Official Station :</th><td colSpan={8}>{record.officialStation}</td></tr>
           <tr><th rowSpan={2}>Date</th><th rowSpan={2}>Places to be visited<br />(Destination)</th><th colSpan={2}>T I M E</th><th rowSpan={2}>Means of<br />Transportation</th><th rowSpan={2}>Transportation</th><th rowSpan={2}>Per<br />Diem</th><th rowSpan={2}>Others</th><th rowSpan={2}>Total Amount</th></tr>
           <tr><th>Departure</th><th>Arrival</th></tr>
         </thead>

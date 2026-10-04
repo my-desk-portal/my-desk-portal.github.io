@@ -113,7 +113,7 @@
 .mytev-itinerary-meta-entity b{flex:0 0 auto;width:auto}
 .mytev-itinerary-meta-entity span{flex:0 1 auto;max-width:calc(100% - 30mm);overflow:visible;padding:0;width:max-content}
 .mytev-itinerary-meta-fund{left:0;top:50%;width:100%}
-.mytev-itinerary-meta-fund>b:first-child{width:16%}
+.mytev-itinerary-meta-fund>b:first-child{flex:0 0 auto;width:auto}
 .mytev-itinerary-meta-fund>span:first-of-type{width:34.5%}
 .mytev-itinerary-meta-fund>b:nth-of-type(2){margin-left:auto;width:2.5%}
 .mytev-itinerary-meta-fund>span:last-child{width:16.1%}
@@ -141,8 +141,8 @@
 .mytev-itinerary-table thead tr:nth-child(2){height:2.4mm}
 .mytev-itinerary-table thead tr:nth-child(3){height:3.3mm}
 .mytev-itinerary-table thead .mytev-itinerary-station{height:4.2mm}
-.mytev-itinerary-table thead .mytev-itinerary-station th{border-right:hidden;font-size:calc(var(--mytev-font-16) * 1.12);font-weight:700;text-align:left}
-.mytev-itinerary-table thead .mytev-itinerary-station td{border-left-style:hidden;font-size:calc(var(--mytev-font-16) * 1.12);font-weight:700;position:relative;text-align:left}
+.mytev-itinerary-table thead .mytev-itinerary-station th{border-right:hidden;font-size:var(--mytev-font-15);font-weight:700;text-align:left}
+.mytev-itinerary-table thead .mytev-itinerary-station td{border-left-style:hidden;font-size:var(--mytev-font-15);font-weight:700;position:relative;text-align:left}
 .mytev-itinerary-table thead .mytev-itinerary-station td::before{border-left:var(--mytev-medium-line);bottom:0;content:"";left:39.2%;pointer-events:none;position:absolute;top:0}
 .mytev-itinerary-table td{background:transparent;border:var(--mytev-thin-line);font-family:'Times New Roman',serif;font-size:calc(var(--mytev-font-16) * 1.12);height:8mm;line-height:1.05;overflow-wrap:anywhere;padding:0 .45mm;vertical-align:middle;white-space:normal}
 .mytev-itinerary-table tbody td{height:7mm}
