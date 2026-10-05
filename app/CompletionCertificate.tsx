@@ -37,6 +37,24 @@ const daCaragaLogo = `${basePath}/da-caraga-logo.jpg`;
 const importTemplate = `${basePath}/Completion_Importing_Template.xlsx`;
 const MAX_PARTICIPANTS = 100;
 
+function containedImageLayout(image: HTMLImageElement) {
+  const parent = image.offsetParent;
+  if (!parent || !image.naturalWidth || !image.naturalHeight) return null;
+
+  const imageBounds = image.getBoundingClientRect();
+  const parentBounds = parent.getBoundingClientRect();
+  const scale = Math.min(imageBounds.width / image.naturalWidth, imageBounds.height / image.naturalHeight);
+  const width = image.naturalWidth * scale;
+  const height = image.naturalHeight * scale;
+
+  return {
+    left: imageBounds.left - parentBounds.left + (imageBounds.width - width) / 2,
+    top: imageBounds.top - parentBounds.top + (imageBounds.height - height) / 2,
+    width,
+    height,
+  };
+}
+
 function participantNames(record: CompletionRecord) {
   const names = record.participantNames?.map((name) => String(name).trim()).filter(Boolean) ?? [];
   if (names.length) return names;
@@ -303,7 +321,26 @@ export default function CompletionCertificate({ user }: { user: User }) {
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       for (let index = 0; index < sheets.length; index += 1) {
-        const canvas = await html2canvas(sheets[index], { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
+        const logoLayouts = Array.from(sheets[index].querySelectorAll<HTMLImageElement>(".completion-amia-letterhead img"), containedImageLayout);
+        const canvas = await html2canvas(sheets[index], {
+          backgroundColor: "#fff",
+          logging: false,
+          scale: 3,
+          useCORS: true,
+          onclone: (clonedDocument) => {
+            const clonedSheet = clonedDocument.querySelectorAll<HTMLElement>(".completion-print-sheet")[index];
+            const clonedLogos = clonedSheet?.querySelectorAll<HTMLImageElement>(".completion-amia-letterhead img") ?? [];
+            clonedLogos.forEach((logo, logoIndex) => {
+              const layout = logoLayouts[logoIndex];
+              if (!layout) return;
+              logo.style.setProperty("left", `${layout.left}px`);
+              logo.style.setProperty("top", `${layout.top}px`);
+              logo.style.setProperty("width", `${layout.width}px`);
+              logo.style.setProperty("height", `${layout.height}px`);
+              logo.style.setProperty("object-fit", "fill");
+            });
+          },
+        });
         if (index > 0) pdf.addPage(paperFormat, "landscape");
         pdf.addImage(canvas.toDataURL("image/jpeg", 0.97), "JPEG", 0, 0, pageWidth, pageHeight);
       }
