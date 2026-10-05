@@ -1294,22 +1294,88 @@ export default function Home() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const notificationToneRef = useRef<HTMLAudioElement | null>(null);
+  const notificationAudioContextRef = useRef<AudioContext | null>(null);
+  const notificationAudioBufferRef = useRef<AudioBuffer | null>(null);
+  const pendingNotificationToneRef = useRef(false);
+  const playBufferedNotificationTone = useCallback(() => {
+    const audioContext = notificationAudioContextRef.current;
+    const buffer = notificationAudioBufferRef.current;
+    if (!audioContext || audioContext.state !== "running" || !buffer) return false;
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContext.destination);
+    source.start();
+    pendingNotificationToneRef.current = false;
+    return true;
+  }, []);
+
   useEffect(() => {
     const tone = new Audio(publicAsset("/notif_tone.mp3"));
     tone.preload = "auto";
     notificationToneRef.current = tone;
+    let context: AudioContext | null = null;
+    let disposed = false;
+    try {
+      context = new AudioContext();
+      notificationAudioContextRef.current = context;
+      void fetch(publicAsset("/notif_tone.mp3"))
+        .then((response) => {
+          if (!response.ok) throw new Error("Could not load the notification sound.");
+          return response.arrayBuffer();
+        })
+        .then((sound) => context?.decodeAudioData(sound))
+        .then((buffer) => {
+          if (disposed || !buffer) return;
+          notificationAudioBufferRef.current = buffer;
+          if (pendingNotificationToneRef.current) playBufferedNotificationTone();
+        })
+        .catch(() => undefined);
+    } catch {
+      notificationAudioContextRef.current = null;
+    }
+    const unlockAudio = () => {
+      const audioContext = notificationAudioContextRef.current;
+      if (audioContext?.state === "suspended") {
+        void audioContext.resume().then(() => {
+          if (pendingNotificationToneRef.current) playBufferedNotificationTone();
+        }).catch(() => undefined);
+      } else if (pendingNotificationToneRef.current) playBufferedNotificationTone();
+    };
+    document.addEventListener("pointerdown", unlockAudio, { once: true });
+    document.addEventListener("keydown", unlockAudio, { once: true });
     return () => {
+      disposed = true;
+      document.removeEventListener("pointerdown", unlockAudio);
+      document.removeEventListener("keydown", unlockAudio);
       tone.pause();
       notificationToneRef.current = null;
+      notificationAudioBufferRef.current = null;
+      notificationAudioContextRef.current = null;
+      pendingNotificationToneRef.current = false;
+      if (context && context.state !== "closed") void context.close().catch(() => undefined);
     };
-  }, []);
+  }, [playBufferedNotificationTone]);
 
   const playNotificationTone = useCallback(() => {
+    const audioContext = notificationAudioContextRef.current;
+    const buffer = notificationAudioBufferRef.current;
+    if (audioContext && buffer) {
+      if (playBufferedNotificationTone()) return;
+      pendingNotificationToneRef.current = true;
+      if (audioContext.state !== "running") {
+        void audioContext.resume().then(() => {
+          if (pendingNotificationToneRef.current) playBufferedNotificationTone();
+        }).catch(() => undefined);
+      }
+      return;
+    }
     const tone = notificationToneRef.current;
     if (!tone) return;
     tone.currentTime = 0;
-    void tone.play().catch(() => undefined);
-  }, []);
+    void tone.play().catch(() => {
+      if (notificationAudioContextRef.current) pendingNotificationToneRef.current = true;
+    });
+  }, [playBufferedNotificationTone]);
 
   useEffect(() => {
     const updateClock = () => {
@@ -1544,7 +1610,7 @@ export default function Home() {
     if (!user || !db) return;
     let hasInitialSnapshot = false;
     let previousDecisions = new Map<string, string>();
-    return onSnapshot(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc")), (snapshot) => {
+    return onSnapshot(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc")), { includeMetadataChanges: true }, (snapshot) => {
       const currentDecisions = new Map<string, string>();
       let hasNewDecision = false;
       const shouldCheckForNewDecisions = hasInitialSnapshot && !snapshot.metadata.fromCache;
@@ -1590,7 +1656,7 @@ export default function Home() {
     const firestore = db;
     let hasInitialSnapshot = false;
     let previousPendingKeys = new Set<string>();
-    return onSnapshot(collection(firestore, "permits"), (snapshot) => {
+    return onSnapshot(collection(firestore, "permits"), { includeMetadataChanges: true }, (snapshot) => {
       const pendingWriteKeys = new Set<string>();
       const pending = snapshot.docs.flatMap((item) => {
         const data = item.data() as Record<string, unknown>;
@@ -1617,7 +1683,7 @@ export default function Home() {
   useEffect(() => {
     if (!user || !db) { setTravelPlanNotifications([]); return; }
     const notificationState = { initialized: false, createdAtById: new Map<string, string>() };
-    return onSnapshot(query(collection(db, travelPlanNotificationsCollection), where("recipientId", "==", user.uid)), (snapshot) => {
+    return onSnapshot(query(collection(db, travelPlanNotificationsCollection), where("recipientId", "==", user.uid)), { includeMetadataChanges: true }, (snapshot) => {
       let hasNewNotification = false;
       if (!notificationState.initialized) {
         notificationState.createdAtById.clear();
@@ -1647,7 +1713,7 @@ export default function Home() {
   useEffect(() => {
     if (!user || !db) { setDocumentNotifications([]); return; }
     const notificationState: NotificationSnapshotState = { initialized: false, ids: new Set() };
-    return onSnapshot(query(collection(db, "documentNotifications"), where("recipientId", "==", user.uid)), (snapshot) => {
+    return onSnapshot(query(collection(db, "documentNotifications"), where("recipientId", "==", user.uid)), { includeMetadataChanges: true }, (snapshot) => {
       if (hasNewNotificationDocuments(snapshot, notificationState)) playNotificationTone();
       const notifications = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as DocumentNotification));
       notifications.sort((left, right) => timestampMillis(right.createdAt) - timestampMillis(left.createdAt));
@@ -1657,7 +1723,7 @@ export default function Home() {
   useEffect(() => {
     if (!user || !db || !isPermitAdmin(user.email)) { setTravelPlanApprovalNotifications([]); return; }
     const notificationState: NotificationSnapshotState = { initialized: false, ids: new Set() };
-    return onSnapshot(collection(db, travelPlanApprovalNotificationsCollection), (snapshot) => {
+    return onSnapshot(collection(db, travelPlanApprovalNotificationsCollection), { includeMetadataChanges: true }, (snapshot) => {
       if (hasNewNotificationDocuments(snapshot, notificationState)) playNotificationTone();
       const notifications = snapshot.docs.map((item) => {
         const data = item.data();
