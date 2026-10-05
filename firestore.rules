@@ -117,7 +117,7 @@ service cloud.firestore {
               && request.resource.data.reactions is map
               && request.resource.data.reactions.diff(resource.data.get("reactions", {})).affectedKeys().hasOnly([request.auth.uid])
               && (!(request.auth.uid in request.resource.data.reactions)
-                || request.resource.data.reactions[request.auth.uid] in ["heart", "like", "wow", "sad", "angry"])));
+                || request.resource.data.reactions[request.auth.uid] in ["heart", "like", "laughing", "wow", "sad", "angry"])));
         allow delete: if false;
       }
     }
