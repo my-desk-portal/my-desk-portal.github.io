@@ -668,6 +668,9 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /myTevRecords/{recordId} {
+      function isOwnMonthlyRecordId() {
+        return recordId.matches("^" + request.auth.uid + "_[0-9]{4}-(0[1-9]|1[0-2])$");
+      }
       function isValidMyTevRecord(recordData) {
         return recordData.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
           && recordData.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
@@ -703,6 +706,11 @@ service cloud.firestore {
           && recordData.createdAt is timestamp;
       }
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      // The create transaction reads the deterministic target before writing it; allow that read when it is absent.
+      allow get: if isVerifiedUser()
+        && isOwnMonthlyRecordId()
+        && (!exists(/databases/$(database)/documents/myTevRecords/$(recordId))
+          || resource.data.ownerId == request.auth.uid);
       allow create: if isVerifiedUser()
         && recordId == request.auth.uid + "_" + request.resource.data.month
         && request.resource.data.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
