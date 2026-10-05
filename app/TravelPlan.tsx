@@ -6,6 +6,7 @@ import { jsPDF } from "jspdf";
 import { collection, deleteField, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type DocumentReference } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { isSuperadminRole } from "@/lib/user-roles";
 import { travelPlanApprovalNotificationsCollection, travelPlanCollection, travelPlanNotificationsCollection } from "@/lib/travel-plan-storage";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./travel-plan-large.css";
@@ -470,7 +471,7 @@ export default function TravelPlanModule({ user, mode = "prepared", profileRevis
         if (typeof profileData.name !== "string" || !profileData.name.trim() || typeof profileData.position !== "string" || !profileData.position.trim() || !["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"].includes(profileData.unit)) throw new Error("Complete your name, position, and unit in Profile before creating a plan.");
         const loadedProfile: Profile = { name: profileData.name, position: profileData.position, unit: profileData.unit as Unit };
         const accountSnapshot = await getDocs(query(collection(firestore, "users"), where("unit", "==", loadedProfile.unit)));
-        const colleagues = accountSnapshot.docs.filter((item) => item.id !== user.uid).map((item) => ({ id: item.id, name: String(item.data().name ?? "") })).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
+        const colleagues = accountSnapshot.docs.filter((item) => item.id !== user.uid && !isSuperadminRole(item.data().accountRole)).map((item) => ({ id: item.id, name: String(item.data().name ?? "") })).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
         const rows = plansSnapshot.docs.map((item) => ({ id: item.id, ...item.data() } as TravelPlan));
         rows.sort((first, second) => timestampMillis(second.createdAt) - timestampMillis(first.createdAt));
         if (!cancelled) { setProfile(loadedProfile); setAccounts(colleagues); setPlans(rows); }

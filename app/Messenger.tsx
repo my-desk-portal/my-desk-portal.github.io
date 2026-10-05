@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
 import { arrayUnion, collection, deleteField, doc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { isSuperadminRole } from "@/lib/user-roles";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./messenger.css";
 
@@ -117,7 +118,17 @@ function useChats(userId: string) {
 
 export function MessengerButton({ user, active, onClick }: { user: User; active: boolean; onClick: () => void }) {
   const chats = useChats(user.uid);
-  const unread = chats.filter((chat) => isUnread(chat, user.uid)).length;
+  const [superadminIds, setSuperadminIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!db) return;
+    return onSnapshot(collection(db, "users"), (snapshot) => {
+      setSuperadminIds(new Set(snapshot.docs.filter((item) => isSuperadminRole(item.data().accountRole)).map((item) => item.id)));
+    }, () => setSuperadminIds(null));
+  }, []);
+  const unread = superadminIds ? chats.filter((chat) => {
+    const other = chat.members.find((id) => id !== user.uid);
+    return Boolean(other && !superadminIds.has(other) && isUnread(chat, user.uid));
+  }).length : 0;
   return <button type="button" className={`notification-button messenger-button${active ? " active" : ""}`} aria-label={`Messages${unread ? `, ${unread} unread` : ""}`} title="Messages" onClick={onClick}>
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.6-.8L3 21l1.9-5.1A8.4 8.4 0 0 1 3 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z" /></svg>
     {unread > 0 && <span className="notification-badge" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
@@ -151,7 +162,7 @@ export default function MessengerModule({ user }: { user: User }) {
   useEffect(() => {
     if (!db) { setLoadingPeople(false); return; }
     return onSnapshot(collection(db, "users"), (snapshot) => {
-      setPeople(snapshot.docs.filter((item) => item.id !== user.uid).map((item) => {
+      setPeople(snapshot.docs.filter((item) => item.id !== user.uid && !isSuperadminRole(item.data().accountRole)).map((item) => {
         const data = item.data();
         return { id: item.id, name: typeof data.name === "string" ? data.name : "", position: typeof data.position === "string" ? data.position : "", unit: typeof data.unit === "string" ? data.unit : "", photoURL: typeof data.photoURL === "string" ? data.photoURL : "" };
       }).filter((person) => person.name));
@@ -164,9 +175,10 @@ export default function MessengerModule({ user }: { user: User }) {
 
   const chatByPerson = useMemo(() => {
     const map = new Map<string, Chat>();
-    chats.forEach((chat) => { const other = chat.members.find((id) => id !== user.uid); if (other) map.set(other, chat); });
+    const knownPeople = new Set(people.map((person) => person.id));
+    chats.forEach((chat) => { const other = chat.members.find((id) => id !== user.uid); if (other && knownPeople.has(other)) map.set(other, chat); });
     return map;
-  }, [chats, user.uid]);
+  }, [chats, people, user.uid]);
 
   // Deleting a chat only clears your own copy: anything at or before clearedAt is hidden from you.
   const lastVisibleAt = (chat?: Chat) => chat && millis(chat.lastAt) > millis(chat.clearedAt?.[user.uid]) ? millis(chat.lastAt) : 0;
@@ -180,9 +192,18 @@ export default function MessengerModule({ user }: { user: User }) {
   }, [people, search, unitFilter, chatByPerson]);
 
   const selected = people.find((person) => person.id === selectedId) ?? null;
-  const selectedChat = selectedId ? chatByPerson.get(selectedId) ?? null : null;
+  const selectedChat = selected ? chatByPerson.get(selected.id) ?? null : null;
   // Listening before the server has the chat document is denied by the rules, so wait for the write to land.
   const selectedChatId = selectedChat && !selectedChat.pending ? selectedChat.id : null;
+
+  useEffect(() => {
+    if (!loadingPeople && selectedId && !selected) {
+      setSelectedId(null);
+      setReplyTo(null);
+      setDraft("");
+      setPicker(null);
+    }
+  }, [loadingPeople, selectedId, selected]);
 
   // Clear only when switching people; the chat id changing from pending to confirmed must not blank the thread.
   useEffect(() => { setMessages([]); }, [selectedId]);

@@ -35,6 +35,7 @@ import {
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
+import { accountRoleForEmail } from "@/lib/user-roles";
 import NtaModule from "./Nta";
 import TravelOrderModule from "./TravelOrder";
 import TravelPlanModule, { type TravelPlanApprovalNotification, type TravelPlanNotification } from "./TravelPlan";
@@ -291,6 +292,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
           gender,
           position: clean(position),
           unit: unit as AccountUnit,
+          accountRole: accountRoleForEmail(credential.user.email),
           address: cleanAddress,
           taxIdentificationNo: cleanTaxIdentificationNo,
         });
@@ -1279,7 +1281,7 @@ export default function Home() {
     let profileDataSaved = false;
     let accountNameSaved = false;
     try {
-      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit, address, taxIdentificationNo }, { merge: true });
+      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit, accountRole: accountRoleForEmail(user.email), address, taxIdentificationNo }, { merge: true });
       profileDataSaved = true;
       setProfileRevision((revision) => revision + 1);
       await updateProfile(user, { displayName: name });
@@ -1331,7 +1333,33 @@ export default function Home() {
     }
   }
 
-  useEffect(() => { if (!auth) { setLoading(false); return; } return onAuthStateChanged(auth, (currentUser) => { const verifiedUser = currentUser?.emailVerified ? currentUser : null; setUser(verifiedUser); if (verifiedUser) { setSection("whereabouts-calendar"); setView("list"); } setLoading(false); }); }, []);
+  useEffect(() => {
+    if (!auth) { setLoading(false); return; }
+    let authChange = 0;
+    return onAuthStateChanged(auth, (currentUser) => {
+      const thisAuthChange = ++authChange;
+      const verifiedUser = currentUser?.emailVerified ? currentUser : null;
+      setLoading(true);
+      void (async () => {
+        if (verifiedUser && db) {
+          try {
+            const profileRef = doc(db, "users", verifiedUser.uid);
+            const profileSnapshot = await getDoc(profileRef);
+            const accountRole = accountRoleForEmail(verifiedUser.email);
+            if (profileSnapshot.exists() && profileSnapshot.data().accountRole !== accountRole) {
+              await setDoc(profileRef, { accountRole }, { merge: true });
+            }
+          } catch {
+            if (thisAuthChange === authChange) setError("Could not refresh your account role. Sign out and sign in again to retry.");
+          }
+        }
+        if (thisAuthChange !== authChange) return;
+        setUser(verifiedUser);
+        if (verifiedUser) { setSection("whereabouts-calendar"); setView("list"); }
+        setLoading(false);
+      })();
+    });
+  }, []);
   useEffect(() => {
     if (!user || !db) { setAccountProfileUnit(null); return; }
     setAccountProfileUnit(null);

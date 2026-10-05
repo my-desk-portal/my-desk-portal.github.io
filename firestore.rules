@@ -4,9 +4,18 @@ service cloud.firestore {
     function isVerifiedUser() {
       return request.auth != null && request.auth.token.email_verified == true;
     }
+    function isSuperAdmin() {
+      return isVerifiedUser() && request.auth.token.email == "rjamescute2@gmail.com";
+    }
     function isPermitAdmin() {
       return isVerifiedUser()
-        && request.auth.token.email in ["gerlieantipaso27@gmail.com", "rjamescute2@gmail.com"];
+        && (request.auth.token.email == "gerlieantipaso27@gmail.com" || isSuperAdmin());
+    }
+    function matchesAccountRole() {
+      return !request.resource.data.keys().hasAny(["accountRole"])
+        || request.resource.data.accountRole == (request.auth.token.email == "rjamescute2@gmail.com"
+          ? "superadmin"
+          : request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "user");
     }
     function isAccomplishmentReportEditable(report) {
       let manilaNow = request.time + duration.value(8, "h");
@@ -30,7 +39,8 @@ service cloud.firestore {
       allow create, update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.keys().hasAll(["name", "position", "unit"])
-        && request.resource.data.keys().hasOnly(["name", "position", "unit", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo"])
+        && request.resource.data.keys().hasOnly(["name", "position", "unit", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole"])
+        && matchesAccountRole()
         && (!request.resource.data.keys().hasAny(["gender"]) || request.resource.data.gender in ["Male", "Female"])
         && (!request.resource.data.keys().hasAny(["firstName"]) || (request.resource.data.firstName is string && request.resource.data.firstName.size() <= 60))
         && (!request.resource.data.keys().hasAny(["middleName"]) || (request.resource.data.middleName is string && request.resource.data.middleName.size() <= 60))

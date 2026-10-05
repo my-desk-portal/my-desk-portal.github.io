@@ -1,5 +1,6 @@
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { isSuperadminRole } from "@/lib/user-roles";
 
 export type PersonnelEntry = { userId: string; name: string; position: string; unit: string };
 
@@ -7,7 +8,7 @@ export type PersonnelEntry = { userId: string; name: string; position: string; u
 export async function loadPersonnel(): Promise<PersonnelEntry[]> {
   if (!db) throw new Error("Firebase is not configured.");
   const snapshot = await getDocs(collection(db, "users"));
-  const entries = snapshot.docs.map((item) => {
+  const entries = snapshot.docs.filter((item) => !isSuperadminRole(item.data().accountRole)).map((item) => {
     const data = item.data();
     return {
       userId: item.id,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, serverTimestamp, writeBatch, type Timestamp } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { ADMIN_EMAIL, SUPERADMIN_EMAIL, accountRoleForEmail } from "@/lib/user-roles";
 import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
 import "./permit-slip-admin.css";
@@ -26,9 +27,9 @@ export type AdminPermit = {
   personStatuses?: Record<string, PersonDecision>;
 };
 
-export const PERMIT_ADMIN_EMAILS = ["gerlieantipaso27@gmail.com", "rjamescute2@gmail.com"] as const;
+export const PERMIT_ADMIN_EMAILS = [ADMIN_EMAIL, SUPERADMIN_EMAIL] as const;
 export function isPermitAdmin(email?: string | null) {
-  return Boolean(email && PERMIT_ADMIN_EMAILS.includes(email.trim().toLowerCase() as (typeof PERMIT_ADMIN_EMAILS)[number]));
+  return accountRoleForEmail(email) === "admin" || accountRoleForEmail(email) === "superadmin";
 }
 
 function permitNumber(permit: AdminPermit, index: number) {
