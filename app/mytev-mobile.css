@@ -19,6 +19,7 @@
   .mytev-itinerary-line{min-width:0;padding:12px}
   .mytev-itinerary-row-top{grid-template-columns:repeat(2,minmax(0,1fr))}
   .mytev-itinerary-row-bottom{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mytev-row-region{grid-column:1/-1}
   .mytev-row-places{grid-column:1/-1}
   .mytev-claim-picker{grid-template-columns:repeat(2,minmax(0,1fr))}
   .mytev-claim-picker>legend{grid-column:1/-1}
@@ -43,7 +44,7 @@
   .mytev-claim-picker{grid-template-columns:1fr}
   .mytev-claim-picker>legend{grid-column:1}
   .mytev-itinerary-row-top,.mytev-itinerary-row-bottom{grid-template-columns:minmax(0,1fr)}
-  .mytev-row-places,.mytev-row-means,.mytev-row-transportation{grid-column:1}
+  .mytev-row-places,.mytev-row-region,.mytev-row-means,.mytev-row-transportation{grid-column:1}
   .mytev-itinerary-editor-heading{flex-direction:column}
   .mytev-form-actions{flex-direction:column-reverse}
   .mytev-form-actions button{width:100%}

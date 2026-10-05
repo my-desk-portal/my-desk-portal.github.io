@@ -35,12 +35,21 @@ export const tevDivisions = [
 
 export const tevTransportationMeans = ["RP", "Plane", "Boat", "MCH", "PUV", "PUB", "None"] as const;
 
+export type TevRegionRate = {
+  region: string;
+  hotelLodging: number;
+  breakfast: number;
+  lunch: number;
+  dinner: number;
+  incidentalFee: number;
+};
+
 export const tevClaims = [
-  { id: "lodging", label: "Hotel / Lodging", amount: 750 },
-  { id: "breakfast", label: "Breakfast", amount: 150 },
-  { id: "lunch", label: "Lunch", amount: 150 },
-  { id: "dinner", label: "Dinner", amount: 150 },
-  { id: "incidental", label: "Incidental Fee", amount: 300 },
+  { id: "lodging", label: "Hotel / Lodging", rateKey: "hotelLodging", legacyAmount: 750 },
+  { id: "breakfast", label: "Breakfast", rateKey: "breakfast", legacyAmount: 150 },
+  { id: "lunch", label: "Lunch", rateKey: "lunch", legacyAmount: 150 },
+  { id: "dinner", label: "Dinner", rateKey: "dinner", legacyAmount: 150 },
+  { id: "incidental", label: "Incidental Fee", rateKey: "incidentalFee", legacyAmount: 300 },
 ] as const;
 
 export type TevOfficialStation = (typeof tevOfficialStations)[number];
@@ -68,6 +77,7 @@ export type TevItineraryRow = {
   visitedPlaces: string;
   departureTimeFrom: string;
   departureTimeTo: string;
+  region: string;
   claims: TevClaimId[];
   meansOfTransportation: TevTransportationMeans;
   transportation: string;
@@ -119,6 +129,7 @@ export function blankTevItineraryRow(): TevItineraryRow {
     visitedPlaces: "",
     departureTimeFrom: "",
     departureTimeTo: "",
+    region: "",
     claims: [],
     meansOfTransportation: "",
     transportation: "",
@@ -160,23 +171,70 @@ export function numberAmount(value: string | number) {
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
 }
 
-export function perDiemForClaims(claims: TevClaimId[]) {
-  return tevClaims.reduce((total, claim) => total + (claims.includes(claim.id) ? claim.amount : 0), 0);
+export function parseTevRegionRates(csv: string): TevRegionRate[] {
+  const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
+  const headers = lines[0]?.split(",").map((value) => value.trim()) ?? [];
+  const columnIndex = (name: string) => headers.indexOf(name);
+  const columns = {
+    region: columnIndex("Region"),
+    hotelLodging: columnIndex("Hotel / Lodging"),
+    breakfast: columnIndex("Breakfast"),
+    lunch: columnIndex("Lunch"),
+    dinner: columnIndex("Dinner"),
+    incidentalFee: columnIndex("Incidental Fee"),
+  };
+  if (Object.values(columns).some((index) => index < 0)) throw new Error("The tev_rate.csv file is missing a required column.");
+
+  return lines.slice(1).map((line) => {
+    const cells = line.split(",").map((value) => value.trim());
+    const amount = (index: number) => {
+      const value = Number(cells[index]?.replace(/,/g, ""));
+      if (!Number.isFinite(value) || value < 0) throw new Error("The tev_rate.csv file contains an invalid per diem amount.");
+      return value;
+    };
+    const region = cells[columns.region];
+    if (!region) throw new Error("The tev_rate.csv file contains a row without a region.");
+    return {
+      region,
+      hotelLodging: amount(columns.hotelLodging),
+      breakfast: amount(columns.breakfast),
+      lunch: amount(columns.lunch),
+      dinner: amount(columns.dinner),
+      incidentalFee: amount(columns.incidentalFee),
+    };
+  });
+}
+
+export async function loadTevRegionRates() {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const response = await fetch(`${basePath}/tev_rate.csv`);
+  if (!response.ok) throw new Error("Regional per diem rates could not be loaded.");
+  return parseTevRegionRates(await response.text());
+}
+
+export function perDiemForClaims(claims: TevClaimId[], region: string, rates: TevRegionRate[]) {
+  const regionRate = rates.find((rate) => rate.region === region);
+  return tevClaims.reduce((total, claim) => {
+    if (!claims.includes(claim.id)) return total;
+    // Records created before Region was added have no region field; preserve their previous amounts.
+    const amount = regionRate ? regionRate[claim.rateKey] : region ? 0 : claim.legacyAmount;
+    return total + amount;
+  }, 0);
 }
 
 export function transportationForRow(row: TevItineraryRow) {
   return transportNeedsAmount.includes(row.meansOfTransportation) ? numberAmount(row.transportation) : 0;
 }
 
-export function totalsForItinerary(itinerary: TevItinerary): TevTotals {
-  const perDiem = itinerary.rows.reduce((total, row) => total + perDiemForClaims(row.claims), 0);
+export function totalsForItinerary(itinerary: TevItinerary, rates: TevRegionRate[]): TevTotals {
+  const perDiem = itinerary.rows.reduce((total, row) => total + perDiemForClaims(row.claims, row.region, rates), 0);
   const transportation = itinerary.rows.reduce((total, row) => total + transportationForRow(row), 0);
   return { perDiem, transportation, grandTotal: perDiem + transportation };
 }
 
-export function totalsForRecord(itineraries: TevItinerary[]): TevTotals {
+export function totalsForRecord(itineraries: TevItinerary[], rates: TevRegionRate[]): TevTotals {
   return itineraries.reduce<TevTotals>((totals, itinerary) => {
-    const current = totalsForItinerary(itinerary);
+    const current = totalsForItinerary(itinerary, rates);
     return {
       perDiem: totals.perDiem + current.perDiem,
       transportation: totals.transportation + current.transportation,

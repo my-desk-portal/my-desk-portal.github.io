@@ -10,6 +10,7 @@ import {
   blankTevItinerary,
   blankTevItineraryRow,
   blankTevTravelReference,
+  loadTevRegionRates,
   formatTevAmount,
   formatTevDateRange,
   formatTaxIdentificationNo,
@@ -17,6 +18,7 @@ import {
   tevClaims,
   tevDivisions,
   tevOfficialStations,
+  perDiemForClaims,
   tevTransportationMeans,
   totalsForRecord,
   type MyTevRecord,
@@ -26,6 +28,7 @@ import {
   type TevProfile,
   type TevOfficialStation,
   type TevTravelReference,
+  type TevRegionRate,
 } from "@/lib/mytev";
 import DeleteConfirmation from "./DeleteConfirmation";
 import MyTevDocuments from "./MyTevDocuments";
@@ -74,7 +77,7 @@ function isTransportAmountRequired(means: TevItineraryRow["meansOfTransportation
 }
 
 function hasRowData(row: TevItineraryRow) {
-  return Boolean(row.dateFrom || row.dateTo || row.visitedPlaces || row.departureTimeFrom || row.departureTimeTo || row.claims.length || row.meansOfTransportation || row.transportation);
+  return Boolean(row.dateFrom || row.dateTo || row.visitedPlaces || row.departureTimeFrom || row.departureTimeTo || row.region || row.claims.length || row.meansOfTransportation || row.transportation);
 }
 
 function timestampMillis(value: unknown) {
@@ -86,7 +89,7 @@ function initialItinerary() {
   return blankTevItinerary(documentId());
 }
 
-function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, onSaved }: { profile: TevProfile; ownerId: string; initialRecord?: MyTevRecord; existingMonths: string[]; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
+function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onCancel, onSaved }: { profile: TevProfile; ownerId: string; initialRecord?: MyTevRecord; existingMonths: string[]; rates: TevRegionRate[]; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
   const [step, setStep] = useState<"details" | "itineraries">("details");
   const [month, setMonth] = useState(() => initialRecord?.month ?? localMonthValue());
   const [officialStation, setOfficialStation] = useState<TevOfficialStation>(() => initialRecord?.officialStation ?? tevOfficialStations[0]);
@@ -199,6 +202,9 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
         if (!row.dateFrom || !row.dateTo || !row.visitedPlaces || !row.departureTimeFrom || !row.departureTimeTo) {
           return { error: `Complete the date, destination, and times for Itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}.` };
         }
+        if (!rates.some((rate) => rate.region === row.region)) {
+          return { error: `Select a valid region for Itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}.` };
+        }
         if (!row.meansOfTransportation) {
           return { error: `Select the means of transportation for Itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}.` };
         }
@@ -262,7 +268,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
     }
   }
 
-  const recordTotals = totalsForRecord(itineraries);
+  const recordTotals = totalsForRecord(itineraries, rates);
 
   return <section className="content-section mytev-form-section">
     <div className="section-heading"><div><p className="eyebrow">{initialRecord ? "Edit record · myTEV" : "New record · myTEV"}</p><h2>{initialRecord ? "Edit Travel Expense Voucher" : "Create Travel Expense Voucher"}</h2><p className="muted">Complete the trip details, then add itinerary lines. Long entries continue onto additional A4 pages automatically.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
@@ -311,10 +317,11 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
                 <label>Departure Time To<input type="time" value={row.departureTimeTo} onChange={(event) => updateRow(itinerary.id, rowIndex, { departureTimeTo: event.target.value })} /></label>
               </div>
               <div className="mytev-itinerary-row-bottom">
+                <label className="mytev-row-region">Region<select required={hasRowData(row)} value={row.region} onChange={(event) => updateRow(itinerary.id, rowIndex, { region: event.target.value })}><option value="">Select region</option>{rates.map((rate) => <option key={rate.region} value={rate.region}>{rate.region}</option>)}</select></label>
                 <label className="mytev-row-means">Means of Transportation<select required={hasRowData(row)} value={row.meansOfTransportation} onChange={(event) => updateRow(itinerary.id, rowIndex, { meansOfTransportation: event.target.value as TevItineraryRow["meansOfTransportation"], transportation: isTransportAmountRequired(event.target.value as TevItineraryRow["meansOfTransportation"]) ? row.transportation : "" })}><option value="">Select mode</option>{tevTransportationMeans.map((means) => <option key={means}>{means}</option>)}</select></label>
                 <label className="mytev-row-transportation">Transportation{isTransportAmountRequired(row.meansOfTransportation) ? <input type="number" min="0" step="0.01" inputMode="decimal" value={row.transportation} onChange={(event) => updateRow(itinerary.id, rowIndex, { transportation: event.target.value })} placeholder="0.00" /> : <span className="mytev-not-applicable">Not applicable</span>}</label>
               </div>
-              <div className="mytev-itinerary-row-claims"><fieldset className="mytev-claim-picker"><legend>Claim / Per Diem</legend>{tevClaims.map((claim) => <label key={claim.id}><input type="checkbox" checked={row.claims.includes(claim.id)} onChange={(event) => toggleClaim(itinerary.id, rowIndex, claim.id, event.target.checked)} /><span>{claim.label}</span></label>)}</fieldset></div>
+              <div className="mytev-itinerary-row-claims"><fieldset className="mytev-claim-picker"><legend>Claim / Per Diem</legend>{tevClaims.map((claim) => <label key={claim.id}><input type="checkbox" checked={row.claims.includes(claim.id)} disabled={!row.region} onChange={(event) => toggleClaim(itinerary.id, rowIndex, claim.id, event.target.checked)} /><span>{claim.label}{row.region && <small>₱{formatTevAmount(perDiemForClaims([claim.id], row.region, rates))}</small>}</span></label>)}</fieldset></div>
             </fieldset>)}
           </div>
           <div className="mytev-add-row-control">{!rowThirteenFilled && <button type="button" className="ghost-button mytev-add-row" disabled={rowLimitReached} onClick={() => setItineraries((current) => current.map((item) => item.id === itinerary.id && item.rows.length < maxItineraryRows ? { ...item, rows: [...item.rows, blankTevItineraryRow()] } : item))}>Add row</button>}<span>{itinerary.rows.length} {itinerary.rows.length === 1 ? "row" : "rows"} · {rowLimitReached ? "maximum reached" : "page breaks are automatic"}</span></div>
@@ -327,13 +334,13 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
   </section>;
 }
 
-function MyTevList({ records, loading, deletingId, onNew, onEdit, onView, onDelete }: { records: MyTevRecord[]; loading: boolean; deletingId: string | null; onNew: () => void; onEdit: (record: MyTevRecord) => void; onView: (record: MyTevRecord) => void; onDelete: (record: MyTevRecord) => void }) {
+function MyTevList({ records, loading, deletingId, rates, rateError, onNew, onEdit, onView, onDelete }: { records: MyTevRecord[]; loading: boolean; deletingId: string | null; rates: TevRegionRate[] | null; rateError: string; onNew: () => void; onEdit: (record: MyTevRecord) => void; onView: (record: MyTevRecord) => void; onDelete: (record: MyTevRecord) => void }) {
   return <section className="content-section mytev-list-section">
     <div className="section-heading"><div><p className="eyebrow">myDocs · Travel expenses</p><h2>myTEV</h2><p className="muted">Create and retrieve travel expense forms as one coordinated A4 document set.</p></div><button type="button" className="primary-button" onClick={onNew}>Add</button></div>
-    {loading ? <p className="muted mytev-loading">Loading myTEV records...</p> : records.length === 0 ? <div className="empty-state mytev-empty"><span className="empty-number">00</span><h3>No myTEV records yet</h3><p>Create a travel expense voucher and its itinerary pages.</p><button type="button" className="text-button document-create-action" onClick={onNew}>Create a myTEV record</button></div> : <div className="permit-table mytev-table">
+    {loading ? <p className="muted mytev-loading">Loading myTEV records...</p> : records.length === 0 ? <div className="empty-state mytev-empty"><span className="empty-number">00</span><h3>No myTEV records yet</h3><p>Create a travel expense voucher and its itinerary pages.</p><button type="button" className="text-button plain-action document-create-action" onClick={onNew}>Create a myTEV record</button></div> : <div className="permit-table mytev-table">
       <div className="mytev-table-head"><span>Travel month</span><span>Total amount</span><span aria-hidden="true" /></div>
       {records.map((record) => <div className="mytev-table-row" key={record.id}>
-        <strong>{monthLabel(record.month)}</strong><strong>₱{formatTevAmount(totalsForRecord(record.itineraries).grandTotal)}</strong>
+        <strong>{monthLabel(record.month)}</strong><strong>{rates ? `₱${formatTevAmount(totalsForRecord(record.itineraries, rates).grandTotal)}` : rateError ? "Rates unavailable" : "Loading rates..."}</strong>
         <span className="mytev-row-actions"><button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button><button type="button" className="row-action" onClick={() => onView(record)}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></span>
       </div>)}
     </div>}
@@ -350,10 +357,25 @@ export default function MyTevModule({ user }: { user: User }) {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState("");
+  const [regionRates, setRegionRates] = useState<TevRegionRate[] | null>(null);
+  const [regionRateError, setRegionRateError] = useState("");
   const pagesRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [previewError, setPreviewError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    loadTevRegionRates().then((rates) => {
+      if (active) {
+        setRegionRates(rates);
+        setRegionRateError("");
+      }
+    }).catch(() => {
+      if (active) setRegionRateError("Could not load regional per diem rates from tev_rate.csv. Refresh the page to try again.");
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     const pages = pagesRef.current;
@@ -493,11 +515,12 @@ export default function MyTevModule({ user }: { user: User }) {
 
   return <div className="mytev-module">
     {loadError && <p className="error-message mytev-error" role="alert">{loadError}</p>}
-    {(view === "new" || view === "edit") && formProfile ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} existingMonths={records.filter((record) => record.id !== editingRecord?.id).map((record) => record.month)} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <>
+    {regionRateError && <p className="error-message mytev-error" role="alert">{regionRateError}</p>}
+    {(view === "new" || view === "edit") && formProfile ? regionRates ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} existingMonths={records.filter((record) => record.id !== editingRecord?.id).map((record) => record.month)} rates={regionRates} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <section className="content-section mytev-form-section"><p className="muted">{regionRateError || "Loading regional per diem rates..."}</p><button type="button" className="ghost-button" onClick={() => { setEditingRecord(null); setView("list"); }}>Back</button></section> : <>
       {!profileComplete && !loading && <div className="mytev-profile-warning" role="status"><strong>Complete your Profile before creating myTEV records.</strong><span>Address, Tax Identification No., position, and name are used to prepare these forms.</span></div>}
-      <MyTevList records={records} loading={loading} deletingId={deletingId} onNew={() => { setLoadError(""); setEditingRecord(null); setView("new"); }} onEdit={(record) => { setLoadError(""); setEditingRecord(record); setView("edit"); }} onView={(record) => { setPreview(record); setPreviewError(""); }} onDelete={setPendingDelete} />
+      <MyTevList records={records} loading={loading} deletingId={deletingId} rates={regionRates} rateError={regionRateError} onNew={() => { setLoadError(""); setEditingRecord(null); setView("new"); }} onEdit={(record) => { setLoadError(""); setEditingRecord(record); setView("edit"); }} onView={(record) => { if (!regionRates) { setRegionRateError(regionRateError || "Regional rates are still loading. Wait a moment, then open the record again."); return; } setPreview(record); setPreviewError(""); }} onDelete={setPendingDelete} />
     </>}
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Delete this myTEV record?" description="This removes the record and its generated document set permanently." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
-    {preview && <div className="preview-backdrop mytev-preview-backdrop"><div className="preview-toolbar"><span>myTEV preview · A4 document set</span><button type="button" className="ghost-button" onClick={() => { setPreview(null); setPreviewError(""); }}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={() => void downloadPdf()}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={() => void printPages()}>{printing ? "Preparing print..." : "Print"}</button>{previewError && <small className="download-error" role="alert">{previewError}</small>}</div><div ref={pagesRef} className="mytev-document-pages"><MyTevDocuments record={preview} /></div></div>}
+    {preview && regionRates && <div className="preview-backdrop mytev-preview-backdrop"><div className="preview-toolbar"><span>myTEV preview · A4 document set</span><button type="button" className="ghost-button" onClick={() => { setPreview(null); setPreviewError(""); }}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={() => void downloadPdf()}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={() => void printPages()}>{printing ? "Preparing print..." : "Print"}</button>{previewError && <small className="download-error" role="alert">{previewError}</small>}</div><div ref={pagesRef} className="mytev-document-pages"><MyTevDocuments record={preview} rates={regionRates} /></div></div>}
   </div>;
 }

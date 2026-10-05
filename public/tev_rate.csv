@@ -1,0 +1,19 @@
+Region,Hotel / Lodging,Breakfast,Lunch,Dinner,Incidental Fee
+Region I - Ilocos Region,750,150,150,150,300
+Region II - Cagayan Valley,750,150,150,150,300
+Region III - Central Luzon,750,150,150,150,300
+Region IV-A - CALABARZON,1100,220,220,220,440
+Region IV-B - MIMAROPA,1100,220,220,220,440
+Region V - Bicol Region,750,150,150,150,300
+Region VI - Western Visayas,900,180,180,180,360
+Region VII - Central Visayas,900,180,180,180,360
+Region VIII - Eastern Visayas,750,150,150,150,300
+Region IX - Zamboanga Peninsula,750,150,150,150,300
+Region X - Northern Mindanao,900,180,180,180,360
+Region XI - Davao Region,900,180,180,180,360
+Region XII - SOCCSKSARGEN,750,150,150,150,300
+Region XIII - Caraga,750,150,150,150,300
+NCR - National Capital Region,1100,220,220,220,440
+CAR - Cordillera Administrative Region,900,180,180,180,360
+NIR - Negros Island Region,900,180,180,180,360
+BARMM - Bangsamoro Autonomous Region in Muslim Mindanao,750,150,150,150,300
