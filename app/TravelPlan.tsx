@@ -41,7 +41,7 @@ export type TravelPlanApprovalNotification = {
   createdAt?: unknown;
 };
 
-type Unit = "AMIA" | "AGRISTAT" | "DRRM";
+type Unit = "AMIA" | "AGRISTAT" | "DRRM" | "Field Operations Division";
 type TravelPlanStatus = "Pending" | "Approved";
 type ResponsiblePerson = { userId: string; name: string };
 type ActivityDraft = TravelPlanReminder & { responsiblePeople: ResponsiblePerson[]; nextResponsibleId: string };
@@ -60,17 +60,19 @@ type TravelPlan = {
 type Profile = { name: string; position: string; unit: Unit };
 type Account = { id: string; name: string };
 
-const unitLabel = (unit: Unit) => `FOD-${unit}`;
+const unitLabel = (unit: Unit) => unit === "Field Operations Division" ? unit : `FOD-${unit}`;
 const travelPlanStatus = (plan: TravelPlan): TravelPlanStatus => plan.status === "Approved" ? "Approved" : "Pending";
 const unitDescription: Record<Unit, string> = {
   AMIA: "FOD - Adaptation Initiative and Mitigation in Agriculture",
   AGRISTAT: "FOD - Agricultural Statistics",
   DRRM: "FOD - Disaster Risk Reduction and Management",
+  "Field Operations Division": "Field Operations Division",
 };
 const checkedRoleByUnit: Record<Unit, string> = {
   AGRISTAT: "Agricultural Statistics Focal Person",
   AMIA: "Regional AMIA Project Leader",
   DRRM: "Regional DRRM Alternate Focal Person",
+  "Field Operations Division": "Field Operations Division",
 };
 const fixedTravelPlanSignatories = [
   { label: "Checked:", name: "GERLIE B. ANTIPASO", position: "DRRM Alternate Focal Person / Agriculturist II" },
@@ -153,7 +155,7 @@ function TravelPlanPaper({ plan, activities, pageNumber, pageCount }: { plan: Tr
     <footer className="travel-plan-paper-footer">
       {isLastPage && <>
         <div className="travel-plan-paper-signatory"><span>Prepared:</span><strong>{plan.preparedName}</strong><em>{plan.preparedPosition}</em></div>
-        {fixedTravelPlanSignatories.map((signatory) => <div className="travel-plan-paper-signatory" key={signatory.label}><span>{signatory.label}</span><strong>{signatory.name}</strong><em>{signatory.label === "Checked:" ? `${checkedRoleByUnit[plan.unit]} / Agriculturist II` : signatory.position}</em></div>)}
+        {fixedTravelPlanSignatories.map((signatory) => <div className="travel-plan-paper-signatory" key={signatory.label}><span>{signatory.label}</span><strong>{signatory.name}</strong><em>{signatory.label === "Checked:" ? `${checkedRoleByUnit[plan.unit]}${plan.unit === "Field Operations Division" ? "" : " / Agriculturist II"}` : signatory.position}</em></div>)}
       </>}
     </footer>
   </article>;
@@ -431,7 +433,7 @@ function TravelPlanList({ plans, onNew, onEdit, onView, onDelete, onStatusChange
   </section>;
 }
 
-export default function TravelPlanModule({ user, mode = "prepared" }: { user: User; mode?: "prepared" | "approved-records" }) {
+export default function TravelPlanModule({ user, mode = "prepared", profileRevision = 0 }: { user: User; mode?: "prepared" | "approved-records"; profileRevision?: number }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [plans, setPlans] = useState<TravelPlan[]>([]);
@@ -465,7 +467,7 @@ export default function TravelPlanModule({ user, mode = "prepared" }: { user: Us
         ]);
         if (!profileSnapshot.exists()) throw new Error("Complete your name, position, and unit in Profile before creating a plan.");
         const profileData = profileSnapshot.data();
-        if (typeof profileData.name !== "string" || !profileData.name.trim() || typeof profileData.position !== "string" || !profileData.position.trim() || !["AMIA", "AGRISTAT", "DRRM"].includes(profileData.unit)) throw new Error("Complete your name, position, and unit in Profile before creating a plan.");
+        if (typeof profileData.name !== "string" || !profileData.name.trim() || typeof profileData.position !== "string" || !profileData.position.trim() || !["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"].includes(profileData.unit)) throw new Error("Complete your name, position, and unit in Profile before creating a plan.");
         const loadedProfile: Profile = { name: profileData.name, position: profileData.position, unit: profileData.unit as Unit };
         const accountSnapshot = await getDocs(query(collection(firestore, "users"), where("unit", "==", loadedProfile.unit)));
         const colleagues = accountSnapshot.docs.filter((item) => item.id !== user.uid).map((item) => ({ id: item.id, name: String(item.data().name ?? "") })).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
@@ -481,7 +483,7 @@ export default function TravelPlanModule({ user, mode = "prepared" }: { user: Us
     }
     void load();
     return () => { cancelled = true; };
-  }, [user.uid, mode]);
+  }, [user.uid, mode, profileRevision]);
 
   async function updateTravelPlanStatus(plan: TravelPlan, status: TravelPlanStatus) {
     if (!db || updatingStatusId || travelPlanStatus(plan) === status) return;

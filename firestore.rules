@@ -118,7 +118,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
         && request.resource.data.keys().hasOnly(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
         && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"]
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"]
         && request.resource.data.month is string
         && request.resource.data.month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
         && request.resource.data.status in ["Pending", "Approved"]
@@ -163,7 +163,7 @@ service cloud.firestore {
         && getAfter(calendarPath(request.resource.data.calendarId)).data.unit == request.resource.data.unit
         && getAfter(calendarPath(request.resource.data.calendarId)).data.month == request.resource.data.month
         && getAfter(calendarPath(request.resource.data.calendarId)).data.preparedName == request.resource.data.preparedName
-        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"]
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"]
         && request.resource.data.month is string
         && request.resource.data.preparedName is string
         && request.resource.data.preparedName.size() > 0
@@ -188,7 +188,7 @@ service cloud.firestore {
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.recipientId is string
         && request.resource.data.recipientId != request.auth.uid
-        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"]
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"]
         && get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.unit == request.resource.data.unit
         && request.resource.data.calendarId is string
         && getAfter(/databases/$(database)/documents/calendarOfActivities/$(request.resource.data.calendarId)).data.ownerId == request.auth.uid
