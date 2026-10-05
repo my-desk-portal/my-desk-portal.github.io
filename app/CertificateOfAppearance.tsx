@@ -408,7 +408,7 @@ function BlankCertificateGenerator({ onCancel, onGenerate, generating, error }: 
     {error && <p className="coa-error" role="alert">{error}</p>}
     <form className="permit-form coa-blank-form" onSubmit={submit}>
       <label className="wide-field">Select a Division<select value={division} onChange={(event) => setDivision(event.target.value as TevDivision | "")} required><option value="" disabled>Select a Division</option>{tevDivisions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
-      <div className="wide-field form-actions"><button type="submit" className="primary-button" disabled={!division || generating}>{generating ? "Generating PDF..." : "Generate the Blank CA"}</button></div>
+      <div className="wide-field form-actions"><button type="submit" className="primary-button" disabled={!division || generating}>{generating ? "Generating PDF..." : "Generate"}</button></div>
     </form>
   </section>;
 }
