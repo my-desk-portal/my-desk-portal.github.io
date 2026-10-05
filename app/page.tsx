@@ -58,6 +58,7 @@ import "./special-order.css";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
 import { formatTaxIdentificationNo } from "@/lib/mytev";
 import { getDocumentNotificationReferences, makeDocumentNotification, type DocumentNotification } from "@/lib/document-notifications";
+import { documentRemindersCollection, type DocumentReminder } from "@/lib/document-reminders";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type AccountUnit = Unit | "Field Operations Division";
@@ -540,18 +541,41 @@ function singlePersonPermitPreview(permit: Permit | AdminPermit, personIndex: nu
   } as Permit;
 }
 
-function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendingNotifications, documentNotifications, travelPlanNotifications, travelPlanApprovalNotifications, onAdminOpen, onViewPermit, onReadDocument, onReadTravelPlan, onReadTravelPlanApproval, onOpenTravelPlanApproval }: {
+function reminderDate(value: string) {
+  if (!value) return "Date not provided";
+  return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function reminderTitle(reminder: DocumentReminder) {
+  if (reminder.kind === "travel-order-status") return "Travel Order still Pending";
+  if (reminder.kind === "leave-application-status") return "Leave Application still Pending";
+  if (reminder.kind === "permit-slip-expiry") return "Permit Slip still Pending";
+  return "Draft your accomplishment report";
+}
+
+function reminderPeriod(reminder: DocumentReminder) {
+  if (reminder.periodLabel) return reminder.periodLabel;
+  if (!reminder.month || !reminder.startDay || !reminder.endDay) return "Half-month cycle";
+  const [year, month] = reminder.month.split("-").map(Number);
+  const monthName = new Intl.DateTimeFormat("en-PH", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 1)));
+  return `${monthName} ${reminder.startDay}-${reminder.endDay}, ${year}`;
+}
+
+function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendingNotifications, documentNotifications, documentReminders, travelPlanNotifications, travelPlanApprovalNotifications, onAdminOpen, onViewPermit, onReadDocument, onReadDocumentReminder, onOpenDocumentReminder, onReadTravelPlan, onReadTravelPlanApproval, onOpenTravelPlanApproval }: {
   isAdmin: boolean;
   userId: string;
   count: number;
   notifications: PermitNotification[];
   pendingNotifications: PendingPermitNotification[];
   documentNotifications: DocumentNotification[];
+  documentReminders: DocumentReminder[];
   travelPlanNotifications: TravelPlanNotification[];
   travelPlanApprovalNotifications: TravelPlanApprovalNotification[];
   onAdminOpen: (notification: PendingPermitNotification) => void;
   onViewPermit: (notification: PermitNotification) => void;
   onReadDocument: (notification: DocumentNotification) => void;
+  onReadDocumentReminder: (notification: DocumentReminder) => void;
+  onOpenDocumentReminder: (notification: DocumentReminder) => void;
   onReadTravelPlan: (notification: TravelPlanNotification) => void;
   onReadTravelPlanApproval: (notification: TravelPlanApprovalNotification) => void;
   onOpenTravelPlanApproval: (notification: TravelPlanApprovalNotification) => void;
@@ -574,21 +598,24 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
   const readNotificationKeySet = new Set(readNotificationKeys);
   const unreadNotifications = notifications.filter((notification) => !readNotificationKeySet.has(permitNotificationKey(notification)));
   const unreadDocumentNotifications = documentNotifications.filter((notification) => !notification.read);
+  const unreadDocumentReminders = documentReminders.filter((notification) => !notification.read);
   const unreadTravelPlanNotifications = travelPlanNotifications.filter((notification) => !notification.read);
   const unreadTravelPlanApprovalNotifications = isAdmin ? travelPlanApprovalNotifications.filter((notification) => !notification.readBy.includes(userId)) : [];
-  const visibleCount = (isAdmin ? count : unreadNotifications.length) + unreadDocumentNotifications.length + unreadTravelPlanNotifications.length + unreadTravelPlanApprovalNotifications.length;
+  const visibleCount = (isAdmin ? count : unreadNotifications.length) + unreadDocumentNotifications.length + unreadDocumentReminders.length + unreadTravelPlanNotifications.length + unreadTravelPlanApprovalNotifications.length;
 
   function toggleOpen() {
     // Read Travel Plan notifications stay visible until the dropdown is closed, then drop off on the next open.
     if (!open) setHiddenReadIds([
       ...travelPlanNotifications.filter((notification) => notification.read).map((notification) => notification.id),
       ...documentNotifications.filter((notification) => notification.read).map((notification) => notification.id),
+      ...documentReminders.filter((notification) => notification.read).map((notification) => notification.id),
       ...travelPlanApprovalNotifications.filter((notification) => notification.readBy.includes(userId)).map((notification) => notification.id),
     ]);
     setOpen(!open);
   }
   const shownTravelPlanNotifications = travelPlanNotifications.filter((notification) => !hiddenReadIds.includes(notification.id));
   const shownDocumentNotifications = documentNotifications.filter((notification) => !hiddenReadIds.includes(notification.id));
+  const shownDocumentReminders = documentReminders.filter((notification) => !hiddenReadIds.includes(notification.id));
   const shownTravelPlanApprovalNotifications = travelPlanApprovalNotifications.filter((notification) => !hiddenReadIds.includes(notification.id));
 
   function markAsRead(notification: PermitNotification) {
@@ -620,6 +647,36 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
         <span className="notification-detail"><span className="notification-detail-label">Date</span><span>{notification.date ? formatDate(notification.date) : "Date not provided"}</span></span>
         <span className="notification-detail"><span className="notification-detail-label">Status</span><strong className={`notification-status notification-status-${notification.status.toLowerCase()}`}>{notification.status}</strong></span>
       </button></li>)}</ul></>}
+      {shownDocumentReminders.length > 0 && <><p className="notification-section-title">Status reminders</p><ul>{shownDocumentReminders.map((notification) => {
+        const isRead = notification.read;
+        const deleteTime = timestampMillis(notification.deletesAt);
+        return <li key={notification.id}><button type="button" className={`notification-item travel-plan-notification${isRead ? " is-read" : ""}`} onClick={() => {
+          if (!isRead) onReadDocumentReminder(notification);
+          setOpen(false);
+          onOpenDocumentReminder(notification);
+        }}>
+          <span className="notification-status notification-status-pending">{reminderTitle(notification)}</span>
+          {notification.kind === "travel-order-status" && <>
+            <span className="notification-detail"><span className="notification-detail-label">Date</span><span>{reminderDate(notification.date ?? "")}</span></span>
+            <span className="notification-detail"><span className="notification-detail-label">Purpose</span><span>{notification.purpose}</span></span>
+            <span className="notification-detail"><span className="notification-detail-label">Destination</span><span>{notification.destination}</span></span>
+            <span className="notification-detail"><span className="notification-detail-label">Return Date</span><span>{reminderDate(notification.returnDate ?? "")}</span></span>
+          </>}
+          {notification.kind === "leave-application-status" && <>
+            <span className="notification-detail"><span className="notification-detail-label">Type of Leave</span><span>{notification.leaveType}</span></span>
+            <span className="notification-detail"><span className="notification-detail-label">Inclusive Dates</span><span>{reminderDate(notification.inclusiveDateFrom ?? "")}{notification.inclusiveDateTo !== notification.inclusiveDateFrom && ` – ${reminderDate(notification.inclusiveDateTo ?? "")}`}</span></span>
+            <span className="notification-detail"><span className="notification-detail-label">Date Filed</span><span>{reminderDate(notification.date ?? "")}</span></span>
+          </>}
+          {notification.kind === "permit-slip-expiry" && <>
+            <span className="notification-detail"><span className="notification-detail-label">Date</span><span>{reminderDate(notification.date ?? "")}</span></span>
+            <span className="notification-detail"><span className="notification-detail-label">Purpose</span><span>{notification.purpose}</span></span>
+            <small>{deleteTime ? `Still-pending slips will be deleted ${formatPhilippineDateTime(new Date(deleteTime))}.` : "This slip will be deleted if it remains Pending after two days from creation."}</small>
+          </>}
+          {notification.kind === "accomplishment-report" && <span className="notification-detail"><span className="notification-detail-label">Month · Half-month Cycle</span><strong>{reminderPeriod(notification)}</strong></span>}
+          <span className="notification-view-label">{notification.kind === "permit-slip-expiry" ? "Open Permit Slips" : notification.kind === "accomplishment-report" ? "Open myAR" : "Open record"}</span>
+          <small>{isRead ? "Read" : "New · Select to open"}</small>
+        </button></li>;
+      })}</ul></>}
       {shownDocumentNotifications.length > 0 && <><p className="notification-section-title">Assigned Documents</p><ul>{shownDocumentNotifications.map((notification) => <li key={notification.id}><button type="button" className={`notification-item travel-plan-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); }}>
         <span className="notification-status notification-status-pending">{notification.documentType}</span>
         {notification.activityTitle && <strong>{notification.activityTitle}</strong>}
@@ -639,7 +696,7 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
         const month = /^\d{4}-\d{2}$/.test(notification.month) ? new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${notification.month}-01T00:00:00Z`)) : notification.month;
         return <li key={notification.id}><button type="button" className={`notification-item travel-plan-notification${isRead ? " is-read" : ""}`} onClick={() => { if (!isRead) onReadTravelPlanApproval(notification); setOpen(false); onOpenTravelPlanApproval(notification); }}><strong>Travel Plan of {travelPlanUnitLabel(notification.unit)}, {month} is Approved</strong><small>Prepared by {notification.preparedName}</small><span className="notification-view-label">Open Travel Plan Records</span><small>{isRead ? "Read" : "New · Select to view"}</small></button></li>;
        })}</ul></>}
-      {(isAdmin ? !pendingNotifications.length : !unreadNotifications.length) && !shownDocumentNotifications.length && !shownTravelPlanNotifications.length && !shownTravelPlanApprovalNotifications.length && <p className="notification-empty">You’re all caught up.</p>}
+      {(isAdmin ? !pendingNotifications.length : !unreadNotifications.length) && !shownDocumentReminders.length && !shownDocumentNotifications.length && !shownTravelPlanNotifications.length && !shownTravelPlanApprovalNotifications.length && <p className="notification-empty">You’re all caught up.</p>}
     </div>}
   </div>;
 }
@@ -1252,6 +1309,7 @@ export default function Home() {
   const [pendingPermitDelete, setPendingPermitDelete] = useState<Permit | null>(null);
   const [pendingPermitNotifications, setPendingPermitNotifications] = useState<PendingPermitNotification[]>([]);
   const [documentNotifications, setDocumentNotifications] = useState<DocumentNotification[]>([]);
+  const [documentReminders, setDocumentReminders] = useState<DocumentReminder[]>([]);
   const [travelPlanNotifications, setTravelPlanNotifications] = useState<TravelPlanNotification[]>([]);
   const [travelPlanApprovalNotifications, setTravelPlanApprovalNotifications] = useState<TravelPlanApprovalNotification[]>([]);
   const [focusedPermitNotificationKey, setFocusedPermitNotificationKey] = useState<string | null>(null);
@@ -1721,6 +1779,16 @@ export default function Home() {
     }, () => setError("Could not load assigned document notifications. Refresh and try again."));
   }, [user, playNotificationTone]);
   useEffect(() => {
+    if (!user || !db) { setDocumentReminders([]); return; }
+    const reminderState: NotificationSnapshotState = { initialized: false, ids: new Set() };
+    return onSnapshot(query(collection(db, documentRemindersCollection), where("recipientId", "==", user.uid)), { includeMetadataChanges: true }, (snapshot) => {
+      if (hasNewNotificationDocuments(snapshot, reminderState)) playNotificationTone();
+      const reminders = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as DocumentReminder));
+      reminders.sort((left, right) => timestampMillis(right.createdAt) - timestampMillis(left.createdAt));
+      setDocumentReminders(reminders);
+    }, () => setError("Could not load document status reminders. Refresh and try again."));
+  }, [user, playNotificationTone]);
+  useEffect(() => {
     if (!user || !db || !isPermitAdmin(user.email)) { setTravelPlanApprovalNotifications([]); return; }
     const notificationState: NotificationSnapshotState = { initialized: false, ids: new Set() };
     return onSnapshot(collection(db, travelPlanApprovalNotificationsCollection), { includeMetadataChanges: true }, (snapshot) => {
@@ -1818,6 +1886,16 @@ export default function Home() {
     }
   }
 
+  async function markDocumentReminderRead(notification: DocumentReminder) {
+    if (!db || notification.read) return;
+    try {
+      await updateDoc(doc(db, documentRemindersCollection, notification.id), { read: true, readAt: serverTimestamp() });
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not mark the status reminder as read (${code}).` : "Could not mark the status reminder as read.");
+    }
+  }
+
   async function markTravelPlanApprovalNotificationRead(notification: TravelPlanApprovalNotification) {
     if (!db || !user) return;
     try {
@@ -1865,7 +1943,7 @@ export default function Home() {
       </div>}</div>
       {canAccessAmiaDocumentTracking && <div className="nav-dropdown amia-document-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAmiaDocumentMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setAmiaDocumentMenuOpen(false); }}><button type="button" className="nav-button amia-document-nav-button" aria-haspopup="true" aria-expanded={amiaDocumentMenuOpen} aria-controls="amia-document-menu" onClick={() => setAmiaDocumentMenuOpen((open) => !open)}>AMIA Document Tracking <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{amiaDocumentMenuOpen && <div className="nav-dropdown-menu amia-document-nav-menu" id="amia-document-menu">{amiaDocumentTrackingLinks.map((link) => <a className="nav-dropdown-item" href={link.href} key={link.label} target="_blank" rel="noopener noreferrer">{link.label}</a>)}</div>}</div>}
       <div className="nav-dropdown certificate-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setCertificateMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setCertificateMenuOpen(false); }}><button type="button" className={section === "certificate-of-appearance" || section === "completion" || section === "appreciation" || section === "participation" ? "nav-button certificate-nav-button active" : "nav-button certificate-nav-button"} aria-haspopup="true" aria-expanded={certificateMenuOpen} aria-controls="certificate-menu" onClick={() => setCertificateMenuOpen((open) => !open)}>Certificate <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{certificateMenuOpen && <div className="nav-dropdown-menu certificate-nav-menu" id="certificate-menu"><button type="button" className={section === "certificate-of-appearance" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("certificate-of-appearance"); setView("list"); setCertificateMenuOpen(false); }}>Appearance</button><button type="button" className={section === "completion" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("completion"); setView("list"); setCertificateMenuOpen(false); }}>Completion</button><button type="button" className={section === "appreciation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("appreciation"); setView("list"); setCertificateMenuOpen(false); }}>Appreciation</button><button type="button" className={section === "participation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("participation"); setView("list"); setCertificateMenuOpen(false); }}>Participation</button></div>}</div>
-    </nav><div className="user-menu"><MessengerButton user={user} active={section === "messenger"} onClick={() => { closeMobileNavigation(); setSection("messenger"); setView("list"); }} /><PermitNotificationCenter isAdmin={isAdmin} userId={user.uid} count={notificationCount} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} documentNotifications={documentNotifications} travelPlanNotifications={travelPlanNotifications} travelPlanApprovalNotifications={travelPlanApprovalNotifications} onReadTravelPlanApproval={(notification) => void markTravelPlanApprovalNotificationRead(notification)} onOpenTravelPlanApproval={() => { closeMobileNavigation(); setSection("travel-plan-records"); setView("list"); }} onReadDocument={(notification) => void markDocumentNotificationRead(notification)} onReadTravelPlan={(notification) => void markTravelPlanNotificationRead(notification)} onAdminOpen={(notification) => { closeMobileNavigation(); setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onViewPermit={(notification) => { closeMobileNavigation(); setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div><button type="button" className="mobile-menu-toggle" aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen} aria-controls="mobile-navigation" onClick={() => setMobileMenuOpen((open) => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 5h18M3 12h18M3 19h18" /></svg></button></header>
+    </nav><div className="user-menu"><MessengerButton user={user} active={section === "messenger"} onClick={() => { closeMobileNavigation(); setSection("messenger"); setView("list"); }} /><PermitNotificationCenter isAdmin={isAdmin} userId={user.uid} count={notificationCount} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} documentNotifications={documentNotifications} documentReminders={documentReminders} travelPlanNotifications={travelPlanNotifications} travelPlanApprovalNotifications={travelPlanApprovalNotifications} onReadTravelPlanApproval={(notification) => void markTravelPlanApprovalNotificationRead(notification)} onOpenTravelPlanApproval={() => { closeMobileNavigation(); setSection("travel-plan-records"); setView("list"); }} onReadDocument={(notification) => void markDocumentNotificationRead(notification)} onReadDocumentReminder={(notification) => void markDocumentReminderRead(notification)} onOpenDocumentReminder={(notification) => { closeMobileNavigation(); setView("list"); setSection(notification.kind === "travel-order-status" ? "travel-orders" : notification.kind === "leave-application-status" ? "leave-application" : notification.kind === "accomplishment-report" ? "myar" : "permits"); }} onReadTravelPlan={(notification) => void markTravelPlanNotificationRead(notification)} onAdminOpen={(notification) => { closeMobileNavigation(); setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onViewPermit={(notification) => { closeMobileNavigation(); setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div><button type="button" className="mobile-menu-toggle" aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen} aria-controls="mobile-navigation" onClick={() => setMobileMenuOpen((open) => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 5h18M3 12h18M3 19h18" /></svg></button></header>
 {mobileMenuOpen && <><button type="button" className="mobile-nav-scrim" aria-label="Close navigation" onClick={closeMobileNavigation} /><nav className="mobile-navigation" id="mobile-navigation" aria-label="Mobile navigation">
 <button type="button" className="mobile-profile-link" onClick={() => { closeMobileNavigation(); setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button>
 <div className="mobile-navigation-links">
