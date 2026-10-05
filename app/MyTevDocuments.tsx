@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import {
   cenrrRows,
   chargedToForUnit,
+  displayTevTransportationMeans,
   divisionSignatory,
   formatTevAmount,
   formatTevDateRange,
@@ -184,7 +185,7 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount, is
           <td>{row?.visitedPlaces}</td>
           <td className="mytev-itinerary-departure">{row ? formatTevTime(row.departureTimeFrom) : ""}</td>
           <td>{row ? formatTevTime(row.departureTimeTo) : ""}</td>
-          <td>{row?.meansOfTransportation === "None" ? "" : row?.meansOfTransportation}</td>
+          <td>{row ? displayTevTransportationMeans(row.meansOfTransportation) : ""}</td>
           <td className="mytev-itinerary-transportation">{row ? formatTevAmountIfNonZero(transportationForRow(row)) : ""}</td>
           <td>{row ? formatTevAmountIfNonZero(perDiemForClaims(row.claims, row.region, rates)) : ""}</td>
           <td />

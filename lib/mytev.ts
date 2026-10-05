@@ -33,7 +33,7 @@ export const tevDivisions = [
   "Integrated Laboratories Division",
 ] as const;
 
-export const tevTransportationMeans = ["RP", "Plane", "Boat", "MCH", "PUV", "PUB", "None"] as const;
+export const tevTransportationMeans = ["Boat", "MCH", "RP", "Plane (GS)", "Plane (Credit)", "PUB", "PUV"] as const;
 
 export type TevRegionRate = {
   region: string;
@@ -54,7 +54,8 @@ export const tevClaims = [
 
 export type TevOfficialStation = (typeof tevOfficialStations)[number];
 export type TevDivision = (typeof tevDivisions)[number];
-export type TevTransportationMeans = (typeof tevTransportationMeans)[number] | "";
+// Keep the former values in the type so existing Firestore records remain readable.
+export type TevTransportationMeans = (typeof tevTransportationMeans)[number] | "Plane" | "None" | "";
 export type TevClaimId = (typeof tevClaims)[number]["id"];
 
 export type TevProfile = {
@@ -105,7 +106,7 @@ export type MyTevRecord = {
 
 export type TevTotals = { perDiem: number; transportation: number; grandTotal: number };
 
-const transportNeedsAmount: TevTransportationMeans[] = ["Boat", "MCH", "PUV", "PUB"];
+const transportNeedsAmount = new Set<TevTransportationMeans>(["Boat", "MCH", "Plane (Credit)", "PUV", "PUB"]);
 const signatoryByDivision: Record<TevDivision, { name: string; position: "Chief" | "OIC" }> = {
   "Field Operations Division": { name: "Melody M. Guimary", position: "Chief" },
   "Planning, Monitoring and Evaluation Division": { name: "Gemma A. Asufre", position: "Chief" },
@@ -205,6 +206,21 @@ export function parseTevRegionRates(csv: string): TevRegionRate[] {
   });
 }
 
+export function isTevTransportationAmountRequired(means: TevTransportationMeans) {
+  return transportNeedsAmount.has(means);
+}
+
+export function normalizeTevTransportationMeansForEditor(means: TevTransportationMeans): TevTransportationMeans {
+  if (means === "Plane") return "Plane (GS)";
+  if (means === "None") return "";
+  return means;
+}
+
+export function displayTevTransportationMeans(means: TevTransportationMeans) {
+  if (means === "Plane (GS)" || means === "Plane (Credit)" || means === "Plane") return "Plane";
+  return means === "None" ? "" : means;
+}
+
 export async function loadTevRegionRates() {
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   const response = await fetch(`${basePath}/tev_rate.csv`);
@@ -223,7 +239,7 @@ export function perDiemForClaims(claims: TevClaimId[], region: string, rates: Te
 }
 
 export function transportationForRow(row: TevItineraryRow) {
-  return transportNeedsAmount.includes(row.meansOfTransportation) ? numberAmount(row.transportation) : 0;
+  return isTevTransportationAmountRequired(row.meansOfTransportation) ? numberAmount(row.transportation) : 0;
 }
 
 export function totalsForItinerary(itinerary: TevItinerary, rates: TevRegionRate[]): TevTotals {
