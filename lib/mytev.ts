@@ -267,7 +267,7 @@ export function cenrrRows(itineraries: TevItinerary[]) {
 
 export function formatTevDate(value: string, options: Intl.DateTimeFormatOptions = { month: "long", day: "numeric", year: "numeric" }) {
   if (!value) return "";
-  const date = new Date(`${value}T00:00:00`);
+  const date = new Date(`${value}T00:00:00Z`);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-PH", { ...options, timeZone: "UTC" }).format(date);
 }
 
