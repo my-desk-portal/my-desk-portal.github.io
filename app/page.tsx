@@ -71,11 +71,11 @@ const specialOrderSignatories = [
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
 const amiaDocumentTrackingLinks = [
-  { label: "AMIA Status of Funds", href: "https://docs.google.com/spreadsheets/d/1wSNta-v-unsP5EvxZe5q1oA2YG0lF-xa/edit?gid=800892725" },
+  { label: "Status of Funds", href: "https://docs.google.com/spreadsheets/d/1wSNta-v-unsP5EvxZe5q1oA2YG0lF-xa/edit?gid=800892725" },
   { label: "Acknowledgement Receipt", href: "https://docs.google.com/spreadsheets/d/1u7k481x6vKfyV9btnCIOrBHAociNwZBy/edit?gid=1914856634" },
-  { label: "AMIA Minimum Requirements", href: "https://docs.google.com/spreadsheets/d/1ZkedGbBjqZkJ0UEohZGBoPL3oafdbNlpsRNizUJ9bQY/edit?gid=1817634266" },
-  { label: "AMIA Properties Under GBA", href: "https://docs.google.com/spreadsheets/d/1jJULlezndneDggyPKiX4C7nWeANdHeMZ/edit?gid=937100823" },
-  { label: "AMIA Staff Directory", href: "https://docs.google.com/spreadsheets/d/1SMIOH-UvvM-edpCBfDO3FfWk7pEFhaKy/edit?gid=16567296" },
+  { label: "Minimum Requirements", href: "https://docs.google.com/spreadsheets/d/1ZkedGbBjqZkJ0UEohZGBoPL3oafdbNlpsRNizUJ9bQY/edit?gid=1817634266" },
+  { label: "Properties Under GBA", href: "https://docs.google.com/spreadsheets/d/1jJULlezndneDggyPKiX4C7nWeANdHeMZ/edit?gid=937100823" },
+  { label: "Staff Directory", href: "https://docs.google.com/spreadsheets/d/1SMIOH-UvvM-edpCBfDO3FfWk7pEFhaKy/edit?gid=16567296" },
   { label: "AWS Update", href: "https://docs.google.com/spreadsheets/d/11FouwYOU4J1Z6hDMdjg8HGIwQteHBx4o/edit?gid=1735388733" },
   { label: "Calamity Updates Per Village", href: "https://docs.google.com/spreadsheets/d/1xsYWEK37-Wsaojr0c4viN2iXqIuCr9IN/edit?gid=1833610696" },
   { label: "Travel Plan", href: "https://docs.google.com/spreadsheets/d/1IMPltjcxMqNq4B4ebTYxLCjLYWPiCIA1/edit?gid=1167988669" },
@@ -86,6 +86,7 @@ const amiaDocumentTrackingLinks = [
   { label: "Philip Tracking", href: "https://docs.google.com/spreadsheets/d/1sGCV91KQfms2yuTF2iwuEz5o0SACouTTJKfRyZ1VrKA/edit?usp=sharing" },
   { label: "Physical Accomplishment Updates", href: "https://docs.google.com/spreadsheets/d/1o5hXhVjfOLbMP2KXvbxbF2OgArBMiSU0/edit?gid=328484245" },
   { label: "Procument Updates", href: "https://docs.google.com/spreadsheets/d/1rnl2NxgAXdhwLki0zFFEf4kGYiOcCqnL/edit?gid=387609537" },
+  { label: "Photo Documentation", href: "https://darfoxiii-my.sharepoint.com/my?id=%2Fpersonal%2Famia%5Fcaraga%5Fda%5Fgov%5Fph%2FDocuments%2FAMIA%20Communications%2FPhoto%20Documentation%2FAMIA%20Photo%20Documentation&ga=1" },
   { label: "Recieved Documents via QR", href: "https://docs.google.com/spreadsheets/d/108R25W_RgTp3Mpgkuz2QmpqdriOg_P6J5Aemu68Db90/edit?gid=115756846" },
   { label: "Scanned Documents", href: "https://darfoxiii-my.sharepoint.com/my?id=%2Fpersonal%2Famia%5Fcaraga%5Fda%5Fgov%5Fph%2FDocuments%2F2026%20WORKING%20FILES%2FSCANNED%20DOCUMENTS%2DAPPROVED&viewid=a922d1ac%2Da10a%2D4277%2D80dc%2Dd5261e478759" },
   { label: "Special Tasks", href: "https://docs.google.com/spreadsheets/d/1Yc8lndKZSgNwWrbvBUycgDXX27l2SED5/edit?gid=2098609058" },
