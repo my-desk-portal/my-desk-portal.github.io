@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import {
@@ -32,6 +32,7 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type QuerySnapshot,
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
@@ -491,6 +492,39 @@ type PendingPermitNotification = { permitId: string; statusKey: string; permitNo
 
 function permitNotificationKey(notification: PermitNotification) {
   return `${notification.permit.id}:${notification.permitNo}:${notification.status}:${timestampMillis(notification.decidedAt)}`;
+}
+
+function timestampIdentity(value: unknown) {
+  if (value && typeof value === "object" && "seconds" in value && "nanoseconds" in value) {
+    const timestamp = value as { seconds: number; nanoseconds: number };
+    return `${timestamp.seconds}:${timestamp.nanoseconds}`;
+  }
+  return String(timestampMillis(value));
+}
+
+type NotificationSnapshotState = { initialized: boolean; ids: Set<string> };
+
+function hasNewNotificationDocuments(snapshot: QuerySnapshot, state: NotificationSnapshotState) {
+  if (!state.initialized) {
+    state.ids.clear();
+    snapshot.docs.forEach((item) => state.ids.add(item.id));
+    if (!snapshot.metadata.fromCache) state.initialized = true;
+    return false;
+  }
+  if (snapshot.metadata.fromCache) return false;
+
+  let hasNewNotification = false;
+  snapshot.docChanges().forEach((change) => {
+    if (change.type === "removed") {
+      state.ids.delete(change.doc.id);
+      return;
+    }
+    if (change.type === "added" && !state.ids.has(change.doc.id) && !change.doc.metadata.hasPendingWrites) {
+      hasNewNotification = true;
+    }
+    state.ids.add(change.doc.id);
+  });
+  return hasNewNotification;
 }
 
 function singlePersonPermitPreview(permit: Permit | AdminPermit, personIndex: number): Permit {
@@ -1259,6 +1293,24 @@ export default function Home() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const notificationToneRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    const tone = new Audio(publicAsset("/notif_tone.mp3"));
+    tone.preload = "auto";
+    notificationToneRef.current = tone;
+    return () => {
+      tone.pause();
+      notificationToneRef.current = null;
+    };
+  }, []);
+
+  const playNotificationTone = useCallback(() => {
+    const tone = notificationToneRef.current;
+    if (!tone) return;
+    tone.currentTime = 0;
+    void tone.play().catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
@@ -1488,11 +1540,38 @@ export default function Home() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [mobileMenuOpen]);
   useEffect(() => { if (singleSlipPreview) return; setPreview((currentPreview) => { if (!currentPreview) return currentPreview; return permits.find((permit) => permit.id === currentPreview.id) ?? currentPreview; }); }, [permits, singleSlipPreview]);
-  useEffect(() => { if (!user || !db) return; return onSnapshot(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc")), (snapshot) => setPermits(snapshot.docs.map((item) => {
-    const data = item.data() as Record<string, unknown>;
-    const names = Array.isArray(data.names) ? data.names as string[] : typeof data.name === "string" ? [data.name] : [];
-    return { id: item.id, ...data, names } as Permit;
-  })), () => setError("Could not load permits. If this is your first setup, deploy the Firestore index or refresh.")); }, [user]);
+  useEffect(() => {
+    if (!user || !db) return;
+    let hasInitialSnapshot = false;
+    let previousDecisions = new Map<string, string>();
+    return onSnapshot(query(collection(db, "permits"), where("ownerId", "==", user.uid), orderBy("createdAt", "desc")), (snapshot) => {
+      const currentDecisions = new Map<string, string>();
+      let hasNewDecision = false;
+      const shouldCheckForNewDecisions = hasInitialSnapshot && !snapshot.metadata.fromCache;
+      const nextPermits = snapshot.docs.map((item) => {
+        const data = item.data() as Record<string, unknown>;
+        const names = Array.isArray(data.names) ? data.names as string[] : typeof data.name === "string" ? [data.name] : [];
+        const permit = { id: item.id, ...data, names } as Permit;
+        names.forEach((_, index) => {
+          const decision = permit.personStatuses?.[permitDecisionKey(permit, index)];
+          if (decision?.status !== "Approved" && decision?.status !== "Disapproved") return;
+          const key = `${permit.id}:${permitDecisionKey(permit, index)}`;
+          const value = `${decision.status}:${timestampMillis(decision.decidedAt)}`;
+          currentDecisions.set(key, value);
+          if (shouldCheckForNewDecisions && !item.metadata.hasPendingWrites && previousDecisions.get(key) !== value) {
+            hasNewDecision = true;
+          }
+        });
+        return permit;
+      });
+      if (hasNewDecision) playNotificationTone();
+      if (!snapshot.metadata.fromCache) {
+        previousDecisions = currentDecisions;
+        hasInitialSnapshot = true;
+      }
+      setPermits(nextPermits);
+    }, () => setError("Could not load permits. If this is your first setup, deploy the Firestore index or refresh."));
+  }, [user, playNotificationTone]);
   useEffect(() => {
     if (!user || !db) { setApprovedPermitNumbers({}); return; }
     return onSnapshot(collection(db, "approvedPermitCalendar"), (snapshot) => {
@@ -1509,38 +1588,77 @@ export default function Home() {
       return;
     }
     const firestore = db;
+    let hasInitialSnapshot = false;
+    let previousPendingKeys = new Set<string>();
     return onSnapshot(collection(firestore, "permits"), (snapshot) => {
+      const pendingWriteKeys = new Set<string>();
       const pending = snapshot.docs.flatMap((item) => {
         const data = item.data() as Record<string, unknown>;
         const names = Array.isArray(data.names) ? data.names as string[] : typeof data.name === "string" ? [data.name] : [];
         const permit = { ...data, id: item.id, names } as Permit;
         return names.flatMap((name, index) => {
           if (normalizeWorkflowStatus(permit.personStatuses?.[permitDecisionKey(permit, index)]?.status) !== "Pending") return [];
-          return [{ permitId: item.id, statusKey: permitDecisionKey(permit, index), permitNo: permitPersonNumber(permit, index), name, date: permit.date, purpose: permit.purpose, submittedAt: timestampMillis(permit.createdAt) }];
+          const notification = { permitId: item.id, statusKey: permitDecisionKey(permit, index), permitNo: permitPersonNumber(permit, index), name, date: permit.date, purpose: permit.purpose, submittedAt: timestampMillis(permit.createdAt) };
+          if (item.metadata.hasPendingWrites) pendingWriteKeys.add(`${notification.permitId}:${notification.statusKey}`);
+          return [notification];
         });
       }).sort((left, right) => right.submittedAt - left.submittedAt || right.permitNo.localeCompare(left.permitNo, "en", { numeric: true }));
+      if (hasInitialSnapshot && !snapshot.metadata.fromCache && pending.some((notification) => {
+        const key = `${notification.permitId}:${notification.statusKey}`;
+        return !previousPendingKeys.has(key) && !pendingWriteKeys.has(key);
+      })) playNotificationTone();
+      if (!snapshot.metadata.fromCache) {
+        previousPendingKeys = new Set(pending.map((notification) => `${notification.permitId}:${notification.statusKey}`));
+        hasInitialSnapshot = true;
+      }
       setPendingPermitNotifications(pending);
     }, () => setError("Could not load Permit Slip notifications. Refresh and try again."));
-  }, [user]);
+  }, [user, playNotificationTone]);
   useEffect(() => {
     if (!user || !db) { setTravelPlanNotifications([]); return; }
+    const notificationState = { initialized: false, createdAtById: new Map<string, string>() };
     return onSnapshot(query(collection(db, travelPlanNotificationsCollection), where("recipientId", "==", user.uid)), (snapshot) => {
+      let hasNewNotification = false;
+      if (!notificationState.initialized) {
+        notificationState.createdAtById.clear();
+        snapshot.docs.forEach((item) => notificationState.createdAtById.set(item.id, timestampIdentity(item.data().createdAt)));
+        if (!snapshot.metadata.fromCache) notificationState.initialized = true;
+      } else if (!snapshot.metadata.fromCache) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === "removed") {
+            notificationState.createdAtById.delete(change.doc.id);
+            return;
+          }
+          const data = change.doc.data();
+          const createdAt = timestampIdentity(data.createdAt);
+          const previousCreatedAt = notificationState.createdAtById.get(change.doc.id);
+          if (!change.doc.metadata.hasPendingWrites && (change.type === "added" || (change.type === "modified" && data.read === false && previousCreatedAt !== undefined && previousCreatedAt !== createdAt))) {
+            hasNewNotification = true;
+          }
+          notificationState.createdAtById.set(change.doc.id, createdAt);
+        });
+      }
+      if (hasNewNotification) playNotificationTone();
       const notifications = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as TravelPlanNotification));
       notifications.sort((left, right) => timestampMillis(right.createdAt) - timestampMillis(left.createdAt));
       setTravelPlanNotifications(notifications);
     }, () => setError("Could not load Travel Plan notifications. Refresh and try again."));
-  }, [user]);
+  }, [user, playNotificationTone]);
   useEffect(() => {
     if (!user || !db) { setDocumentNotifications([]); return; }
+    const notificationState: NotificationSnapshotState = { initialized: false, ids: new Set() };
     return onSnapshot(query(collection(db, "documentNotifications"), where("recipientId", "==", user.uid)), (snapshot) => {
+      if (hasNewNotificationDocuments(snapshot, notificationState)) playNotificationTone();
       const notifications = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as DocumentNotification));
       notifications.sort((left, right) => timestampMillis(right.createdAt) - timestampMillis(left.createdAt));
       setDocumentNotifications(notifications);
     }, () => setError("Could not load assigned document notifications. Refresh and try again."));
-  }, [user]);
+  }, [user, playNotificationTone]);
   useEffect(() => {
     if (!user || !db || !isPermitAdmin(user.email)) { setTravelPlanApprovalNotifications([]); return; }
+    const notificationState: NotificationSnapshotState = { initialized: false, ids: new Set() };
     return onSnapshot(collection(db, travelPlanApprovalNotificationsCollection), (snapshot) => {
+      if (hasNewNotificationDocuments(snapshot, notificationState)) playNotificationTone();
       const notifications = snapshot.docs.map((item) => {
         const data = item.data();
         return { id: item.id, ...data, readBy: Array.isArray(data.readBy) ? data.readBy.filter((id): id is string => typeof id === "string") : [] } as TravelPlanApprovalNotification;
@@ -1548,7 +1666,7 @@ export default function Home() {
       notifications.sort((left, right) => timestampMillis(right.createdAt) - timestampMillis(left.createdAt));
       setTravelPlanApprovalNotifications(notifications);
     }, () => setError("Could not load Travel Plan approval notifications. Refresh and try again."));
-  }, [user]);
+  }, [user, playNotificationTone]);
   useEffect(() => {
     if (!user || !db) return;
     getDocs(query(collection(db, "specialOrders"), where("ownerId", "==", user.uid))).then((snapshot) => {

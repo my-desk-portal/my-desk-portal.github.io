@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
 import { arrayUnion, collection, deleteField, doc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -106,11 +106,34 @@ function LinkPreview({ url }: { url: string }) {
   </a>;
 }
 
-function useChats(userId: string) {
+function useChats(userId: string, onIncomingMessage?: () => void) {
   const [chats, setChats] = useState<Chat[]>([]);
+  const onIncomingMessageRef = useRef(onIncomingMessage);
+  useEffect(() => { onIncomingMessageRef.current = onIncomingMessage; }, [onIncomingMessage]);
   useEffect(() => {
     if (!db) return;
+    let hasInitialSnapshot = false;
+    const lastActivityByChat = new Map<string, string>();
     return onSnapshot(query(collection(db, "chats"), where("members", "array-contains", userId)), { includeMetadataChanges: true }, (snapshot) => {
+      if (hasInitialSnapshot) {
+        snapshot.docChanges().forEach((change) => {
+          const item = change.doc;
+          const chat = { id: item.id, ...item.data(), pending: item.metadata.hasPendingWrites } as Chat;
+          const activity = chat.lastAt ? `${chat.lastAt.seconds}:${chat.lastAt.nanoseconds}` : "";
+          const previousActivity = lastActivityByChat.get(chat.id);
+          const hasNewActivity = change.type === "added" || (previousActivity !== undefined && previousActivity !== activity);
+          if (hasNewActivity && chat.lastSenderId && chat.lastSenderId !== userId && !chat.lastText?.startsWith("Reacted ")) {
+            onIncomingMessageRef.current?.();
+          }
+          lastActivityByChat.set(chat.id, activity);
+        });
+      } else {
+        snapshot.docs.forEach((item) => {
+          const chat = item.data() as Chat;
+          lastActivityByChat.set(item.id, chat.lastAt ? `${chat.lastAt.seconds}:${chat.lastAt.nanoseconds}` : "");
+        });
+        if (!snapshot.metadata.fromCache) hasInitialSnapshot = true;
+      }
       setChats(snapshot.docs.map((item) => ({ id: item.id, ...item.data(), pending: item.metadata.hasPendingWrites } as Chat)));
     }, () => setChats([]));
   }, [userId]);
@@ -118,7 +141,23 @@ function useChats(userId: string) {
 }
 
 export function MessengerButton({ user, active, onClick }: { user: User; active: boolean; onClick: () => void }) {
-  const chats = useChats(user.uid);
+  const messageToneRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    const tone = new Audio(publicAsset("/message_tone.mp3"));
+    tone.preload = "auto";
+    messageToneRef.current = tone;
+    return () => {
+      tone.pause();
+      messageToneRef.current = null;
+    };
+  }, []);
+  const playMessageTone = useCallback(() => {
+    const tone = messageToneRef.current;
+    if (!tone) return;
+    tone.currentTime = 0;
+    void tone.play().catch(() => undefined);
+  }, []);
+  const chats = useChats(user.uid, playMessageTone);
   const [superadminIds, setSuperadminIds] = useState<Set<string> | null>(null);
   useEffect(() => {
     if (!db) return;
