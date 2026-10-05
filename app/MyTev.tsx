@@ -300,7 +300,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
           <div className="mytev-itinerary-rows" role="group" aria-label={`Itinerary ${itineraryIndex + 1} fixed rows`}>
             {itinerary.rows.map((row, rowIndex) => <fieldset className="mytev-itinerary-line" key={`${itinerary.id}-row-${rowIndex}`}>
               <legend>Row {String(rowIndex + 1).padStart(2, "0")}</legend>
-              <button type="button" className="mytev-remove-row remove-action" aria-label={`Remove itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}`} onClick={() => removeRow(itinerary.id, rowIndex)}>Remove row</button>
+              <div className="mytev-itinerary-line-actions"><button type="button" className="mytev-remove-row remove-action" aria-label={`Remove itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}`} onClick={() => removeRow(itinerary.id, rowIndex)}>Remove row</button></div>
               <div className="mytev-itinerary-row-top">
                 <label>Date<input type="date" min={monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={row.dateFrom} onChange={(event) => {
                   const value = isDateWithinMonth(event.target.value, month) ? event.target.value : "";
@@ -322,7 +322,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
       })}
       <button type="button" className="ghost-button mytev-add-itinerary" disabled={itineraries.length >= maxItineraries} onClick={() => setItineraries((current) => [...current, blankTevItinerary(documentId())])}>{itineraries.length >= maxItineraries ? "Maximum itineraries added" : "Add another itinerary"}</button>
       <div className="mytev-record-totals"><span>Per Diem Grand Total<strong>₱{formatTevAmount(recordTotals.perDiem)}</strong></span><span>Transportation Grand Total<strong>₱{formatTevAmount(recordTotals.transportation)}</strong></span><span>Itinerary Grand Total<strong>₱{formatTevAmount(recordTotals.grandTotal)}</strong></span></div>
-      <div className="mytev-form-actions"><button type="button" className="ghost-button" onClick={() => { setMessage(""); setStep("details"); }}>Back to Trip Details</button><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? "Saving..." : initialRecord ? "Save changes" : "Save myTEV"}</button></div>
+      <div className="mytev-form-actions"><button type="button" className="ghost-button" onClick={() => { setMessage(""); setStep("details"); }}>Back to Trip Details</button><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button><button className="primary-button" disabled={saving}>{saving ? "Saving..." : initialRecord ? "Save changes" : "Save"}</button></div>
     </form>}
   </section>;
 }

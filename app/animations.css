@@ -198,6 +198,13 @@ textarea:focus { transition-duration: 120ms; }
   transform: translateY(0) scale(.98);
 }
 
+button.plain-action:hover:not(:disabled),
+button.plain-action:active:not(:disabled) {
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+
 :where(button, [role="button"]):focus-visible {
   outline: 2px solid var(--accent, #d9532e);
   outline-offset: 2px;

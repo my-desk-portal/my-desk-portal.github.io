@@ -274,7 +274,7 @@ export default function MyNotes({ user }: { user: User }) {
             <label htmlFor={`my-notes-create-task-${index}`}>Task {index + 1}<textarea id={`my-notes-create-task-${index}`} value={task} maxLength={MAX_TEXT_LENGTH} rows={2} onChange={(event) => setFormTasks((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder="Describe the task" required disabled={saving} /></label>
             {formTasks.length > 1 && <button type="button" className="my-notes-remove-task" aria-label={`Delete task ${index + 1}`} disabled={saving} onClick={() => setFormTasks((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}
           </div>)}</div>
-          {formTasks.length < MAX_TASKS && <button type="button" className="text-button add-item-text-button my-notes-add-task" disabled={saving} onClick={() => setFormTasks((current) => [...current, ""])}>+ Add task</button>}
+          {formTasks.length < MAX_TASKS && <button type="button" className="text-button plain-action add-item-text-button my-notes-add-task" disabled={saving} onClick={() => setFormTasks((current) => [...current, ""])}>+ Add task</button>}
         </fieldset>
         <div className="form-actions my-notes-form-actions"><button className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
       </form>
