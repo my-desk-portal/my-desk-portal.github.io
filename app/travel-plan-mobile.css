@@ -1,0 +1,32 @@
+@media(max-width:720px){
+  .travel-plan-list-head{display:none}
+  .travel-plan-list-row{align-items:start;gap:8px;grid-template-columns:1fr 1fr;padding:17px 0}
+  .travel-plan-list-row>strong,.travel-plan-list-unit,.travel-plan-list-count,.travel-plan-list-prepared,.travel-plan-list-status,.travel-plan-row-actions{grid-column:1/-1}
+  .travel-plan-list-row>strong{font-size:14px}
+  .travel-plan-list-unit::before,.travel-plan-list-count::before,.travel-plan-list-prepared::before,.travel-plan-list-status::before{color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase}
+  .travel-plan-list-unit::before{content:"Unit: "}
+  .travel-plan-list-count::before{content:"Activities: "}
+  .travel-plan-list-prepared::before{content:"Prepared by: "}
+  .travel-plan-list-status::before{content:"Status: "}
+  .travel-plan-row-actions{flex-wrap:wrap;gap:18px;justify-content:flex-start;padding-top:3px}
+  .travel-plan-form{gap:17px;grid-template-columns:minmax(0,1fr)}
+  .travel-plan-meta{grid-template-columns:1fr}
+  .travel-plan-row{gap:12px;grid-template-columns:minmax(0,1fr);padding:14px}
+  .travel-plan-dates{gap:9px;grid-template-columns:1fr}
+  .travel-plan-entry{grid-column:1}
+  .travel-plan-responsible-add{grid-template-columns:minmax(0,1fr)}
+  .travel-plan-responsible-add .ghost-button{justify-self:start}
+  .travel-plan-preview-backdrop{gap:12px;padding:var(--preview-toolbar-offset,122px) 8px calc(16px + env(safe-area-inset-bottom,0px))}
+  .travel-plan-preview-toolbar{gap:7px;padding:9px}
+  .travel-plan-preview-toolbar>span{flex:1 0 100%}
+  .travel-plan-preview-toolbar .ghost-button,.travel-plan-preview-toolbar .pdf-button{flex:1 1 auto;min-height:40px;padding-inline:8px}
+  .travel-plan-preview-toolbar>small{text-align:left}
+  .travel-plan-preview-pages{gap:14px;overflow:visible}
+  .travel-plan-paper{width:min(98vw,297mm)}
+}
+@media(max-width:420px){
+  .travel-plan-row{padding:11px}
+  .travel-plan-paper-heading{gap:1.3cqi}
+  .travel-plan-paper-title h1{font-size:2cqi}
+  .travel-plan-paper-table th,.travel-plan-paper-table td{padding:.48cqi .5cqi}
+}
