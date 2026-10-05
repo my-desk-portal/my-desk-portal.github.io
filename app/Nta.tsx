@@ -3,15 +3,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import { collection, doc, getDocs, query, serverTimestamp, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
+import { getDocumentNotificationReferences, makeDocumentNotification } from "@/lib/document-notifications";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./nta.css";
 
 type NtaMode = "individual" | "batch";
-type NtaAttendee = { name: string; office: string };
+type NtaAttendee = { name: string; office: string; userId?: string };
 type NtaBatch = {
   number: string;
   dateFrom: string;
@@ -39,6 +40,7 @@ type NtaRecord = {
   venue?: string;
   link?: string;
   batches?: NtaBatch[];
+  recipientIds?: string[];
   createdAt?: unknown;
 };
 
@@ -51,11 +53,12 @@ const legacySignatoryName = "MELODY M. GUIMARY";
 const legacySignatoryDesignation = "Chief, Field Operations Division";
 const formatDate = (date: string) => date ? new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "Asia/Manila" }).format(new Date(`${date}T12:00:00+08:00`)) : "";
 const formatDateRange = (from: string, to: string) => from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`;
-const initialBatch = (): NtaBatch => ({ number: "1", dateFrom: "", dateTo: "", timeFrom: "", timeTo: "", venueType: "physical", venue: "", link: "", attendees: [{ name: "", office: "" }] });
+const initialBatch = (): NtaBatch => ({ number: "1", dateFrom: "", dateTo: "", timeFrom: "", timeTo: "", venueType: "physical", venue: "", link: "", attendees: [{ name: "", office: "", userId: "" }] });
 
 function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: NtaRecord) => void; onCancel: () => void }) {
   const [mode, setMode] = useState<NtaMode>("individual");
   const [to, setTo] = useState("");
+  const [toUserId, setToUserId] = useState("");
   const [positionDesignation, setPositionDesignation] = useState("");
   const [subject, setSubject] = useState("");
   const [activityTitle, setActivityTitle] = useState("");
@@ -103,13 +106,29 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
     if (!db) { setError("Database is not configured."); return; }
     if (!selectedSignatory) { setError("Select a signatory."); return; }
     setBusy(true); setError("");
-    const common = { mode, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.designation, ownerId: user.uid, createdAt: serverTimestamp() };
+    const schedulesByRecipient = new Map<string, Array<{ dateFrom: string; dateTo: string; venue: string }>>();
+    if (mode === "individual" && toUserId) schedulesByRecipient.set(toUserId, [{ dateFrom, dateTo, venue: venue.trim() }]);
+    if (mode === "batch") batches.forEach((batch) => batch.attendees.forEach((attendee) => {
+      if (!attendee.userId) return;
+      schedulesByRecipient.set(attendee.userId, [...(schedulesByRecipient.get(attendee.userId) ?? []), { dateFrom: batch.dateFrom, dateTo: batch.dateTo, venue: batch.venue.trim() }]);
+    }));
+    const recipientIds = [...schedulesByRecipient.keys()].filter((id) => id !== user.uid);
+    const common = { mode, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.designation, recipientIds, ownerId: user.uid, createdAt: serverTimestamp() };
     try {
       const data = mode === "individual"
         ? { ...common, to: to.trim(), positionDesignation: positionDesignation.trim(), dateFrom, dateTo, venueType, venue: venue.trim(), link: venueType === "virtual" ? link.trim() : "" }
-        : { ...common, batches: batches.map((batch) => ({ ...batch, venue: batch.venue.trim(), link: batch.venueType === "virtual" ? batch.link.trim() : "", attendees: batch.attendees.map((attendee) => ({ name: attendee.name.trim(), office: attendee.office.trim() })) })) };
-      const reference = await addDoc(collection(db, "ntaRecords"), data);
-      onSaved({ id: reference.id, ...data, createdAt: undefined } as NtaRecord);
+        : { ...common, batches: batches.map((batch) => ({ ...batch, venue: batch.venue.trim(), link: batch.venueType === "virtual" ? batch.link.trim() : "", attendees: batch.attendees.map((attendee) => ({ ...attendee, name: attendee.name.trim(), office: attendee.office.trim() })) })) };
+      const firestore = db;
+      const recordRef = doc(collection(firestore, "ntaRecords"));
+      const batch = writeBatch(firestore);
+      batch.set(recordRef, data);
+      recipientIds.forEach((recipientId) => {
+        const schedules = schedulesByRecipient.get(recipientId) ?? [];
+        const notification = makeDocumentNotification(firestore, { recipientId, ownerId: user.uid, documentId: recordRef.id, documentType: "Notice to Attend", activityTitle: data.activityTitle, schedules });
+        batch.set(notification.reference, notification.data);
+      });
+      await batch.commit();
+      onSaved({ id: recordRef.id, ...data, createdAt: undefined } as NtaRecord);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to save Notice to Attend.");
     } finally { setBusy(false); }
@@ -121,7 +140,7 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
     <form className="permit-form" onSubmit={save}>
       <label className="wide-field">Notice type<select value={mode} onChange={(event) => setMode(event.target.value as NtaMode)}><option value="individual">Individual</option><option value="batch">Group</option></select></label>
       {mode === "individual" ? <>
-        <label>TO<select value={to} onChange={(event) => { const selectedName = event.target.value; setTo(selectedName); setPositionDesignation(personnel.find((person) => person.name === selectedName)?.position ?? ""); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((person) => <option key={person.name} value={person.name}>{person.name}</option>)}</select>{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</label>
+        <label>TO<select value={toUserId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); setToUserId(selectedId); setTo(selectedPerson?.name ?? ""); setPositionDesignation(selectedPerson?.position ?? ""); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select>{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</label>
         <label>Position/Designation<input value={positionDesignation} readOnly required /></label>
         <label>SUBJECT<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
         <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
@@ -141,7 +160,7 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
           <label>Venue type<select value={batch.venueType} onChange={(event) => updateBatch(batchIndex, { venueType: event.target.value as "physical" | "virtual" })}><option value="physical">Physical venue</option><option value="virtual">Virtual meeting</option></select></label>
           <label>{batch.venueType === "virtual" ? "Platform" : "Place"}<input value={batch.venue} onChange={(event) => updateBatch(batchIndex, { venue: event.target.value })} required /></label>
           {batch.venueType === "virtual" && <label className="wide-field">Meeting link<input type="url" value={batch.link} onChange={(event) => updateBatch(batchIndex, { link: event.target.value })} placeholder="https://" required /></label>}
-          <div className="nta-attendee-fields"><span>Personnel attending this group</span>{batch.attendees.map((attendee, attendeeIndex) => <div className="nta-attendee-input" key={attendeeIndex}><select aria-label={`Group ${batch.number} person ${attendeeIndex + 1} name`} value={attendee.name} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { name: event.target.value })} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((person) => <option key={person.name} value={person.name}>{person.name}</option>)}</select><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} office`} placeholder="Office" value={attendee.office} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { office: event.target.value })} required />{batch.attendees.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete attendee ${attendeeIndex + 1} from group ${batch.number}`} onClick={() => updateBatch(batchIndex, { attendees: batch.attendees.filter((_, index) => index !== attendeeIndex) })}>Delete</button>}</div>)}{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}<button type="button" className="text-button add-item-text-button" onClick={() => updateBatch(batchIndex, { attendees: [...batch.attendees, { name: "", office: "" }] })}>+ Add person</button></div>
+          <div className="nta-attendee-fields"><span>Personnel attending this group</span>{batch.attendees.map((attendee, attendeeIndex) => <div className="nta-attendee-input" key={attendeeIndex}><select aria-label={`Group ${batch.number} person ${attendeeIndex + 1} name`} value={attendee.userId ?? ""} onChange={(event) => { const selectedId = event.target.value; updateAttendee(batchIndex, attendeeIndex, { userId: selectedId, name: personnel.find((person) => person.userId === selectedId)?.name ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} office`} placeholder="Office" value={attendee.office} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { office: event.target.value })} required />{batch.attendees.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete attendee ${attendeeIndex + 1} from group ${batch.number}`} onClick={() => updateBatch(batchIndex, { attendees: batch.attendees.filter((_, index) => index !== attendeeIndex) })}>Delete</button>}</div>)}{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}<button type="button" className="text-button add-item-text-button" onClick={() => updateBatch(batchIndex, { attendees: [...batch.attendees, { name: "", office: "", userId: "" }] })}>+ Add person</button></div>
           {batches.length > 1 && <button type="button" className="remove-participant nta-remove-batch" aria-label={`Delete group ${batch.number}`} onClick={() => setBatches((current) => current.filter((_, index) => index !== batchIndex))}>Delete</button>}
         </fieldset>)}<button type="button" className="text-button add-item-text-button" onClick={() => setBatches((current) => [...current, { ...initialBatch(), number: String(current.length + 1) }])}>+ Add group</button></div>
       </>}
@@ -430,7 +449,12 @@ export default function NtaModule({ user }: { user: User }) {
     setDeletingId(record.id);
     setLoadError("");
     try {
-      await deleteDoc(doc(db, "ntaRecords", record.id));
+      const firestore = db;
+      const notificationReferences = await getDocumentNotificationReferences(firestore, user.uid, record.id);
+      const batch = writeBatch(firestore);
+      notificationReferences.forEach((reference) => batch.delete(reference));
+      batch.delete(doc(firestore, "ntaRecords", record.id));
+      await batch.commit();
       setRecords((current) => current.filter((item) => item.id !== record.id));
       setPreview((current) => current?.id === record.id ? null : current);
       setPendingDelete(null);

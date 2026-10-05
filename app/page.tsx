@@ -54,12 +54,13 @@ import { normalizeWorkflowStatus } from "./workflow-status";
 import "./special-order.css";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
 import { formatTaxIdentificationNo } from "@/lib/mytev";
+import { getDocumentNotificationReferences, makeDocumentNotification, type DocumentNotification } from "@/lib/document-notifications";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type AccountUnit = Unit | "Field Operations Division";
 type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string };
-type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
-type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; signatoryName?: string; signatoryDesignation?: string; createdAt?: unknown };
+type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personIds?: string[]; recipientIds?: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
+type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; participantIds?: string[]; recipientIds?: string[]; signatoryName?: string; signatoryDesignation?: string; createdAt?: unknown };
 
 const specialOrderSignatories = [
   { name: "ENGR. RICARDO P. OÑATE JR.", designation: "Regional Executive Director" },
@@ -366,7 +367,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
 }
 function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (permit: Permit) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [people, setPeople] = useState<{ name: string; unit: Unit | "" }[]>([{ name: "", unit: "" }]);
+  const [people, setPeople] = useState<{ name: string; userId: string; unit: Unit | "" }[]>([{ name: "", userId: "", unit: "" }]);
   const [purpose, setPurpose] = useState("");
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
   const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -390,10 +391,10 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     return () => { cancelled = true; };
   }, []);
 
-  function selectPerson(index: number, name: string) {
-    const selectedPerson = personnel.find((person) => person.name === name);
+  function selectPerson(index: number, userId: string) {
+    const selectedPerson = personnel.find((person) => person.userId === userId);
     setPeople((current) => current.map((person, currentIndex) => currentIndex === index
-      ? { name, unit: permitUnitForPersonnel(selectedPerson) }
+      ? { name: selectedPerson?.name ?? "", userId, unit: permitUnitForPersonnel(selectedPerson) }
       : person));
   }
 
@@ -413,6 +414,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     const missingUnit = selectedPeople.find((person) => !person.unit);
     if (missingUnit) { onError(`Select a unit for ${missingUnit.name}.`); return; }
     const nameList = selectedPeople.map((person) => person.name);
+    const personIds = selectedPeople.map((person) => person.userId);
     const personUnits = selectedPeople.map((person) => person.unit as Unit);
     const firestore = db;
     setBusy(true); onError("");
@@ -426,10 +428,14 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
         const permitNos = nameList.map((_, index) => `${year}-${String(firstNumber + index).padStart(4, "0")}`);
         const lastNumber = firstNumber + nameList.length - 1;
         const permitRef = doc(collection(firestore, "permits"));
-        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, personUnits, unit: personUnits[0], purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
+        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, personIds, recipientIds: [...new Set(personIds.filter((id) => id && id !== user.uid))], personUnits, unit: personUnits[0], purpose: purpose.trim(), ownerId: user.uid, createdAt: serverTimestamp() };
         unitCounterRefs.forEach((counterRef, index) => transaction.set(counterRef, { lastNumber, unit: units[index], year }));
         transaction.set(yearCounterRef, { lastNumber, year });
         transaction.set(permitRef, record);
+        [...new Set(personIds.filter((id) => id && id !== user.uid))].forEach((recipientId) => {
+          const notification = makeDocumentNotification(firestore, { recipientId, ownerId: user.uid, documentId: permitRef.id, documentType: "Permit Slip", date, purpose: purpose.trim() });
+          transaction.set(notification.reference, notification.data);
+        });
         return { id: permitRef.id, ...record } as Permit;
       });
       onSaved(permit);
@@ -437,7 +443,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="permit-person-fields wide-field">{people.map((person, index) => { const personnelRecord = personnel.find((candidate) => candidate.name === person.name); const personnelUnit = permitUnitForPersonnel(personnelRecord); const unitNeedsManualSelection = Boolean(person.name) && !personnelUnit && !person.unit; return <div className="permit-person-entry" key={index}><label>Full name<select aria-label={`Full name ${index + 1}`} value={person.name} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Select person ${index + 1}`}</option>{personnel.map((candidate) => <option key={candidate.name} value={candidate.name}>{candidate.name}</option>)}</select></label><label>Unit<select aria-label={`Unit for ${person.name || `person ${index + 1}`}`} value={person.unit} onChange={(event) => selectPersonUnit(index, event.target.value as Unit | "")} required={Boolean(person.name)} disabled={personnelStatus !== "ready" || !person.name || Boolean(personnelUnit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : person.name ? "Select unit" : "Choose a name first"}</option>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{unitNeedsManualSelection && <span className="permit-person-unit-warning" role="status">No supported unit is listed for this person. Select a unit.</span>}</label>{people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => removePerson(index)}>Delete</button>}</div>; })}<button type="button" className="text-button add-item-text-button add-participant" onClick={() => setPeople((current) => [...current, { name: "", unit: "" }])}>+ Add name</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={1} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
+  return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="permit-person-fields wide-field">{people.map((person, index) => { const personnelRecord = personnel.find((candidate) => candidate.userId === person.userId); const personnelUnit = permitUnitForPersonnel(personnelRecord); const unitNeedsManualSelection = Boolean(person.name) && !personnelUnit && !person.unit; return <div className="permit-person-entry" key={index}><label>Full name<select aria-label={`Full name ${index + 1}`} value={person.userId} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Select person ${index + 1}`}</option>{personnel.map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.name}</option>)}</select></label><label>Unit<select aria-label={`Unit for ${person.name || `person ${index + 1}`}`} value={person.unit} onChange={(event) => selectPersonUnit(index, event.target.value as Unit | "")} required={Boolean(person.name)} disabled={personnelStatus !== "ready" || !person.name || Boolean(personnelUnit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : person.name ? "Select unit" : "Choose a name first"}</option>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{unitNeedsManualSelection && <span className="permit-person-unit-warning" role="status">No supported unit is listed for this person. Select a unit.</span>}</label>{people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => removePerson(index)}>Delete</button>}</div>; })}<button type="button" className="text-button add-item-text-button add-participant" onClick={() => setPeople((current) => [...current, { name: "", userId: "", unit: "" }])}>+ Add name</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={1} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
 function hasApprovedPermitStatus(permit: Permit) {
@@ -495,16 +501,18 @@ function singlePersonPermitPreview(permit: Permit | AdminPermit, personIndex: nu
   } as Permit;
 }
 
-function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendingNotifications, calendarActivityNotifications, calendarActivityApprovalNotifications, onAdminOpen, onViewPermit, onReadCalendarActivity, onReadCalendarActivityApproval, onOpenCalendarActivityApproval }: {
+function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendingNotifications, documentNotifications, calendarActivityNotifications, calendarActivityApprovalNotifications, onAdminOpen, onViewPermit, onReadDocument, onReadCalendarActivity, onReadCalendarActivityApproval, onOpenCalendarActivityApproval }: {
   isAdmin: boolean;
   userId: string;
   count: number;
   notifications: PermitNotification[];
   pendingNotifications: PendingPermitNotification[];
+  documentNotifications: DocumentNotification[];
   calendarActivityNotifications: CalendarActivityNotification[];
   calendarActivityApprovalNotifications: CalendarActivityApprovalNotification[];
   onAdminOpen: (notification: PendingPermitNotification) => void;
   onViewPermit: (notification: PermitNotification) => void;
+  onReadDocument: (notification: DocumentNotification) => void;
   onReadCalendarActivity: (notification: CalendarActivityNotification) => void;
   onReadCalendarActivityApproval: (notification: CalendarActivityApprovalNotification) => void;
   onOpenCalendarActivityApproval: (notification: CalendarActivityApprovalNotification) => void;
@@ -526,19 +534,22 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
   const readNotificationKeys = readNotificationState?.userId === userId ? readNotificationState.keys : [];
   const readNotificationKeySet = new Set(readNotificationKeys);
   const unreadNotifications = notifications.filter((notification) => !readNotificationKeySet.has(permitNotificationKey(notification)));
+  const unreadDocumentNotifications = documentNotifications.filter((notification) => !notification.read);
   const unreadCalendarActivityNotifications = calendarActivityNotifications.filter((notification) => !notification.read);
   const unreadCalendarActivityApprovalNotifications = isAdmin ? calendarActivityApprovalNotifications.filter((notification) => !notification.readBy.includes(userId)) : [];
-  const visibleCount = (isAdmin ? count : unreadNotifications.length) + unreadCalendarActivityNotifications.length + unreadCalendarActivityApprovalNotifications.length;
+  const visibleCount = (isAdmin ? count : unreadNotifications.length) + unreadDocumentNotifications.length + unreadCalendarActivityNotifications.length + unreadCalendarActivityApprovalNotifications.length;
 
   function toggleOpen() {
     // Read calendar notifications stay visible until the dropdown is closed, then drop off on the next open.
     if (!open) setHiddenReadIds([
       ...calendarActivityNotifications.filter((notification) => notification.read).map((notification) => notification.id),
+      ...documentNotifications.filter((notification) => notification.read).map((notification) => notification.id),
       ...calendarActivityApprovalNotifications.filter((notification) => notification.readBy.includes(userId)).map((notification) => notification.id),
     ]);
     setOpen(!open);
   }
   const shownCalendarActivityNotifications = calendarActivityNotifications.filter((notification) => !hiddenReadIds.includes(notification.id));
+  const shownDocumentNotifications = documentNotifications.filter((notification) => !hiddenReadIds.includes(notification.id));
   const shownCalendarActivityApprovalNotifications = calendarActivityApprovalNotifications.filter((notification) => !hiddenReadIds.includes(notification.id));
 
   function markAsRead(notification: PermitNotification) {
@@ -558,17 +569,26 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
     </button>
     {open && <div className="notification-dropdown" role="dialog" aria-label="Notifications">
       <div className="notification-dropdown-heading"><strong>Notifications</strong><button type="button" onClick={() => setOpen(false)} aria-label="Close notifications">×</button></div>
-      {isAdmin ? pendingNotifications.length === 0 ? <p className="notification-empty">No Permit Slips are awaiting review.</p> : <><p className="notification-section-title">Filed Permit Slips</p><ul>{pendingNotifications.map((notification) => <li key={`${notification.permitId}-${notification.permitNo}`}><button type="button" className="notification-item" onClick={() => { setOpen(false); onAdminOpen(notification); }}>
+      {isAdmin ? pendingNotifications.length === 0 ? null : <><p className="notification-section-title">Filed Permit Slips</p><ul>{pendingNotifications.map((notification) => <li key={`${notification.permitId}-${notification.permitNo}`}><button type="button" className="notification-item" onClick={() => { setOpen(false); onAdminOpen(notification); }}>
         <span className="notification-status notification-status-pending">Awaiting review</span>
         <strong>{notification.name}</strong>
         <span className="notification-permit-number">Pending</span>
         {notification.purpose && <span className="notification-permit-number">{notification.purpose}</span>}
         <small>{notification.date ? formatDate(notification.date) : "Date not provided"}</small>
         <span className="notification-view-label">Open in Permit Slip Status</span>
-      </button></li>)}</ul></> : unreadNotifications.length === 0 ? <p className="notification-empty">You’re all caught up on Permit Slip updates.</p> : <><p className="notification-section-title">Permit Slip updates</p><ul>{unreadNotifications.map((notification) => <li key={permitNotificationKey(notification)}><button type="button" className="notification-item" onClick={() => { markAsRead(notification); setOpen(false); onViewPermit(notification); }}>
+      </button></li>)}</ul></> : unreadNotifications.length === 0 ? null : <><p className="notification-section-title">Permit Slip updates</p><ul>{unreadNotifications.map((notification) => <li key={permitNotificationKey(notification)}><button type="button" className="notification-item" onClick={() => { markAsRead(notification); setOpen(false); onViewPermit(notification); }}>
         <span className="notification-detail"><span className="notification-detail-label">Name</span><strong>{notification.name}</strong></span>
         <span className="notification-detail"><span className="notification-detail-label">Date</span><span>{notification.date ? formatDate(notification.date) : "Date not provided"}</span></span>
         <span className="notification-detail"><span className="notification-detail-label">Status</span><strong className={`notification-status notification-status-${notification.status.toLowerCase()}`}>{notification.status}</strong></span>
+      </button></li>)}</ul></>}
+      {shownDocumentNotifications.length > 0 && <><p className="notification-section-title">Assigned Documents</p><ul>{shownDocumentNotifications.map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-activity-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); }}>
+        <span className="notification-status notification-status-pending">{notification.documentType}</span>
+        {notification.activityTitle && <strong>{notification.activityTitle}</strong>}
+        {notification.documentType === "Special Order" && <><span className="notification-detail"><span className="notification-detail-label">Date</span><span>{notification.dateFrom === notification.dateTo ? formatDate(notification.dateFrom ?? "") : `${formatDate(notification.dateFrom ?? "")} – ${formatDate(notification.dateTo ?? "")}`}</span></span><span className="notification-detail"><span className="notification-detail-label">Venue</span><span>{notification.venue}</span></span></>}
+        {notification.documentType === "Notice to Attend" && notification.schedules?.map((schedule, index) => <span className="calendar-notification-activity" key={`${notification.id}-schedule-${index}`}><b>{schedule.dateFrom === schedule.dateTo ? formatDate(schedule.dateFrom) : `${formatDate(schedule.dateFrom)} – ${formatDate(schedule.dateTo)}`}</b><span>{schedule.venue}</span></span>)}
+        {notification.documentType === "Permit Slip" && <><span className="notification-detail"><span className="notification-detail-label">Date</span><span>{formatDate(notification.date ?? "")}</span></span><span className="notification-detail"><span className="notification-detail-label">Purpose</span><span>{notification.purpose}</span></span></>}
+        {notification.documentType === "Travel Order" && <><span className="notification-detail"><span className="notification-detail-label">Departure Date to Return Date</span><strong>{formatDate(notification.departureDate ?? "")} – {formatDate(notification.returnDate ?? "")}</strong></span><span className="notification-detail"><span className="notification-detail-label">Place of Travel</span><span>{notification.placeOfTravel}</span></span><span className="notification-detail"><span className="notification-detail-label">Specific Purpose of the Trip</span><strong>{notification.purpose}</strong></span></>}
+        <small>{notification.read ? "Read" : "New · Select to mark as read"}</small>
       </button></li>)}</ul></>}
       {shownCalendarActivityNotifications.length > 0 && <><p className="notification-section-title">Calendar of Activities</p><ul>{shownCalendarActivityNotifications.map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-activity-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadCalendarActivity(notification); }}>
         <strong>{notification.month ? new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${notification.month}-01T00:00:00Z`)) : "Activity schedule"}</strong>
@@ -579,7 +599,8 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
         const isRead = notification.readBy.includes(userId);
         const month = /^\d{4}-\d{2}$/.test(notification.month) ? new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${notification.month}-01T00:00:00Z`)) : notification.month;
         return <li key={notification.id}><button type="button" className={`notification-item calendar-activity-notification${isRead ? " is-read" : ""}`} onClick={() => { if (!isRead) onReadCalendarActivityApproval(notification); setOpen(false); onOpenCalendarActivityApproval(notification); }}><strong>Calendar of Activities of FOD-{notification.unit}, {month} is Approved</strong><small>Prepared by {notification.preparedName}</small><span className="notification-view-label">Open Calendar of Activities Records</span><small>{isRead ? "Read" : "New · Select to view"}</small></button></li>;
-      })}</ul></>}
+       })}</ul></>}
+      {(isAdmin ? !pendingNotifications.length : !unreadNotifications.length) && !shownDocumentNotifications.length && !shownCalendarActivityNotifications.length && !shownCalendarActivityApprovalNotifications.length && <p className="notification-empty">You’re all caught up.</p>}
     </div>}
   </div>;
 }
@@ -812,19 +833,29 @@ function SpecialOrderForm({ user, onSaved, onCancel, onError }: { user: User; on
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!db) return;
-    const participantList = participants.map((person) => person.trim()).filter(Boolean);
+    const participantIds = [...new Set(participants.filter((id) => Boolean(id)))];
+    const participantList = participantIds.map((id) => personnel.find((person) => person.userId === id)?.name ?? "").filter(Boolean);
     if (!participantList.length) { onError("Select at least one designated participant."); return; }
     if (!selectedSignatory) { onError("Select a signatory."); return; }
     setBusy(true); onError("");
     try {
       const signatory = { signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.designation };
-      const reference = await addDoc(collection(db, "specialOrders"), { subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venue: venue.trim(), participants: participantList, ...signatory, ownerId: user.uid, createdAt: serverTimestamp() });
-      onSaved({ id: reference.id, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venue: venue.trim(), participants: participantList, ...signatory });
+      const firestore = db;
+      const orderRef = doc(collection(firestore, "specialOrders"));
+      const record = { subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venue: venue.trim(), participants: participantList, participantIds, recipientIds: participantIds.filter((id) => id !== user.uid), ...signatory, ownerId: user.uid, createdAt: serverTimestamp() };
+      const batch = writeBatch(firestore);
+      batch.set(orderRef, record);
+      [...new Set(record.recipientIds)].forEach((recipientId) => {
+        const notification = makeDocumentNotification(firestore, { recipientId, ownerId: user.uid, documentId: orderRef.id, documentType: "Special Order", activityTitle: record.activityTitle, dateFrom, dateTo: dateTo || dateFrom, venue: record.venue });
+        batch.set(notification.reference, notification.data);
+      });
+      await batch.commit();
+      onSaved({ id: orderRef.id, ...record });
     } catch (error) { onError(error instanceof Error ? error.message : "Unable to save special order."); }
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated participants.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Participant</span>{participants.map((participant, index) => <div className="participant-input" key={index}><select aria-label={`Designated participant ${index + 1}`} value={participant} onChange={(event) => setParticipants((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Participant ${index + 1}`}</option>{personnel.map((person) => <option key={person.name} value={person.name}>{person.name}</option>)}</select>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete participant ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, ""])}>+ Add participant</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label>Signatory Name<select value={signatoryName} onChange={(event) => setSignatoryName(event.target.value)} required><option value="" disabled>Select a signatory</option>{specialOrderSignatories.map((signatory) => <option key={signatory.name} value={signatory.name}>{signatory.name}</option>)}</select></label><label>Signatory Designation<input value={selectedSignatory?.designation ?? ""} readOnly required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
+  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated participants.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Participant</span>{participants.map((participant, index) => <div className="participant-input" key={index}><select aria-label={`Designated participant ${index + 1}`} value={participant} onChange={(event) => setParticipants((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : `Participant ${index + 1}`}</option>{personnel.map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete participant ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, ""])}>+ Add participant</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label>Signatory Name<select value={signatoryName} onChange={(event) => setSignatoryName(event.target.value)} required><option value="" disabled>Select a signatory</option>{specialOrderSignatories.map((signatory) => <option key={signatory.name} value={signatory.name}>{signatory.name}</option>)}</select></label><label>Signatory Designation<input value={selectedSignatory?.designation ?? ""} readOnly required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
 function SpecialOrderList({ orders, deletingId, onNew, onPrint, onDelete }: { orders: SpecialOrder[]; deletingId: string | null; onNew: () => void; onPrint: (order: SpecialOrder) => void; onDelete: (order: SpecialOrder) => void }) {
@@ -1070,6 +1101,7 @@ export default function Home() {
   const [deletingPermitId, setDeletingPermitId] = useState<string | null>(null);
   const [pendingPermitDelete, setPendingPermitDelete] = useState<Permit | null>(null);
   const [pendingPermitNotifications, setPendingPermitNotifications] = useState<PendingPermitNotification[]>([]);
+  const [documentNotifications, setDocumentNotifications] = useState<DocumentNotification[]>([]);
   const [calendarActivityNotifications, setCalendarActivityNotifications] = useState<CalendarActivityNotification[]>([]);
   const [calendarActivityApprovalNotifications, setCalendarActivityApprovalNotifications] = useState<CalendarActivityApprovalNotification[]>([]);
   const [focusedPermitNotificationKey, setFocusedPermitNotificationKey] = useState<string | null>(null);
@@ -1354,6 +1386,14 @@ export default function Home() {
     }, () => setError("Could not load Calendar of Activities notifications. Refresh and try again."));
   }, [user]);
   useEffect(() => {
+    if (!user || !db) { setDocumentNotifications([]); return; }
+    return onSnapshot(query(collection(db, "documentNotifications"), where("recipientId", "==", user.uid)), (snapshot) => {
+      const notifications = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as DocumentNotification));
+      notifications.sort((left, right) => timestampMillis(right.createdAt) - timestampMillis(left.createdAt));
+      setDocumentNotifications(notifications);
+    }, () => setError("Could not load assigned document notifications. Refresh and try again."));
+  }, [user]);
+  useEffect(() => {
     if (!user || !db || !isPermitAdmin(user.email)) { setCalendarActivityApprovalNotifications([]); return; }
     return onSnapshot(collection(db, "calendarActivityApprovalNotifications"), (snapshot) => {
       const notifications = snapshot.docs.map((item) => {
@@ -1381,14 +1421,17 @@ export default function Home() {
   }, [user]);
 
   async function deletePermit(permit: Permit) {
-    if (!db) return;
+    if (!db || !user) return;
+    const ownerId = user.uid;
     setDeletingPermitId(permit.id);
     setError("");
     try {
       const firestore = db;
       const calendarEntries = await getDocs(query(collection(firestore, "approvedPermitCalendar"), where("permitId", "==", permit.id)));
+      const notificationReferences = await getDocumentNotificationReferences(firestore, ownerId, permit.id);
       const batch = writeBatch(firestore);
       calendarEntries.docs.forEach((entry) => batch.delete(entry.ref));
+      notificationReferences.forEach((reference) => batch.delete(reference));
       batch.delete(doc(firestore, "permits", permit.id));
       await batch.commit();
       setPreview((current) => current?.id === permit.id ? null : current);
@@ -1403,11 +1446,17 @@ export default function Home() {
   }
 
   async function deleteSpecialOrder(order: SpecialOrder) {
-    if (!db) return;
+    if (!db || !user) return;
+    const ownerId = user.uid;
     setDeletingSpecialOrderId(order.id);
     setError("");
     try {
-      await deleteDoc(doc(db, "specialOrders", order.id));
+      const firestore = db;
+      const notificationReferences = await getDocumentNotificationReferences(firestore, ownerId, order.id);
+      const batch = writeBatch(firestore);
+      notificationReferences.forEach((reference) => batch.delete(reference));
+      batch.delete(doc(firestore, "specialOrders", order.id));
+      await batch.commit();
       setSpecialOrders((current) => current.filter((item) => item.id !== order.id));
       setSpecialOrderPreview((current) => current?.id === order.id ? null : current);
       setPendingSpecialOrderDelete(null);
@@ -1427,6 +1476,16 @@ export default function Home() {
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       setError(code ? `Could not mark the activity notification as read (${code}).` : "Could not mark the activity notification as read.");
+    }
+  }
+
+  async function markDocumentNotificationRead(notification: DocumentNotification) {
+    if (!db || notification.read) return;
+    try {
+      await updateDoc(doc(db, "documentNotifications", notification.id), { read: true, readAt: serverTimestamp() });
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not mark the ${notification.documentType} notification as read (${code}).` : `Could not mark the ${notification.documentType} notification as read.`);
     }
   }
 
@@ -1477,7 +1536,7 @@ export default function Home() {
       </div>}</div>
       {canAccessAmiaDocumentTracking && <div className="nav-dropdown amia-document-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAmiaDocumentMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setAmiaDocumentMenuOpen(false); }}><button type="button" className="nav-button amia-document-nav-button" aria-haspopup="true" aria-expanded={amiaDocumentMenuOpen} aria-controls="amia-document-menu" onClick={() => setAmiaDocumentMenuOpen((open) => !open)}>AMIA Document Tracking <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{amiaDocumentMenuOpen && <div className="nav-dropdown-menu amia-document-nav-menu" id="amia-document-menu">{amiaDocumentTrackingLinks.map((link) => <a className="nav-dropdown-item" href={link.href} key={link.label} target="_blank" rel="noopener noreferrer">{link.label}</a>)}</div>}</div>}
       <div className="nav-dropdown certificate-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setCertificateMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setCertificateMenuOpen(false); }}><button type="button" className={section === "certificate-of-appearance" || section === "completion" || section === "appreciation" || section === "participation" ? "nav-button certificate-nav-button active" : "nav-button certificate-nav-button"} aria-haspopup="true" aria-expanded={certificateMenuOpen} aria-controls="certificate-menu" onClick={() => setCertificateMenuOpen((open) => !open)}>Certificate <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{certificateMenuOpen && <div className="nav-dropdown-menu certificate-nav-menu" id="certificate-menu"><button type="button" className={section === "certificate-of-appearance" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("certificate-of-appearance"); setView("list"); setCertificateMenuOpen(false); }}>Appearance</button><button type="button" className={section === "completion" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("completion"); setView("list"); setCertificateMenuOpen(false); }}>Completion</button><button type="button" className={section === "appreciation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("appreciation"); setView("list"); setCertificateMenuOpen(false); }}>Appreciation</button><button type="button" className={section === "participation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("participation"); setView("list"); setCertificateMenuOpen(false); }}>Participation</button></div>}</div>
-    </nav><div className="user-menu"><MessengerButton user={user} active={section === "messenger"} onClick={() => { closeMobileNavigation(); setSection("messenger"); setView("list"); }} /><PermitNotificationCenter isAdmin={isAdmin} userId={user.uid} count={notificationCount} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} calendarActivityNotifications={calendarActivityNotifications} calendarActivityApprovalNotifications={calendarActivityApprovalNotifications} onReadCalendarActivityApproval={(notification) => void markCalendarActivityApprovalNotificationRead(notification)} onOpenCalendarActivityApproval={() => { closeMobileNavigation(); setSection("calendar-activity-records"); setView("list"); }} onReadCalendarActivity={(notification) => void markCalendarActivityNotificationRead(notification)} onAdminOpen={(notification) => { closeMobileNavigation(); setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onViewPermit={(notification) => { closeMobileNavigation(); setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div><button type="button" className="mobile-menu-toggle" aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen} aria-controls="mobile-navigation" onClick={() => setMobileMenuOpen((open) => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 5h18M3 12h18M3 19h18" /></svg></button></header>
+    </nav><div className="user-menu"><MessengerButton user={user} active={section === "messenger"} onClick={() => { closeMobileNavigation(); setSection("messenger"); setView("list"); }} /><PermitNotificationCenter isAdmin={isAdmin} userId={user.uid} count={notificationCount} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} documentNotifications={documentNotifications} calendarActivityNotifications={calendarActivityNotifications} calendarActivityApprovalNotifications={calendarActivityApprovalNotifications} onReadCalendarActivityApproval={(notification) => void markCalendarActivityApprovalNotificationRead(notification)} onOpenCalendarActivityApproval={() => { closeMobileNavigation(); setSection("calendar-activity-records"); setView("list"); }} onReadDocument={(notification) => void markDocumentNotificationRead(notification)} onReadCalendarActivity={(notification) => void markCalendarActivityNotificationRead(notification)} onAdminOpen={(notification) => { closeMobileNavigation(); setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onViewPermit={(notification) => { closeMobileNavigation(); setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div><button type="button" className="mobile-menu-toggle" aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen} aria-controls="mobile-navigation" onClick={() => setMobileMenuOpen((open) => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 5h18M3 12h18M3 19h18" /></svg></button></header>
 {mobileMenuOpen && <><button type="button" className="mobile-nav-scrim" aria-label="Close navigation" onClick={closeMobileNavigation} /><nav className="mobile-navigation" id="mobile-navigation" aria-label="Mobile navigation">
 <button type="button" className="mobile-profile-link" onClick={() => { closeMobileNavigation(); setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button>
 <div className="mobile-navigation-links">

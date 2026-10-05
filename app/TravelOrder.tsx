@@ -4,16 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-import { addDoc, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
+import { getDocumentNotificationReferences, makeDocumentNotification } from "@/lib/document-notifications";
 import DeleteConfirmation from "./DeleteConfirmation";
 import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import "./travel-order.css";
 
 type TravelOrderStatus = WorkflowStatus;
-type TravelOrderPerson = { name: string; position: string; salary: string; toNumber?: string };
+type TravelOrderPerson = { name: string; userId?: string; position: string; salary: string; toNumber?: string };
 type TravelOrder = {
   id: string;
   date: string;
@@ -31,6 +32,7 @@ type TravelOrder = {
   remarks: string;
   status: TravelOrderStatus;
   ownerId: string;
+  recipientIds?: string[];
   createdAt?: unknown;
 };
 
@@ -100,7 +102,8 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
     onError("");
     const record = {
       date: "",
-      people: people.map((person) => ({ name: person.name.trim(), position: person.position.trim(), salary: person.salary.trim() })),
+      people: people.map((person) => ({ name: person.name.trim(), userId: person.userId, position: person.position.trim(), salary: person.salary.trim() })),
+      recipientIds: [...new Set(people.map((person) => person.userId).filter((id): id is string => Boolean(id) && id !== user.uid))],
       officeStation,
       departureDate,
       returnDate,
@@ -117,8 +120,16 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
       createdAt: serverTimestamp(),
     };
     try {
-      const reference = await addDoc(collection(db, "travelOrders"), record);
-      onSaved({ id: reference.id, ...record });
+      const firestore = db;
+      const orderRef = doc(collection(firestore, "travelOrders"));
+      const batch = writeBatch(firestore);
+      batch.set(orderRef, record);
+      record.recipientIds.forEach((recipientId) => {
+        const notification = makeDocumentNotification(firestore, { recipientId, ownerId: user.uid, documentId: orderRef.id, documentType: "Travel Order", departureDate, returnDate, placeOfTravel: record.placeOfTravel, purpose: record.purpose });
+        batch.set(notification.reference, notification.data);
+      });
+      await batch.commit();
+      onSaved({ id: orderRef.id, ...record });
     } catch (error) {
       const code = (error as { code?: string }).code;
       onError(code ? `Could not save the Travel Order (${code}).` : "Could not save the Travel Order. Try again.");
@@ -134,7 +145,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
         {personnelStatus === "error" && <p className="travel-order-number-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</p>}
         {people.map((person, index) => <fieldset className="travel-order-person" key={index}>
           <legend>Person {index + 1}</legend>
-          <label>Name<select value={person.name} onChange={(event) => { const name = event.target.value; updatePerson(index, { name, position: personnel.find((entry) => entry.name === name)?.position ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((entry) => <option key={entry.name} value={entry.name}>{entry.name}</option>)}</select></label>
+          <label>Name<select value={person.userId ?? ""} onChange={(event) => { const userId = event.target.value; const selectedPerson = personnel.find((entry) => entry.userId === userId); updatePerson(index, { userId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a person"}</option>{personnel.map((entry) => <option key={entry.userId} value={entry.userId}>{entry.name}</option>)}</select></label>
           <label>Position<input value={person.position} readOnly required /></label>
           <label>Monthly Salary <span className="muted-inline">(optional)</span><div className="travel-order-currency-field"><span aria-hidden="true">₱</span><input type="number" inputMode="decimal" min="0" step="0.01" value={person.salary} onChange={(event) => updatePerson(index, { salary: event.target.value })} onBlur={() => { if (person.salary !== "") updatePerson(index, { salary: Number(person.salary).toFixed(2) }); }} aria-label="Monthly salary amount in Philippine pesos" placeholder="0.00" /></div></label>
           {people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}
@@ -332,12 +343,14 @@ export default function TravelOrderModule({ user }: { user: User }) {
       const numberRefs = [...new Set(order.people.map((person) => person.toNumber?.trim()).filter((number): number is string => Boolean(number)))]
         .map((number) => doc(firestore, "travelOrderNumbers", travelOrderNumberKey(number)));
       const numberSnapshots = await Promise.all(numberRefs.map((numberRef) => getDoc(numberRef)));
+      const notificationReferences = await getDocumentNotificationReferences(firestore, user.uid, order.id);
       const batch = writeBatch(firestore);
       numberSnapshots.forEach((snapshot) => {
         if (!snapshot.exists()) return;
         const data = snapshot.data();
         if (data.ownerId === user.uid && data.travelOrderId === order.id) batch.delete(snapshot.ref);
       });
+      notificationReferences.forEach((reference) => batch.delete(reference));
       batch.delete(doc(firestore, "travelOrders", order.id));
       await batch.commit();
       setOrders((current) => current.filter((item) => item.id !== order.id));

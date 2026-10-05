@@ -1,7 +1,7 @@
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-export type PersonnelEntry = { name: string; position: string; unit: string };
+export type PersonnelEntry = { userId: string; name: string; position: string; unit: string };
 
 // Personnel dropdowns are built from registered user accounts (users collection).
 export async function loadPersonnel(): Promise<PersonnelEntry[]> {
@@ -10,6 +10,7 @@ export async function loadPersonnel(): Promise<PersonnelEntry[]> {
   const entries = snapshot.docs.map((item) => {
     const data = item.data();
     return {
+      userId: item.id,
       name: typeof data.name === "string" ? data.name.trim() : "",
       position: typeof data.position === "string" ? data.position.trim() : "",
       unit: typeof data.unit === "string" ? data.unit.trim() : "",

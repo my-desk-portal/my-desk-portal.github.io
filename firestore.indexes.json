@@ -23,6 +23,14 @@
         { "fieldPath": "calendarId", "order": "ASCENDING" },
         { "fieldPath": "ownerId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "documentNotifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "documentId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

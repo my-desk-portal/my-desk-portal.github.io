@@ -226,6 +226,56 @@ service cloud.firestore {
           && request.resource.data.createdAt is timestamp));
       allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
+    match /documentNotifications/{notificationId} {
+      function documentPath(collectionName, documentId) {
+        return /databases/$(database)/documents/$(collectionName)/$(documentId);
+      }
+      allow read: if isVerifiedUser()
+        && (resource.data.recipientId == request.auth.uid || resource.data.ownerId == request.auth.uid);
+      allow create: if isVerifiedUser()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.recipientId is string
+        && request.resource.data.recipientId != request.auth.uid
+        && request.resource.data.documentId is string
+        && request.resource.data.read == false
+        && request.resource.data.createdAt is timestamp
+        && (
+          (request.resource.data.documentType == "Special Order"
+            && existsAfter(documentPath("specialOrders", request.resource.data.documentId))
+            && getAfter(documentPath("specialOrders", request.resource.data.documentId)).data.ownerId == request.auth.uid
+            && request.resource.data.recipientId in getAfter(documentPath("specialOrders", request.resource.data.documentId)).data.recipientIds
+            && request.resource.data.activityTitle == getAfter(documentPath("specialOrders", request.resource.data.documentId)).data.activityTitle
+            && request.resource.data.dateFrom == getAfter(documentPath("specialOrders", request.resource.data.documentId)).data.dateFrom
+            && request.resource.data.dateTo == getAfter(documentPath("specialOrders", request.resource.data.documentId)).data.dateTo
+            && request.resource.data.venue == getAfter(documentPath("specialOrders", request.resource.data.documentId)).data.venue)
+          || (request.resource.data.documentType == "Notice to Attend"
+            && existsAfter(documentPath("ntaRecords", request.resource.data.documentId))
+            && getAfter(documentPath("ntaRecords", request.resource.data.documentId)).data.ownerId == request.auth.uid
+            && request.resource.data.recipientId in getAfter(documentPath("ntaRecords", request.resource.data.documentId)).data.recipientIds
+            && request.resource.data.activityTitle == getAfter(documentPath("ntaRecords", request.resource.data.documentId)).data.activityTitle
+            && request.resource.data.schedules is list)
+          || (request.resource.data.documentType == "Permit Slip"
+            && existsAfter(documentPath("permits", request.resource.data.documentId))
+            && getAfter(documentPath("permits", request.resource.data.documentId)).data.ownerId == request.auth.uid
+            && request.resource.data.recipientId in getAfter(documentPath("permits", request.resource.data.documentId)).data.recipientIds
+            && request.resource.data.date == getAfter(documentPath("permits", request.resource.data.documentId)).data.date
+            && request.resource.data.purpose == getAfter(documentPath("permits", request.resource.data.documentId)).data.purpose)
+          || (request.resource.data.documentType == "Travel Order"
+            && existsAfter(documentPath("travelOrders", request.resource.data.documentId))
+            && getAfter(documentPath("travelOrders", request.resource.data.documentId)).data.ownerId == request.auth.uid
+            && request.resource.data.recipientId in getAfter(documentPath("travelOrders", request.resource.data.documentId)).data.recipientIds
+            && request.resource.data.departureDate == getAfter(documentPath("travelOrders", request.resource.data.documentId)).data.departureDate
+            && request.resource.data.returnDate == getAfter(documentPath("travelOrders", request.resource.data.documentId)).data.returnDate
+            && request.resource.data.placeOfTravel == getAfter(documentPath("travelOrders", request.resource.data.documentId)).data.placeOfTravel
+            && request.resource.data.purpose == getAfter(documentPath("travelOrders", request.resource.data.documentId)).data.purpose)
+        );
+      allow update: if isVerifiedUser()
+        && resource.data.recipientId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read", "readAt"])
+        && request.resource.data.read == true
+        && request.resource.data.readAt is timestamp;
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+    }
     match /permits/{permitId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isPermitAdmin());
       allow create: if isVerifiedUser()
