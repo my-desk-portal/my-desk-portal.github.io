@@ -26,6 +26,7 @@ const emojis = ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", 
 const stickers = ["👍", "❤️", "😂", "🎉", "🙏", "😍", "🔥", "👏", "😢", "😎", "🥳", "💯", "🤝", "🙌", "😴", "🤔"];
 const MAX_TEXT = 2000;
 const reactionOptions = [
+  { key: "laughing", emoji: "😂", label: "Laughing" },
   { key: "heart", emoji: "❤️", label: "Love" },
   { key: "like", emoji: "👍", label: "Like" },
   { key: "wow", emoji: "😮", label: "Wow" },
