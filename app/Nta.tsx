@@ -202,6 +202,10 @@ function NtaEditor({ record, userId, onCancel, onSaved, onRemove }: { record: Nt
     return () => { cancelled = true; };
   }, []);
 
+  function updateBatch(index: number, update: Partial<NtaBatch>) {
+    setBatches((current) => current.map((batch, itemIndex) => itemIndex === index ? { ...batch, ...update } : batch));
+  }
+
   function updateAttendee(batchIndex: number, attendeeIndex: number, update: Partial<NtaAttendee>) {
     setBatches((current) => current.map((batch, index) => index === batchIndex ? { ...batch, attendees: batch.attendees.map((attendee, row) => row === attendeeIndex ? { ...attendee, ...update } : attendee) } : batch));
   }
