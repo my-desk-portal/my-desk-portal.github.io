@@ -32,7 +32,7 @@
 .travel-plan-responsible-list{display:flex;flex-wrap:wrap;gap:7px;margin:0;padding:0;list-style:none}
 .travel-plan-responsible-list li{align-items:center;background:#edf4ef;border:1px solid #d6e4d9;color:var(--ink);display:inline-flex;font-size:12px;gap:8px;max-width:100%;padding:5px 8px}
 .travel-plan-responsible-list li span{overflow-wrap:anywhere}
-.travel-plan-responsible-list li button{background:transparent;border:0;color:#8c342b;cursor:pointer;font:inherit;font-size:11px;font-weight:700;padding:2px}
+.travel-plan-responsible-list li button:not(.remove-action){background:transparent;border:0;color:#8c342b;cursor:pointer;font:inherit;font-size:11px;font-weight:700;padding:2px}
 .travel-plan-row>.remove-participant{grid-column:1/-1;justify-self:start}
 .travel-plan-prepared-summary{border-left:3px solid var(--accent);display:grid;gap:3px;padding:6px 0 6px 12px}
 .travel-plan-prepared-summary span,.travel-plan-prepared-summary em{color:var(--muted);font-size:12px;font-style:normal}

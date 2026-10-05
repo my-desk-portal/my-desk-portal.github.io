@@ -286,7 +286,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
             const value = isDateWithinMonth(event.target.value, month) && (!reference.dateFrom || event.target.value >= reference.dateFrom) ? event.target.value : "";
             updateReference(index, { dateTo: value });
           }} required /></label>
-          {references.length > 1 && <button type="button" className="mytev-remove-reference" aria-label={`Remove travel reference ${index + 1}`} onClick={() => setReferences((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
+          {references.length > 1 && <button type="button" className="mytev-remove-reference remove-action" aria-label={`Remove travel reference ${index + 1}`} onClick={() => setReferences((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
         </fieldset>)}</div>
         <label className="mytev-evidence-field">Evidence of Travel<textarea rows={2} maxLength={240} value={evidenceOfTravel} onChange={(event) => setEvidenceOfTravel(event.target.value)} placeholder="Approved Itinerary of Travel, Approved Travel Order, bus tickets, certificate of appearance" required /></label>
       </section>
@@ -296,11 +296,11 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, onCancel, 
         const rowLimitReached = itinerary.rows.length >= maxItineraryRows;
         const rowThirteenFilled = Boolean(itinerary.rows[maxItineraryRows - 1] && hasRowData(itinerary.rows[maxItineraryRows - 1]));
         return <section className="mytev-itinerary-editor" key={itinerary.id}>
-          <div className="mytev-itinerary-editor-heading"><div><p className="eyebrow">Itinerary {String(itineraryIndex + 1).padStart(2, "0")}</p><h3>Itinerary of Travel</h3><p className="muted">Add travel lines as needed. Dense entries continue onto additional A4 pages automatically.</p></div>{itineraries.length > 1 && <button type="button" className="mytev-remove-itinerary" onClick={() => setItineraries((current) => current.filter((item) => item.id !== itinerary.id))}>Remove itinerary</button>}</div>
+          <div className="mytev-itinerary-editor-heading"><div><p className="eyebrow">Itinerary {String(itineraryIndex + 1).padStart(2, "0")}</p><h3>Itinerary of Travel</h3><p className="muted">Add travel lines as needed. Dense entries continue onto additional A4 pages automatically.</p></div>{itineraries.length > 1 && <button type="button" className="mytev-remove-itinerary remove-action" onClick={() => setItineraries((current) => current.filter((item) => item.id !== itinerary.id))}>Remove itinerary</button>}</div>
           <div className="mytev-itinerary-rows" role="group" aria-label={`Itinerary ${itineraryIndex + 1} fixed rows`}>
             {itinerary.rows.map((row, rowIndex) => <fieldset className="mytev-itinerary-line" key={`${itinerary.id}-row-${rowIndex}`}>
               <legend>Row {String(rowIndex + 1).padStart(2, "0")}</legend>
-              <button type="button" className="mytev-remove-row" aria-label={`Remove itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}`} onClick={() => removeRow(itinerary.id, rowIndex)}>Remove row</button>
+              <button type="button" className="mytev-remove-row remove-action" aria-label={`Remove itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}`} onClick={() => removeRow(itinerary.id, rowIndex)}>Remove row</button>
               <div className="mytev-itinerary-row-top">
                 <label>Date<input type="date" min={monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={row.dateFrom} onChange={(event) => {
                   const value = isDateWithinMonth(event.target.value, month) ? event.target.value : "";
