@@ -5,6 +5,7 @@ import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, up
 import type { User } from "firebase/auth";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import { PDFDocument } from "pdf-lib";
 import { db } from "@/lib/firebase";
 import { parseCertificateImportWorkbook } from "@/lib/certificate-import";
 import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
@@ -31,6 +32,7 @@ type CertificateRecord = {
 
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const blankCertificateAsset = publicAsset("/certificate-of-appearance-blank.jpg");
+const blankCertificatePdfAsset = publicAsset("/certificate-of-appearance.pdf");
 const certificateDivisionDisplayNames: Record<string, string> = {
   "Planning, Monitoring and Evaluation Division": "PMED",
   "Agribusiness and Marketing Assistance Division": "AMAD",
@@ -72,9 +74,58 @@ function pronoun(gender: CertificateGender) {
   return gender === "female" ? "her" : gender === "male" ? "him" : "them";
 }
 
+async function makeSignatoryBlockImage(name: string, designation: string, division: string) {
+  await Promise.all([
+    document.fonts.load("bold 12px Cambria"),
+    document.fonts.load("italic 11px Cambria"),
+    document.fonts.load("11px Cambria"),
+  ]);
+
+  const width = 271.5;
+  const height = 32;
+  const scale = 4;
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Unable to prepare the signatory details.");
+  context.scale(scale, scale);
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#111";
+  context.textAlign = "right";
+  context.textBaseline = "alphabetic";
+
+  const displayName = name.toLocaleUpperCase("en");
+  let nameSize = 12;
+  context.font = `bold ${nameSize}px Cambria, "Times New Roman", serif`;
+  while (context.measureText(displayName).width > width - 4 && nameSize > 8) {
+    nameSize -= 0.25;
+    context.font = `bold ${nameSize}px Cambria, "Times New Roman", serif`;
+  }
+  context.fillText(displayName, width, 14.5);
+
+  const divisionText = division;
+  const designationText = `${designation},`;
+  let roleSize = 11;
+  context.font = `${roleSize}px Cambria, "Times New Roman", serif`;
+  while (context.measureText(`${designationText} ${divisionText}`).width > width - 4 && roleSize > 8) {
+    roleSize -= 0.25;
+    context.font = `${roleSize}px Cambria, "Times New Roman", serif`;
+  }
+  const divisionWidth = context.measureText(divisionText).width;
+  const spaceWidth = context.measureText(" ").width;
+  context.font = `italic ${roleSize}px Cambria, "Times New Roman", serif`;
+  context.fillText(designationText, width - divisionWidth - spaceWidth, 29.9);
+  context.font = `${roleSize}px Cambria, "Times New Roman", serif`;
+  context.fillText(divisionText, width, 29.9);
+
+  return canvas.toDataURL("image/png");
+}
+
 export default function CertificateOfAppearance({ user }: { user: User }) {
   const [records, setRecords] = useState<CertificateRecord[]>([]);
-  const [view, setView] = useState<"list" | "new" | "edit">("list");
+  const [view, setView] = useState<"list" | "new" | "edit" | "blank-ca">("list");
   const [editingRecord, setEditingRecord] = useState<CertificateRecord | null>(null);
   const [preview, setPreview] = useState<CertificateRecord | null>(null);
   const [pendingDelete, setPendingDelete] = useState<CertificateRecord | null>(null);
@@ -85,6 +136,8 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
   const [printing, setPrinting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
+  const [generatingBlank, setGeneratingBlank] = useState(false);
+  const [blankError, setBlankError] = useState("");
   const [error, setError] = useState("");
   const pagesRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -275,6 +328,45 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     }
   }
 
+  async function generateBlankCertificate(division: TevDivision) {
+    if (!tevDivisions.includes(division)) return;
+    setGeneratingBlank(true);
+    setBlankError("");
+    try {
+      const response = await fetch(blankCertificatePdfAsset);
+      if (!response.ok) throw new Error("The Certificate of Appearance PDF could not be loaded.");
+      const pdf = await PDFDocument.load(await response.arrayBuffer());
+      const page = pdf.getPages()[0];
+      if (!page) throw new Error("The Certificate of Appearance PDF has no pages.");
+
+      const signatory = divisionSignatory(division);
+      const signatoryImage = await pdf.embedPng(await makeSignatoryBlockImage(signatory.name, signatory.position, division));
+      const signatureBlocks = [
+        { y: 480 },
+        { y: 66.5 },
+      ];
+
+      for (const block of signatureBlocks) {
+        page.drawImage(signatoryImage, { x: 260, y: block.y, width: 271.5, height: 32 });
+      }
+
+      const pdfBytes = await pdf.save();
+      const downloadData = new Uint8Array(pdfBytes).buffer as ArrayBuffer;
+      const downloadUrl = URL.createObjectURL(new Blob([downloadData], { type: "application/pdf" }));
+      const downloadLink = document.createElement("a");
+      downloadLink.href = downloadUrl;
+      downloadLink.download = `certificate-of-appearance-blank-${division.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}.pdf`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (cause) {
+      setBlankError(cause instanceof Error ? cause.message : "Unable to generate the blank Certificate of Appearance PDF.");
+    } finally {
+      setGeneratingBlank(false);
+    }
+  }
+
   if (preview) {
     const pages: CertificatePerson[][] = [];
     for (let index = 0; index < preview.people.length; index += 2) pages.push(preview.people.slice(index, index + 2));
@@ -289,10 +381,11 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
 
   if (view === "new") return <CertificateForm onCancel={() => { setView("list"); setError(""); }} onSubmit={saveCertificate} saving={saving} error={error} />;
   if (view === "edit" && editingRecord) return <CertificateNamesForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveNameCorrections} saving={saving} error={error} />;
+  if (view === "blank-ca") return <BlankCertificateGenerator onCancel={() => { setView("list"); setBlankError(""); }} onGenerate={(division) => void generateBlankCertificate(division)} generating={generatingBlank} error={blankError} />;
 
   return <>
   <section className="content-section form-section coa-list-section">
-    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Appearance Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="coa-template-link" href={publicAsset("/CA_Importing_Template.xlsx")} download="CA_Importing_Template.xlsx">CA_Importing_Template.xlsx</a>.<br />Click here to download the <a className="coa-template-link" href={publicAsset("/certificate-of-appearance-template.pdf")} download="certificate-of-appearance-template.pdf"><strong>Certificate of Appearance Template</strong></a>.</p></div><div className="coa-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
+    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Appearance Generated Reports</h2><p className="muted">Create certificates manually or import the <a className="coa-template-link" href={publicAsset("/CA_Importing_Template.xlsx")} download="CA_Importing_Template.xlsx">CA_Importing_Template.xlsx</a>.<br /><button type="button" className="coa-template-link coa-generate-link" onClick={() => { setBlankError(""); setView("blank-ca"); }}>Click here to generate the Certificate of Appearance</button></p></div><div className="coa-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
     <input ref={importInputRef} className="coa-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importCertificates(event)} aria-label="Import Certificate of Appearance workbook" />
     {error && <p className="coa-error" role="alert">{error}</p>}
     {importMessage && <p className="coa-success" role="status">{importMessage}</p>}
@@ -300,6 +393,24 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
   </section>
   <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Certificate of Appearance Deletion?" description="Are you sure you want to delete this Certificate of Appearance? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
   </>;
+}
+
+function BlankCertificateGenerator({ onCancel, onGenerate, generating, error }: { onCancel: () => void; onGenerate: (division: TevDivision) => void; generating: boolean; error: string }) {
+  const [division, setDivision] = useState<TevDivision | "">("");
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (division) onGenerate(division);
+  }
+
+  return <section className="content-section form-section coa-form-section coa-blank-section">
+    <div className="section-heading"><div><p className="eyebrow">Blank certificate</p><h2>Generate a Blank Certificate of Appearance</h2><p className="muted">Select your division to fill in its signatory details, then download the A4 certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    {error && <p className="coa-error" role="alert">{error}</p>}
+    <form className="permit-form coa-blank-form" onSubmit={submit}>
+      <label className="wide-field">Select a Division<select value={division} onChange={(event) => setDivision(event.target.value as TevDivision | "")} required><option value="" disabled>Select a Division</option>{tevDivisions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+      <div className="wide-field form-actions"><button type="submit" className="primary-button" disabled={!division || generating}>{generating ? "Generating PDF..." : "Generate the Blank CA"}</button></div>
+    </form>
+  </section>;
 }
 
 function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
