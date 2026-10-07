@@ -8,6 +8,8 @@ const db = getFirestore(app, "ps-taguibo");
 const reminders = db.collection("documentReminders");
 const hour = 60 * 60 * 1000;
 const day = 24 * hour;
+const permitWarningAfter = 8 * hour;
+const permitDeletionAfter = permitWarningAfter + 30 * 60 * 1000;
 
 function manilaParts(date) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -60,9 +62,27 @@ async function createReminder(kind, recordId, ownerId, details) {
   });
 }
 
-async function deleteReminder(kind, recordId) {
-  await reminders.doc(stableReminderId(kind, recordId)).delete().catch((error) => {
-    logger.error("Could not remove stale document reminder", { kind, recordId, error });
+async function ensureReminder(kind, recordId, ownerId, details) {
+  const reference = reminders.doc(stableReminderId(kind, recordId));
+  await db.runTransaction(async (transaction) => {
+    const existing = await transaction.get(reference);
+    const fields = { recipientId: ownerId, ownerId, kind, recordId, ...details };
+    if (!existing.exists) {
+      transaction.create(reference, {
+        ...fields,
+        read: false,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    const current = existing.data();
+    const changed = Object.entries(fields).some(([key, value]) => {
+      const currentValue = current[key];
+      if (value instanceof Timestamp && currentValue instanceof Timestamp) return !value.isEqual(currentValue);
+      return currentValue !== value;
+    });
+    if (changed) transaction.update(reference, fields);
   });
 }
 
@@ -99,28 +119,33 @@ function permitDecisionKey(data, index) {
 }
 
 function pendingPermitIndices(data) {
-  const names = Array.isArray(data.names) ? data.names : [];
+  const names = Array.isArray(data.names) ? data.names : typeof data.name === "string" ? [data.name] : [];
   return names.flatMap((_, index) => {
     const decision = data.personStatuses?.[permitDecisionKey(data, index)];
     return isPending(decision?.status) ? [index] : [];
   });
 }
 
-async function clearExpiredPermitPeople(permitSnapshot, now) {
+async function processPendingPermit(permitSnapshot, now) {
   const permitRef = permitSnapshot.ref;
   const initialData = permitSnapshot.data();
   const createdAt = timestampMillis(initialData.createdAt);
-  if (!createdAt || now < createdAt + 2 * day) return;
+  if (!createdAt || now < createdAt + permitWarningAfter) return false;
 
   const result = await db.runTransaction(async (transaction) => {
     const fresh = await transaction.get(permitRef);
-    if (!fresh.exists) return { removedUserIds: [], deletedPermit: false };
+    if (!fresh.exists) return { removedUserIds: [], deletedPermit: false, shouldWarn: false };
     const data = fresh.data();
     const currentCreatedAt = timestampMillis(data.createdAt);
-    if (!currentCreatedAt || now < currentCreatedAt + 2 * day) return { removedUserIds: [], deletedPermit: false };
-    const names = Array.isArray(data.names) ? data.names : [];
+    if (!currentCreatedAt || now < currentCreatedAt + permitWarningAfter) return { removedUserIds: [], deletedPermit: false, shouldWarn: false };
+    const names = Array.isArray(data.names) ? data.names : typeof data.name === "string" ? [data.name] : [];
     const pendingIndices = pendingPermitIndices(data);
-    if (!pendingIndices.length) return { removedUserIds: [], deletedPermit: false };
+    if (!pendingIndices.length) return { removedUserIds: [], deletedPermit: false, shouldWarn: false };
+
+    if (now < currentCreatedAt + permitDeletionAfter) {
+      return { removedUserIds: [], deletedPermit: false, shouldWarn: true };
+    }
+
     const pendingSet = new Set(pendingIndices);
     const keepIndices = names.map((_, index) => index).filter((index) => !pendingSet.has(index));
     const personIds = Array.isArray(data.personIds) ? data.personIds : [];
@@ -129,7 +154,7 @@ async function clearExpiredPermitPeople(permitSnapshot, now) {
 
     if (keepIndices.length === 0) {
       transaction.delete(permitRef);
-      return { removedUserIds, deletedPermit: true };
+      return { removedUserIds, deletedPermit: true, shouldWarn: false };
     }
 
     const permitNos = Array.isArray(data.permitNos) ? data.permitNos : [];
@@ -148,11 +173,12 @@ async function clearExpiredPermitPeople(permitSnapshot, now) {
     if (personIds.length) nextData.personIds = keptPersonIds;
     if (permitNos.length) nextData.permitNos = keptPermitNos;
     if (personUnits.length) nextData.personUnits = keptPersonUnits;
+    if (typeof data.name === "string") nextData.name = keepIndices.map((index) => names[index]).join(", ");
     if (Array.isArray(data.recipientIds) && personIds.length) {
       nextData.recipientIds = [...new Set(keptPersonIds.filter((id) => id !== data.ownerId))];
     }
     transaction.update(permitRef, nextData);
-    return { removedUserIds, deletedPermit: false };
+    return { removedUserIds, deletedPermit: false, shouldWarn: false };
   });
 
   if (result.deletedPermit || result.removedUserIds.length) {
@@ -170,7 +196,15 @@ async function clearExpiredPermitPeople(permitSnapshot, now) {
     });
     if (hasDeletes) await batch.commit();
   }
-  if (result.deletedPermit) await deleteReminder("permit-slip-expiry", permitRef.id);
+  if (result.deletedPermit) {
+    const calendarEntries = await db.collection("approvedPermitCalendar").where("permitId", "==", permitRef.id).get();
+    for (let start = 0; start < calendarEntries.docs.length; start += 450) {
+      const batch = db.batch();
+      calendarEntries.docs.slice(start, start + 450).forEach((entry) => batch.delete(entry.ref));
+      await batch.commit();
+    }
+  }
+  return result.shouldWarn;
 }
 
 async function processTravelOrders(now) {
@@ -218,24 +252,21 @@ async function processLeaveApplications(now) {
 }
 
 async function processPermits(now) {
-  const snapshot = await db.collection("permits").get();
+  const warningThreshold = Timestamp.fromMillis(now - permitWarningAfter);
+  const snapshot = await db.collection("permits").where("createdAt", "<=", warningThreshold).get();
   const activeReminderIds = new Set();
   await Promise.all(snapshot.docs.map(async (item) => {
     const data = item.data();
-    const pendingIndices = pendingPermitIndices(data);
-    if (pendingIndices.length) {
-      const permitDate = dateOnlyManilaMillis(data.date);
-      const deleteAtMillis = timestampMillis(data.createdAt) + 2 * day;
-      if (permitDate !== null && now >= permitDate + day) {
-        activeReminderIds.add(item.id);
-        await createReminder("permit-slip-expiry", item.id, data.ownerId, {
-          date: data.date ?? "",
-          purpose: data.purpose ?? "",
-          deletesAt: deleteAtMillis ? Timestamp.fromMillis(deleteAtMillis) : null,
-        });
-      }
+    const shouldWarn = await processPendingPermit(item, now);
+    if (shouldWarn && typeof data.ownerId === "string") {
+      activeReminderIds.add(item.id);
+      const createdAt = timestampMillis(data.createdAt);
+      await ensureReminder("permit-slip-expiry", item.id, data.ownerId, {
+        date: data.date ?? "",
+        purpose: data.purpose ?? "",
+        deletesAt: createdAt ? Timestamp.fromMillis(createdAt + permitDeletionAfter) : null,
+      });
     }
-    await clearExpiredPermitPeople(item, now);
   }));
   const warningSnapshot = await reminders.where("kind", "==", "permit-slip-expiry").get();
   const staleWarnings = warningSnapshot.docs.filter((notification) => !activeReminderIds.has(notification.data().recordId));
@@ -305,10 +336,24 @@ export const sendPendingDocumentReminders = onSchedule({
   await Promise.all([
     processTravelOrders(now),
     processLeaveApplications(now),
-    processPermits(now),
     processAccomplishmentReports(now),
   ]).catch((error) => {
     logger.error("Could not process all document reminders", error);
     throw error;
   });
+});
+
+export const expirePendingPermitSlips = onSchedule({
+  schedule: "* * * * *",
+  timeZone: "Asia/Manila",
+  region: "asia-southeast1",
+  timeoutSeconds: 540,
+  memory: "512MiB",
+}, async () => {
+  try {
+    await processPermits(Date.now());
+  } catch (error) {
+    logger.error("Could not process pending Permit Slip expiry", error);
+    throw error;
+  }
 });

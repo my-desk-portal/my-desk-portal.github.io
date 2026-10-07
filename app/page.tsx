@@ -549,7 +549,7 @@ function reminderDate(value: string) {
 function reminderTitle(reminder: DocumentReminder) {
   if (reminder.kind === "travel-order-status") return "Travel Order still Pending";
   if (reminder.kind === "leave-application-status") return "Leave Application still Pending";
-  if (reminder.kind === "permit-slip-expiry") return "Permit Slip still Pending";
+  if (reminder.kind === "permit-slip-expiry") return "Permit Slip pending deletion";
   return "Draft your accomplishment report";
 }
 
@@ -649,7 +649,6 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
       </button></li>)}</ul></>}
       {shownDocumentReminders.length > 0 && <><p className="notification-section-title">Status reminders</p><ul>{shownDocumentReminders.map((notification) => {
         const isRead = notification.read;
-        const deleteTime = timestampMillis(notification.deletesAt);
         return <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${isRead ? " is-read" : ""}`} onClick={() => {
           if (!isRead) onReadDocumentReminder(notification);
           setOpen(false);
@@ -670,7 +669,7 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
           {notification.kind === "permit-slip-expiry" && <>
             <span className="notification-detail"><span className="notification-detail-label">Date</span><span>{reminderDate(notification.date ?? "")}</span></span>
             <span className="notification-detail"><span className="notification-detail-label">Purpose</span><span>{notification.purpose}</span></span>
-            <small>{deleteTime ? `Still-pending slips will be deleted ${formatPhilippineDateTime(new Date(deleteTime))}.` : "This slip will be deleted if it remains Pending after two days from creation."}</small>
+            <small>Your permit slip on {reminderDate(notification.date ?? "")} for {notification.purpose || "the stated purpose"} will be automatically deleted after 30 minutes.</small>
           </>}
           {notification.kind === "accomplishment-report" && <span className="notification-detail"><span className="notification-detail-label">Month · Half-month Cycle</span><strong>{reminderPeriod(notification)}</strong></span>}
           <span className="notification-view-label">{notification.kind === "permit-slip-expiry" ? "Open Permit Slips" : notification.kind === "accomplishment-report" ? "Open myAR" : "Open record"}</span>
