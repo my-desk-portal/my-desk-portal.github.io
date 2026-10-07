@@ -10,6 +10,7 @@ import { parseParticipationImportWorkbook } from "@/lib/participation-import";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./participation.css";
 import "./participation-amia.css";
+import "./participation-drrm.css";
 
 type ParticipationUnit = "AMIA" | "AGRISTAT" | "DRRM";
 type ParticipantGender = "female" | "male";
@@ -27,6 +28,7 @@ type ParticipationRecord = {
   eventTimeFrom: string;
   eventTimeTo: string;
   eventDestination: string;
+  distributionDate?: string;
   distributionSameAsDestination: boolean;
   distributionPlace: string;
   ownerId: string;
@@ -35,6 +37,7 @@ type ParticipationRecord = {
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const amiaBlankTemplate = `${basePath}/AMIA%20Certificate%20-%20Blank.jpg`;
+const drrmBlankTemplate = `${basePath}/drrm-participation-blank-but-with-logos.jpg`;
 const bagongPilipinasLogo = `${basePath}/bagong-pilipinas-logo.webp`;
 const daCaragaLogo = `${basePath}/da-caraga-logo.jpg`;
 const importTemplate = `${basePath}/Participation_Importing_Template.xlsx`;
@@ -176,8 +179,8 @@ export default function ParticipationCertificate({ user }: { user: User }) {
     const eventDestination = String(form.get("event-destination") ?? "").trim();
     const sameAsDestination = form.get("distribution-same") === "yes";
     const unit = String(form.get("unit") ?? "") as ParticipationUnit;
-    if (unit !== "AMIA") {
-      setError("DRRM and AGRISTAT participation templates are on hold.");
+    if (unit !== "AMIA" && unit !== "DRRM") {
+      setError("AGRISTAT participation template is on hold.");
       return;
     }
     const names = form.getAll("participant-name").map((value) => String(value).trim());
@@ -196,6 +199,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
       eventTimeFrom: String(form.get("event-time-from") ?? ""),
       eventTimeTo: String(form.get("event-time-to") ?? ""),
       eventDestination,
+      distributionDate: String(form.get("event-date-to") || ""),
       distributionSameAsDestination: sameAsDestination,
       distributionPlace: sameAsDestination ? eventDestination : String(form.get("distribution-place") ?? "").trim(),
       ownerId: user.uid,
@@ -275,7 +279,8 @@ export default function ParticipationCertificate({ user }: { user: User }) {
         setRecords((current) => [...chunk, ...current]);
       }
       const participantCount = imported.reduce((count, record) => count + participantNames(record).length, 0);
-      setImportMessage(`Imported ${imported.length} AMIA participation ${imported.length === 1 ? "report" : "reports"} for ${participantCount} ${participantCount === 1 ? "participant" : "participants"}. Each participant receives an A4 certificate. Distribution dates use the event end date.`);
+      const importedUnits = [...new Set(imported.map((record) => record.unit))].join(" and ");
+      setImportMessage(`Imported ${imported.length} ${importedUnits} participation ${imported.length === 1 ? "report" : "reports"} for ${participantCount} ${participantCount === 1 ? "participant" : "participants"}. AMIA certificates use A4 landscape; DRRM certificates use Letter landscape. Workbook distribution dates are used, falling back to the event end date when blank.`);
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : "Check the template and try again.";
       setError(imported.length
@@ -309,8 +314,8 @@ export default function ParticipationCertificate({ user }: { user: User }) {
     try {
       await waitForTemplate();
       const sheets = Array.from(pageRef.current!.querySelectorAll<HTMLElement>(".participation-print-sheet"));
-      const paperFormat = "a4";
-      const paperSize = "297mm";
+      const paperFormat = preview?.unit === "DRRM" ? "letter" : "a4";
+      const paperSize = preview?.unit === "DRRM" ? "11in" : "297mm";
       originalPaperSizes = sheets.map((sheet): [string, string] => [sheet.style.width, sheet.style.maxWidth]);
       sheets.forEach((sheet) => {
         sheet.style.width = paperSize;
@@ -367,7 +372,8 @@ export default function ParticipationCertificate({ user }: { user: User }) {
       await waitForTemplate();
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       printPageStyle = document.createElement("style");
-      printPageStyle.textContent = "@media print{@page{size:A4 landscape;margin:0}}";
+      const paperFormat = preview?.unit === "DRRM" ? "letter" : "A4";
+      printPageStyle.textContent = `@media print{@page{size:${paperFormat} landscape;margin:0}}`;
       document.head.appendChild(printPageStyle);
       window.print();
     } catch (cause) {
@@ -382,7 +388,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
     return <div className="preview-backdrop participation-preview-backdrop">
       <div className="preview-toolbar participation-preview-toolbar"><span>Participation certificate preview</span><button type="button" className="ghost-button" onClick={() => { setPreview(null); setError(""); }}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={() => void downloadPdf()}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={() => void printCertificate()}>{printing ? "Preparing print..." : "Print"}</button></div>
       {error && <p className="participation-error" role="alert">{error}</p>}
-      <div className="participation-preview-pages" ref={pageRef}>{participantDetails(preview).map((participant, index) => <section className="participation-print-sheet participation-print-sheet-amia" key={`${preview.id}-${index}`} aria-label={`A4 landscape participation certificate for ${participant.name}`}><ParticipationPaper record={preview} participant={participant} /></section>)}</div>
+      <div className="participation-preview-pages" ref={pageRef}>{participantDetails(preview).map((participant, index) => <section className={`participation-print-sheet participation-print-sheet-${preview.unit.toLowerCase()}`} key={`${preview.id}-${index}`} aria-label={`${preview.unit === "DRRM" ? "Letter" : "A4"} landscape participation certificate for ${participant.name}`}><ParticipationPaper record={preview} participant={participant} /></section>)}</div>
     </div>;
   }
 
@@ -395,12 +401,12 @@ export default function ParticipationCertificate({ user }: { user: User }) {
 
   return <>
   <section className="content-section participation-section">
-    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Participation Generated Reports</h2><p className="muted">Create AMIA certificates manually or import AMIA rows from the <a className="participation-template-link" href={importTemplate} download="Participation_Importing_Template.xlsx">Participation_Importing_Template.xlsx</a>.</p></div><div className="participation-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
+    <div className="section-heading"><div><p className="eyebrow">Document generator</p><h2>Participation Generated Reports</h2><p className="muted">Create AMIA and DRRM certificates manually or import rows from the <a className="participation-template-link" href={importTemplate} download="Participation_Importing_Template.xlsx">Participation_Importing_Template.xlsx</a>.</p></div><div className="participation-list-actions"><button type="button" className="primary-button" onClick={() => { setError(""); setView("new"); }}>Add</button><button type="button" className="ghost-button" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Import"}</button></div></div>
     <input ref={importInputRef} className="participation-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importParticipations(event)} aria-label="Import Participation certificate workbook" />
     {error && <p className="participation-error" role="alert">{error}</p>}
     {importMessage && <p className="participation-success" role="status">{importMessage}</p>}
     {loading ? <p className="muted">Loading participation certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No participation certificates yet</h3><p>Add participation details manually or import the completed Participation_Importing_Template.xlsx workbook.</p><div className="participation-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add a Participation Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="participation-record-list"><div className="participation-record-head"><span>Unit</span><span>Participant(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="participation-record-row" key={record.id}><span><span className="participation-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="participation-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></div></div>)}</div>}
-    <p className="participation-hold-note">DRRM and AGRISTAT participation templates are on hold.</p>
+    <p className="participation-hold-note">AGRISTAT participation template is on hold.</p>
   </section>
   <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Participation Certificate Deletion?" description="Are you sure you want to delete this Participation Certificate? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
   </>;
@@ -408,6 +414,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
 
 function ParticipationForm({ onCancel, onSubmit, saving, error }: { onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
   const [participants, setParticipants] = useState<ParticipantDraft[]>([{ name: "", gender: "" }]);
+  const [unit, setUnit] = useState<ParticipationUnit>("AMIA");
   const [eventDateFrom, setEventDateFrom] = useState("");
   const [eventDateTo, setEventDateTo] = useState("");
   const [eventDestination, setEventDestination] = useState("");
@@ -415,10 +422,10 @@ function ParticipationForm({ onCancel, onSubmit, saving, error }: { onCancel: ()
   const [distributionPlace, setDistributionPlace] = useState("");
 
   return <section className="content-section participation-section participation-form-section">
-    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Participation</h2><p className="muted">Enter participant and event details. Each participant gets a separate A4 landscape certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Participation</h2><p className="muted">Enter participant and event details. Each participant gets a separate {unit === "DRRM" ? "Letter" : "A4"} landscape certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="participation-error" role="alert">{error}</p>}
     <form className="permit-form participation-form" onSubmit={onSubmit}>
-      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM" disabled>FOD-DRRM</option></select><small>DRRM and AGRISTAT participation templates are on hold.</small></label>
+      <label className="wide-field">Unit<select name="unit" value={unit} onChange={(event) => setUnit(event.target.value as ParticipationUnit)}><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT participation template is on hold.</small></label>
       <ParticipationParticipantsFieldset participants={participants} onChange={(index, values) => setParticipants((current) => current.map((person, personIndex) => personIndex === index ? { ...person, ...values } : person))} onAdd={() => setParticipants((current) => [...current, { name: "", gender: "" }])} onRemove={(index) => setParticipants((current) => current.filter((_, personIndex) => personIndex !== index))} />
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field participation-schedule">
@@ -461,6 +468,18 @@ function ParticipationParticipantsFieldset({ participants, onChange, onAdd, onRe
 
 function ParticipationPaper({ record, participant }: { record: ParticipationRecord; participant: ParticipantDetails }) {
   const possessive = participant.gender === "female" ? "her" : "his";
+  if (record.unit === "DRRM") {
+    return <article className="participation-paper participation-paper-drrm">
+      <img className="participation-template participation-template-drrm" src={drrmBlankTemplate} alt="" />
+      <h1 className="participation-participant participation-participant-drrm">{participant.name}</h1>
+      <div className="participation-body participation-body-drrm">
+        <p>for {possessive} active participation in the <strong className="participation-event-title-drrm">{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " \u2013 ")}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong>, at {record.eventDestination}.</p>
+        <p>Given this {ordinalDay(record.distributionDate || record.eventDateTo)} at <strong>{record.distributionPlace}</strong>, <strong>Philippines.</strong></p>
+      </div>
+      <footer className="participation-signatory participation-signatory-drrm"><strong>ENGR. RICARDO M. O{"\u00d1"}ATE JR.</strong><em>Regional Executive Director</em></footer>
+    </article>;
+  }
+
   return <article className="participation-paper participation-paper-amia">
       <img className="participation-template participation-template-amia" src={amiaBlankTemplate} alt="" />
       <header className="participation-amia-letterhead">
@@ -479,7 +498,7 @@ function ParticipationPaper({ record, participant }: { record: ParticipationReco
       <h1 className="participation-participant participation-participant-amia">{participant.name}</h1>
       <div className="participation-body participation-body-amia">
         <p>for {possessive} active participation in the <strong><em>{record.eventTitle}</em></strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " – ")}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at {record.eventDestination}.</p>
-        <p>Given this {ordinalDay(record.eventDateTo)} in at <strong>{record.distributionPlace}</strong><strong>, Philippines.</strong></p>
+        <p>Given this {ordinalDay(record.distributionDate || record.eventDateTo)} in at <strong>{record.distributionPlace}</strong><strong>, Philippines.</strong></p>
       </div>
       <footer className="participation-signatory participation-signatory-amia"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
   </article>;

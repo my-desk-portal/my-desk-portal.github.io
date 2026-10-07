@@ -463,8 +463,8 @@ service cloud.firestore {
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.keys().hasAll(["unit", "participantNames", "participantGenders", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
-        && request.resource.data.keys().hasOnly(["unit", "participantNames", "participantGenders", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
-        && request.resource.data.unit == "AMIA"
+        && request.resource.data.keys().hasOnly(["unit", "participantNames", "participantGenders", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionDate", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.unit in ["AMIA", "DRRM"]
         && request.resource.data.participantNames is list
         && request.resource.data.participantNames.size() > 0
         && request.resource.data.participantNames.size() <= 100
@@ -485,6 +485,7 @@ service cloud.firestore {
         && request.resource.data.distributionPlace is string
         && request.resource.data.distributionPlace.size() > 0
         && request.resource.data.distributionPlace.size() <= 240
+        && (!request.resource.data.keys().hasAny(["distributionDate"]) || request.resource.data.distributionDate is string)
         && (!request.resource.data.distributionSameAsDestination || request.resource.data.distributionPlace == request.resource.data.eventDestination)
         && request.resource.data.createdAt is timestamp;
       allow update: if isVerifiedUser()

@@ -1,7 +1,7 @@
 ﻿import { unzipSync } from "fflate";
 
 export type ImportedParticipationRecord = {
-  unit: "AMIA";
+  unit: "AMIA" | "DRRM";
   participantNames: string[];
   participantGenders: ("female" | "male")[];
   eventTitle: string;
@@ -10,6 +10,7 @@ export type ImportedParticipationRecord = {
   eventTimeFrom: string;
   eventTimeTo: string;
   eventDestination: string;
+  distributionDate: string;
   distributionSameAsDestination: boolean;
   distributionPlace: string;
 };
@@ -121,15 +122,19 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
     const values = readRow(row);
     if (![...values.values()].some((value) => value.trim())) return;
 
-    const unit = valueFor(values, "unit").toUpperCase();
-    if (unit === "DRRM" || unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: ${unit} participation templates are on hold.`);
-    if (unit !== "AMIA") throw new Error(`Row ${rowNumber}: Unit must be AMIA.`);
+    const unitValue = valueFor(values, "unit").toUpperCase().replace(/^FOD-/, "");
+    if (unitValue === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT participation template is on hold.`);
+    if (unitValue !== "AMIA" && unitValue !== "DRRM") throw new Error(`Row ${rowNumber}: Unit must be AMIA or DRRM.`);
+    const unit = unitValue;
     const rawGender = valueFor(values, "gender").toLowerCase();
     const participantGender = rawGender === "f" || rawGender === "female" ? "female" : rawGender === "m" || rawGender === "male" ? "male" : "";
     const eventTitle = valueFor(values, "title");
     const eventDestination = valueFor(values, "destination");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
+    const rawDistributionDate = valueFor(values, "distributiondate");
+    const parsedDistributionDate = parseDate(rawDistributionDate);
+    const distributionDate = parsedDistributionDate || eventDateTo;
     const eventTimeFrom = parseTime(valueFor(values, "timestart"));
     const eventTimeTo = parseTime(valueFor(values, "timeend"));
     const name = valueFor(values, "name");
@@ -137,13 +142,14 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
     if (!eventTitle || !eventDestination || !name || !participantGender || !eventDateFrom || !eventDateTo || !eventTimeFrom || !eventTimeTo) {
       throw new Error(`Row ${rowNumber}: complete the Unit, Name, Gender, event, date, time, and destination fields.`);
     }
+    if (rawDistributionDate && !parsedDistributionDate) throw new Error(`Row ${rowNumber}: enter a valid Distribution Date.`);
     if (name.length > 180) throw new Error(`Row ${rowNumber}: Name must be 180 characters or fewer.`);
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
     if (!distributionPlace || distributionPlace.length > 240 || eventDestination.length > 240 || eventTitle.length > 240) {
       throw new Error(`Row ${rowNumber}: Title, Destination, and Distribution Place must be 240 characters or fewer.`);
     }
 
-    const eventKey = JSON.stringify([unit, eventTitle, eventDestination, eventDateFrom, eventDateTo, eventTimeFrom, eventTimeTo, distributionPlace]);
+    const eventKey = JSON.stringify([unit, eventTitle, eventDestination, eventDateFrom, eventDateTo, eventTimeFrom, eventTimeTo, distributionPlace, distributionDate]);
     let groupKey = eventKey;
     let existing = grouped.get(groupKey);
     if (existing && existing.participantNames.length >= 100) {
@@ -166,6 +172,7 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
         eventTimeFrom,
         eventTimeTo,
         eventDestination,
+        distributionDate,
         distributionSameAsDestination: distributionPlace === eventDestination,
         distributionPlace,
       });
