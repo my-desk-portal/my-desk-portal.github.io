@@ -33,7 +33,7 @@ export const tevDivisions = [
   "Integrated Laboratories Division",
 ] as const;
 
-export const tevTransportationMeans = ["Boat", "MCH", "RP", "Plane (GS)", "Plane (Credit)", "PUB", "PUV"] as const;
+export const tevTransportationMeans = ["Boat", "MCH", "RP", "Plane (GS)", "Plane (Credit)", "PUB", "PUV", "Not Applicable"] as const;
 
 export type TevRegionRate = {
   region: string;
@@ -218,7 +218,7 @@ export function normalizeTevTransportationMeansForEditor(means: TevTransportatio
 
 export function displayTevTransportationMeans(means: TevTransportationMeans) {
   if (means === "Plane (GS)" || means === "Plane (Credit)" || means === "Plane") return "Plane";
-  return means === "None" ? "" : means;
+  return means === "None" || means === "Not Applicable" ? "" : means;
 }
 
 export async function loadTevRegionRates() {

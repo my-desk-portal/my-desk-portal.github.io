@@ -189,7 +189,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
         ...row,
         dateTo: row.dateTo && row.dateTo >= row.dateFrom ? row.dateTo : row.dateFrom,
         visitedPlaces: row.visitedPlaces.trim(),
-        transportation: row.transportation.trim(),
+        transportation: row.meansOfTransportation === "Not Applicable" ? "Not Applicable" : row.transportation.trim(),
       }));
       if (!rows.length) return { error: `Add at least one travel line to Itinerary ${itineraryIndex + 1}.` };
       if (rows.some((row) => (row.dateFrom && !isDateWithinMonth(row.dateFrom, month)) || (row.dateTo && !isDateWithinMonth(row.dateTo, month)))) {
@@ -315,8 +315,11 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
               </div>
               <div className="mytev-itinerary-row-bottom">
                 <label className="mytev-row-region">Region<select required={hasRowData(row)} value={row.region} onChange={(event) => updateRow(itinerary.id, rowIndex, { region: event.target.value })}><option value="">Select region</option>{rates.map((rate) => <option key={rate.region} value={rate.region}>{rate.region}</option>)}</select></label>
-                <label className="mytev-row-means">Means of Transportation<select required={hasRowData(row)} value={row.meansOfTransportation} onChange={(event) => updateRow(itinerary.id, rowIndex, { meansOfTransportation: event.target.value as TevItineraryRow["meansOfTransportation"], transportation: isTevTransportationAmountRequired(event.target.value as TevItineraryRow["meansOfTransportation"]) ? row.transportation : "" })}><option value="">Select mode</option>{tevTransportationMeans.map((means) => <option key={means} value={means}>{means}</option>)}</select></label>
-                <label className="mytev-row-transportation">Transportation{isTevTransportationAmountRequired(row.meansOfTransportation) ? <input type="number" min="0" step="0.01" inputMode="decimal" value={row.transportation} onChange={(event) => updateRow(itinerary.id, rowIndex, { transportation: event.target.value })} placeholder="0.00" /> : <span className="mytev-not-applicable">Not applicable</span>}</label>
+                <label className="mytev-row-means">Means of Transportation<select required={hasRowData(row)} value={row.meansOfTransportation} onChange={(event) => {
+                  const means = event.target.value as TevItineraryRow["meansOfTransportation"];
+                  updateRow(itinerary.id, rowIndex, { meansOfTransportation: means, transportation: means === "Not Applicable" ? "Not Applicable" : isTevTransportationAmountRequired(means) ? row.transportation : "" });
+                }}><option value="">Select mode</option>{tevTransportationMeans.map((means) => <option key={means} value={means}>{means}</option>)}</select></label>
+                <label className="mytev-row-transportation">Transportation{isTevTransportationAmountRequired(row.meansOfTransportation) ? <input type="number" min="0" step="0.01" inputMode="decimal" value={row.transportation} onChange={(event) => updateRow(itinerary.id, rowIndex, { transportation: event.target.value })} placeholder="0.00" /> : <span className="mytev-not-applicable">{row.meansOfTransportation === "Not Applicable" ? "Not Applicable" : "Not applicable"}</span>}</label>
               </div>
               <div className="mytev-itinerary-row-claims"><fieldset className="mytev-claim-picker"><legend>Claim / Per Diem</legend>{tevClaims.map((claim) => <label key={claim.id}><input type="checkbox" checked={row.claims.includes(claim.id)} disabled={!row.region} onChange={(event) => toggleClaim(itinerary.id, rowIndex, claim.id, event.target.checked)} /><span>{claim.label}{row.region && <small>₱{formatTevAmount(perDiemForClaims([claim.id], row.region, rates))}</small>}</span></label>)}</fieldset></div>
             </fieldset>)}
