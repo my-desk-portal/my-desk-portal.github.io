@@ -121,7 +121,7 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
     if (![...values.values()].some((value) => value.trim())) return;
 
     const unit = valueFor(values, "unit").toUpperCase();
-    if (unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT completion template is on hold.`);
+    if (unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT completion template on hold.`);
     if (unit !== "DRRM" && unit !== "AMIA") throw new Error(`Row ${rowNumber}: Unit must be AMIA or DRRM.`);
     const eventTitle = valueFor(values, "title");
     const eventDestination = valueFor(values, "destination");

@@ -123,7 +123,7 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
     if (![...values.values()].some((value) => value.trim())) return;
 
     const unitValue = valueFor(values, "unit").toUpperCase().replace(/^FOD-/, "");
-    if (unitValue === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT participation template is on hold.`);
+    if (unitValue === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT participation template on hold.`);
     if (unitValue !== "AMIA" && unitValue !== "DRRM") throw new Error(`Row ${rowNumber}: Unit must be AMIA or DRRM.`);
     const unit = unitValue;
     const rawGender = valueFor(values, "gender").toLowerCase();
@@ -160,7 +160,7 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
       existing.participantGenders.push(participantGender);
     } else {
       grouped.set(groupKey, {
-        unit: "AMIA",
+        unit,
         participantNames: [name],
         participantGenders: [participantGender],
         eventTitle,

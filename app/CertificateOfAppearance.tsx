@@ -61,10 +61,10 @@ function displayDateRange(from?: string, to?: string) {
   return `${displayDate(startValue)} - ${displayDate(endValue)}`;
 }
 
-function eventPeriod(from?: string, to?: string) {
+function eventDateRange(from?: string, to?: string) {
   const start = from ?? "";
   const end = to ?? from ?? "";
-  return `on ${displayDateRange(start || end, end || start)}`;
+  return displayDateRange(start || end, end || start);
 }
 
 function pronoun(gender: CertificateGender) {
@@ -458,7 +458,7 @@ function CertificatePaper({ record, person }: { record: CertificateRecord; perso
     <img className="coa-letterhead" src={blankCertificateAsset} alt="" />
     <h1 className="coa-title">CERTIFICATE OF APPEARANCE</h1>
     <div className="coa-copy">
-      <p>This is to certify that <strong className="coa-name">{person.name}</strong> of the <strong className="coa-office">{person.office ?? record.office}</strong> has attended the <strong><em>“{record.eventTitle}”</em></strong> held in <strong>{record.destination}</strong> <strong>{eventPeriod(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</strong>.</p>
+      <p>This is to certify that <strong className="coa-name">{person.name}</strong> of the <strong className="coa-office">{person.office ?? record.office}</strong> has attended the <strong><em>“{record.eventTitle}”</em></strong> held in <strong>{record.destination}</strong> on <strong>{eventDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</strong>.</p>
       <p>This certification is issued upon the request of the above-named person for whatever legal purpose it may serve {pronoun(person.gender)} best.</p>
     </div>
     <footer className="coa-signatory"><strong>{record.signatoryName}</strong><div className="coa-signatory-role"><em>{record.designation},</em> <span>{certificateDivisionDisplayNames[record.division] ?? record.division}</span></div></footer>

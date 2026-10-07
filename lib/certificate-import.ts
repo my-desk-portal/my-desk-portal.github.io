@@ -107,9 +107,9 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
   const headerCells = readRow(rows[0]);
   const columns = new Map([...headerCells].map(([index, value]) => [normalizeHeader(value), index] as const));
   const missingColumns = requiredColumns.filter((column) => !columns.has(column));
-  const divisionNameColumn = columns.get("divisionname") ?? columns.get("division");
+  const divisionNameColumn = columns.get("signatorydivision") ?? columns.get("divisionname") ?? columns.get("division");
   if (missingColumns.length || divisionNameColumn === undefined) {
-    throw new Error("Use the CA_Importing_Template.xlsx columns: Title, Destination, Date From, Date To, Name, Gender, Office, and Division Name.");
+    throw new Error("Use the CA_Importing_Template.xlsx columns: Title, Destination, Date From, Date To, Name, Gender, Office, and Signatory Division.");
   }
 
   const recordsByEvent = new Map<string, ImportedAppearanceRecord>();
@@ -128,7 +128,7 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
     const division = (values.get(divisionNameColumn)?.trim() ?? "") as TevDivision;
-    if (!tevDivisions.includes(division)) throw new Error(`Row ${rowNumber}: choose a valid Division Name from myTEV.`);
+    if (!tevDivisions.includes(division)) throw new Error(`Row ${rowNumber}: choose a valid Signatory Division from myTEV.`);
     const signatory = divisionSignatory(division);
 
     if (!name) throw new Error(`Row ${rowNumber}: enter a Name for each certificate.`);

@@ -178,7 +178,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
     const sameAsDestination = form.get("distribution-same") === "yes";
     const unit = String(form.get("unit") ?? "") as ParticipationUnit;
     if (unit !== "AMIA" && unit !== "DRRM") {
-      setError("AGRISTAT participation template is on hold.");
+      setError("AGRISTAT participation template on hold.");
       return;
     }
     const names = form.getAll("participant-name").map((value) => String(value).trim());
@@ -279,7 +279,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
       }
       const participantCount = imported.reduce((count, record) => count + participantNames(record).length, 0);
       const importedUnits = [...new Set(imported.map((record) => record.unit))].join(" and ");
-      setImportMessage(`Imported ${imported.length} ${importedUnits} participation ${imported.length === 1 ? "report" : "reports"} for ${participantCount} ${participantCount === 1 ? "participant" : "participants"}. AMIA certificates use A4 landscape; DRRM certificates use Letter landscape. Workbook distribution dates are used, falling back to the event end date when blank.`);
+      setImportMessage(`Imported ${imported.length} ${importedUnits} participation ${imported.length === 1 ? "report" : "reports"} for ${participantCount} ${participantCount === 1 ? "participant" : "participants"}. AMIA certificates use A4 landscape; DRRM certificates use Letter landscape. Distribution dates use the event end date.`);
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : "Check the template and try again.";
       setError(imported.length
@@ -406,7 +406,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
     {error && <p className="participation-error" role="alert">{error}</p>}
     {importMessage && <p className="participation-success" role="status">{importMessage}</p>}
     {loading ? <p className="muted">Loading participation certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No participation certificates yet</h3><p>Add participation details manually or import the completed Participation_Importing_Template.xlsx workbook.</p><div className="participation-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add a Participation Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="participation-record-list"><div className="participation-record-head"><span>Unit</span><span>Participant(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="participation-record-row" key={record.id}><span><span className="participation-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="participation-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></div></div>)}</div>}
-    <p className="participation-hold-note">AGRISTAT participation template is on hold.</p>
+    <p className="participation-hold-note">AGRISTAT participation template on hold.</p>
   </section>
   <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Participation Certificate Deletion?" description="Are you sure you want to delete this Participation Certificate? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
   </>;
@@ -425,7 +425,7 @@ function ParticipationForm({ onCancel, onSubmit, saving, error }: { onCancel: ()
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Participation</h2><p className="muted">Enter participant and event details. Each participant gets a separate {unit === "DRRM" ? "Letter" : "A4"} landscape certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="participation-error" role="alert">{error}</p>}
     <form className="permit-form participation-form" onSubmit={onSubmit}>
-      <label className="wide-field">Unit<select name="unit" value={unit} onChange={(event) => setUnit(event.target.value as ParticipationUnit)}><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT participation template is on hold.</small></label>
+      <label className="wide-field">Unit<select name="unit" value={unit} onChange={(event) => setUnit(event.target.value as ParticipationUnit)}><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT participation template on hold.</small></label>
       <ParticipationParticipantsFieldset participants={participants} onChange={(index, values) => setParticipants((current) => current.map((person, personIndex) => personIndex === index ? { ...person, ...values } : person))} onAdd={() => setParticipants((current) => [...current, { name: "", gender: "" }])} onRemove={(index) => setParticipants((current) => current.filter((_, personIndex) => personIndex !== index))} />
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field participation-schedule">

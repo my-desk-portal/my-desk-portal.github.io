@@ -168,7 +168,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
     const sameAsDestination = form.get("distribution-same") === "yes";
     const unit = String(form.get("unit") ?? "") as CompletionUnit;
     if (unit !== "DRRM" && unit !== "AMIA") {
-      setError("AGRISTAT completion template is on hold.");
+      setError("AGRISTAT completion template on hold.");
       return;
     }
     const names = form.getAll("participant-name").map((value) => String(value).trim());
@@ -398,7 +398,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
     {error && <p className="completion-error" role="alert">{error}</p>}
     {importMessage && <p className="completion-success" role="status">{importMessage}</p>}
     {loading ? <p className="muted">Loading completion certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No completion certificates yet</h3><p>Add completion details manually or import the completed Completion_Importing_Template.xlsx workbook.</p><div className="completion-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add a Completion Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="completion-record-list"><div className="completion-record-head"><span>Unit</span><span>Completer(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="completion-record-row" key={record.id}><span><span className="completion-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="completion-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></div></div>)}</div>}
-    <p className="completion-hold-note">AGRISTAT completion template is on hold.</p>
+    <p className="completion-hold-note">AGRISTAT completion template on hold.</p>
   </section>
   <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Completion Certificate Deletion?" description="Are you sure you want to delete this Completion Certificate? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
   </>;
@@ -416,7 +416,7 @@ function CompletionForm({ onCancel, onSubmit, saving, error }: { onCancel: () =>
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Completion</h2><p className="muted">Enter the event and completer details. AMIA certificates print on A4; DRRM certificates print on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="completion-error" role="alert">{error}</p>}
     <form className="permit-form completion-form" onSubmit={onSubmit}>
-      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT completion template is on hold.</small></label>
+      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT completion template on hold.</small></label>
       <fieldset className="wide-field completion-participants-fieldset"><legend>Completer&apos;s Name</legend><p className="completion-participants-hint">Enter one or more names. A separate certificate will be created for each completer.</p>{names.map((name, index) => <div className="completion-name-row" key={index}><label>Completer {index + 1}<input name="participant-name" maxLength={180} value={name} onChange={(event) => setNames((current) => current.map((person, personIndex) => personIndex === index ? event.target.value : person))} required /></label>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete completer ${index + 1}`} onClick={() => setNames((current) => current.filter((_, personIndex) => personIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button" disabled={names.length >= MAX_PARTICIPANTS} onClick={() => setNames((current) => [...current, ""])}>+ Add completer</button></fieldset>
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field completion-schedule">
@@ -463,7 +463,7 @@ function CompletionPaper({ record, participantName }: { record: CompletionRecord
       <h1 className="completion-participant completion-participant-amia">{participantName}</h1>
       <div className="completion-body completion-body-amia">
         <p>for having successfully completed the <strong className="completion-event-title">{record.eventTitle}</strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " – ")}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at <strong>{record.eventDestination}</strong>.</p>
-        <p>Given this {ordinalDay(record.eventDateTo)} in at <strong>{record.distributionPlace}</strong>, Philippines.</p>
+        <p>Given this {ordinalDay(record.eventDateTo)} in at <strong>{record.distributionPlace}</strong>, <strong>Philippines.</strong></p>
       </div>
       <footer className="completion-signatory completion-signatory-amia"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
     </article>;
@@ -473,7 +473,7 @@ function CompletionPaper({ record, participantName }: { record: CompletionRecord
     <h1 className="completion-participant">{participantName}</h1>
     <div className="completion-body">
       <p>has completed the <strong className="completion-event-title">{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at {record.eventDestination}.</p>
-      <p>Given this {ordinalDay(record.eventDateTo)} at <strong>{record.distributionPlace}</strong>, Philippines.</p>
+      <p>Given this {ordinalDay(record.eventDateTo)} at <strong>{record.distributionPlace}</strong>, <strong>Philippines.</strong></p>
     </div>
     <footer className="completion-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
   </article>;

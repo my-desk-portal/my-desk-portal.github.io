@@ -129,7 +129,7 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
     const values = readRow(row);
     if (![...values.values()].some((value) => value.trim())) return;
     const unit = valueFor(values, "unit").toUpperCase();
-    if (unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT appreciation template is on hold.`);
+    if (unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT appreciation template on hold.`);
     if (unit !== "DRRM" && unit !== "AMIA") throw new Error(`Row ${rowNumber}: Unit must be AMIA or DRRM.`);
     const rawGender = valueFor(values, "gender").trim().toLowerCase();
     const speakerGender = rawGender === "f" || rawGender === "female" ? "female" : rawGender === "m" || rawGender === "male" ? "male" : "";
