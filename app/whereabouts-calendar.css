@@ -35,6 +35,8 @@
 .whereabouts-details-heading .eyebrow{margin:0 0 5px}
 .whereabouts-details-heading h3{color:var(--ink);font-size:19px;margin:0}
 .whereabouts-detail-count{background:#f1f5f1;border-radius:99px;color:var(--muted);font-size:11px;padding:7px 10px;white-space:nowrap}
+.whereabouts-personnel-count{align-items:center;background:#f6f8f6;border-left:3px solid var(--accent);color:var(--muted);display:flex;font-size:12px;gap:10px;justify-content:space-between;margin:0;padding:10px 12px}
+.whereabouts-personnel-count strong{color:var(--ink);font-size:16px;white-space:nowrap}
 .whereabouts-empty-date{color:var(--muted);font-size:14px;margin:18px 0 0}
 .whereabouts-date-details{align-content:start;display:grid;gap:14px}
 .whereabouts-date-table-wrap{max-width:100%;overflow-x:auto}
