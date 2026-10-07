@@ -1021,16 +1021,6 @@ function SpecialOrderParticipantEditor({ order, userId, onCancel, onSaved }: { o
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    setFirstPageCount(order.participants.length);
-    setFirstPageSaturated(false);
-    setContinuationSettings([]);
-    setClosingUnitsOnLastAttendeePage(7);
-    setClosingPageSettings([]);
-    setSignatoryPulledBack(false);
-    setClosingSpacingTightened(false);
-  }, [order.id]);
-
   function updateParticipant(index: number, update: Partial<EditableSpecialOrderParticipant>) {
     setParticipants((current) => current.map((participant, participantIndex) => participantIndex === index ? { ...participant, ...update } : participant));
   }
@@ -1124,6 +1114,16 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     void loadPersonnel();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    setFirstPageCount(order.participants.length);
+    setFirstPageSaturated(false);
+    setContinuationSettings([]);
+    setClosingUnitsOnLastAttendeePage(7);
+    setClosingPageSettings([]);
+    setSignatoryPulledBack(false);
+    setClosingSpacingTightened(false);
+  }, [order.id]);
 
   const continuationPages: string[][] = [];
   const remainingParticipants = order.participants.slice(firstPageCount);
