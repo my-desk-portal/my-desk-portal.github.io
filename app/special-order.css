@@ -1,1 +1,12 @@
 .special-order-list-head,.special-order-list-row{grid-template-columns:1.35fr 1.1fr 1.5fr 1fr 150px}
+.special-order-participants.special-order-first-participants{margin-top:0}
+.special-order-details b,.special-order-details span{font-weight:700}
+.special-order-closing .special-order-obligations{margin:2.32cqi 0}
+.special-order-closing .special-order-done{margin:4.6cqi 0 0}
+.special-order-closing .special-order-signatory{margin-top:6.9cqi}
+.special-order-closing.special-order-closing-pulled .special-order-signatory{margin-top:6.9cqi}
+.special-order-closing-tight .special-order-obligations{margin:2.32cqi 0}
+.special-order-closing-tight .special-order-obligation-list{margin:.35cqi 0}
+.special-order-closing-tight .special-order-expenses{margin:.5cqi 0}
+.special-order-closing-tight .special-order-done{margin:4.6cqi 0 0}
+.special-order-closing-tight .special-order-signatory,.special-order-closing-tight.special-order-closing-pulled .special-order-signatory{margin-top:6.9cqi}

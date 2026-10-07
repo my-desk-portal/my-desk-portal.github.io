@@ -39,7 +39,7 @@ service cloud.firestore {
       allow create, update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.keys().hasAll(["name", "position", "unit"])
-        && request.resource.data.keys().hasOnly(["name", "position", "unit", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole"])
+        && request.resource.data.keys().hasOnly(["name", "position", "unit", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole"])
         && matchesAccountRole()
         && (!request.resource.data.keys().hasAny(["gender"]) || request.resource.data.gender in ["Male", "Female"])
         && (!request.resource.data.keys().hasAny(["firstName"]) || (request.resource.data.firstName is string && request.resource.data.firstName.size() <= 60))
@@ -53,6 +53,7 @@ service cloud.firestore {
         && request.resource.data.name.size() <= 120
         && request.resource.data.position is string
         && request.resource.data.position.size() <= 120
+        && (!request.resource.data.keys().hasAny(["designation"]) || (request.resource.data.designation is string && request.resource.data.designation.size() <= 120))
         && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"];
       allow delete: if false;
     }

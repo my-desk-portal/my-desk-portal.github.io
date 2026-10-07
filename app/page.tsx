@@ -1012,6 +1012,16 @@ function SpecialOrderParticipantEditor({ order, userId, onCancel, onSaved }: { o
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    setFirstPageCount(order.participants.length);
+    setFirstPageSaturated(false);
+    setContinuationSettings([]);
+    setClosingUnitsOnLastAttendeePage(7);
+    setClosingPageSettings([]);
+    setSignatoryPulledBack(false);
+    setClosingSpacingTightened(false);
+  }, [order.id]);
+
   function updateParticipant(index: number, update: Partial<EditableSpecialOrderParticipant>) {
     setParticipants((current) => current.map((participant, participantIndex) => participantIndex === index ? { ...participant, ...update } : participant));
   }
@@ -1087,6 +1097,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
   const [closingUnitsOnLastAttendeePage, setClosingUnitsOnLastAttendeePage] = useState(7);
   const [closingPageSettings, setClosingPageSettings] = useState<{ capacity: number; saturated: boolean }[]>([]);
   const [signatoryPulledBack, setSignatoryPulledBack] = useState(false);
+  const [closingSpacingTightened, setClosingSpacingTightened] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1136,14 +1147,15 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
   if (closingContinuationPages.length > 1) {
     const lastPage = closingContinuationPages[closingContinuationPages.length - 1];
     const previousPage = closingContinuationPages[closingContinuationPages.length - 2];
-    if (lastPage.length === 1 && lastPage[0] === closingUnits[closingUnits.length - 1] && previousPage.length > 0) {
+    const lastPageHasOnlyDateAndSignatory = lastPage.length === 2 && lastPage[0] === closingUnits[5] && lastPage[1] === closingUnits[6];
+    if ((lastPage.length === 1 && lastPage[0] === closingUnits[closingUnits.length - 1] || lastPageHasOnlyDateAndSignatory) && previousPage.length > 0) {
       const precedingUnit = previousPage.pop();
       if (precedingUnit) lastPage.unshift(precedingUnit);
       if (previousPage.length === 0) closingContinuationPages.splice(closingContinuationPages.length - 2, 1);
     }
   }
   const renderClosingUnits = (units: typeof closingUnits) => units.length > 0
-    ? <div className={`special-order-closing${signatoryPulledBack && units.includes(closingUnits[closingUnits.length - 1]) ? " special-order-closing-pulled" : ""}`}>{units}</div>
+    ? <div className={`special-order-closing${closingSpacingTightened ? " special-order-closing-tight" : ""}${signatoryPulledBack && units.includes(closingUnits[closingUnits.length - 1]) ? " special-order-closing-pulled" : ""}`}>{units}</div>
     : null;
 
   useLayoutEffect(() => {
@@ -1195,18 +1207,38 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     const visibleClosingUnits = Array.from(lastAttendeePage.querySelectorAll<HTMLElement>(".special-order-closing-unit"));
     const closingFitCount = visibleClosingUnits.filter((unit) => unit.getBoundingClientRect().bottom <= pageLimit(lastAttendeePage)).length;
     if (closingFitCount < visibleClosingUnits.length) {
+      if (!closingSpacingTightened) {
+        setClosingSpacingTightened(true);
+        return;
+      }
       const signatoryWouldBeTheOnlyOverflow = visibleClosingUnits[visibleClosingUnits.length - 1]?.classList.contains("special-order-signatory") && closingFitCount === visibleClosingUnits.length - 1;
       if (signatoryWouldBeTheOnlyOverflow && !signatoryPulledBack && closingUnitsOnLastAttendeePage === closingUnits.length) {
         setSignatoryPulledBack(true);
         return;
       }
       if (signatoryWouldBeTheOnlyOverflow && signatoryPulledBack) {
-        setClosingUnitsOnLastAttendeePage(Math.max(0, visibleClosingUnits.length - 2));
+        setClosingUnitsOnLastAttendeePage(Math.max(0, visibleClosingUnits.length - 3));
         setSignatoryPulledBack(false);
+        return;
+      }
+      const dateAndSignatoryWouldBeTheOnlyOverflow = visibleClosingUnits.length - closingFitCount === 2
+        && visibleClosingUnits[visibleClosingUnits.length - 2]?.classList.contains("special-order-done")
+        && visibleClosingUnits[visibleClosingUnits.length - 1]?.classList.contains("special-order-signatory");
+      if (dateAndSignatoryWouldBeTheOnlyOverflow) {
+        setClosingUnitsOnLastAttendeePage(Math.max(0, closingFitCount - 1));
         return;
       }
       if (closingFitCount !== closingUnitsOnLastAttendeePage) setClosingUnitsOnLastAttendeePage(closingFitCount);
       if (signatoryPulledBack) setSignatoryPulledBack(false);
+      return;
+    }
+
+    const dateAndSignatoryAloneOnClosingPage = closingContinuationPages.length === 1
+      && closingContinuationPages[0].length === 2
+      && closingContinuationPages[0][0] === closingUnits[5]
+      && closingContinuationPages[0][1] === closingUnits[6];
+    if (dateAndSignatoryAloneOnClosingPage && closingUnitsOnLastAttendeePage > 0) {
+      setClosingUnitsOnLastAttendeePage(closingUnitsOnLastAttendeePage - 1);
       return;
     }
 
@@ -1236,7 +1268,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
         return;
       }
     }
-  }, [closingContinuationPages.length, closingPageSettings, closingUnitsOnLastAttendeePage, continuationPages.length, continuationSettings, firstPageCount, firstPageSaturated, order.participants, personnel, signatoryPulledBack]);
+  }, [closingContinuationPages.length, closingPageSettings, closingSpacingTightened, closingUnitsOnLastAttendeePage, continuationPages.length, continuationSettings, firstPageCount, firstPageSaturated, order.participants, personnel, signatoryPulledBack]);
 
   async function downloadPdf() {
     if (!pagesRef.current) return;
@@ -1349,6 +1381,7 @@ export default function Home() {
   const [profileLastName, setProfileLastName] = useState("");
   const [profileGender, setProfileGender] = useState("");
   const [profilePosition, setProfilePosition] = useState("");
+  const [profileDesignation, setProfileDesignation] = useState("");
   const [profileAddress, setProfileAddress] = useState("");
   const [profileTaxIdentificationNo, setProfileTaxIdentificationNo] = useState("");
   const [profileUnit, setProfileUnit] = useState<AccountUnit>(units[0]);
@@ -1489,6 +1522,7 @@ export default function Home() {
     applyProfileName(user.displayName ?? "");
     setProfileGender("");
     setProfilePosition("");
+    setProfileDesignation("");
     setProfileAddress("");
     setProfileTaxIdentificationNo("");
     setProfileUnit(units[0]);
@@ -1503,6 +1537,7 @@ export default function Home() {
         } else if (typeof profile.name === "string") applyProfileName(profile.name);
         if (typeof profile.gender === "string") setProfileGender(profile.gender);
         if (typeof profile.position === "string") setProfilePosition(profile.position);
+        if (typeof profile.designation === "string") setProfileDesignation(profile.designation);
         if (typeof profile.address === "string") setProfileAddress(profile.address);
         if (typeof profile.taxIdentificationNo === "string") setProfileTaxIdentificationNo(formatTaxIdentificationNo(profile.taxIdentificationNo));
         if (accountUnitOptions.some((option) => option.value === profile.unit)) setProfileUnit(profile.unit as AccountUnit);
@@ -1538,6 +1573,7 @@ export default function Home() {
     const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
     const name = [firstName, middleInitial, lastName].filter(Boolean).join(" ");
     const position = profilePosition.trim().replace(/\s+/g, " ");
+    const designation = clean(profileDesignation);
     const wantsPasswordChange = changePassword.length > 0 || confirmNewPassword.length > 0;
     if (!firstName || !lastName) {
       setProfileMessage({ kind: "error", text: "Enter your first and last name." });
@@ -1575,7 +1611,7 @@ export default function Home() {
     let profileDataSaved = false;
     let accountNameSaved = false;
     try {
-      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit, accountRole: accountRoleForEmail(user.email), address, taxIdentificationNo }, { merge: true });
+      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit, designation, accountRole: accountRoleForEmail(user.email), address, taxIdentificationNo }, { merge: true });
       profileDataSaved = true;
       setProfileRevision((revision) => revision + 1);
       await updateProfile(user, { displayName: name });
@@ -1585,6 +1621,7 @@ export default function Home() {
       setProfileMiddleName(middleName);
       setProfileLastName(lastName);
       setProfilePosition(position);
+      setProfileDesignation(designation);
       setProfileAddress(address);
       setProfileTaxIdentificationNo(taxIdentificationNo);
       if (wantsPasswordChange) await updatePassword(user, changePassword);
@@ -1965,10 +2002,11 @@ export default function Home() {
   <label>Gender<select value={profileGender} onChange={(event) => setProfileGender(event.target.value)} required disabled={profileLoading || profileSaving}><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
   <label>Position<input autoComplete="organization-title" maxLength={120} value={profilePosition} onChange={(event) => setProfilePosition(event.target.value)} disabled={profileLoading || profileSaving} /></label>
   <label>Unit<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value as AccountUnit)} disabled={profileLoading || profileSaving}>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+  <label>Designation<input autoComplete="organization-title" maxLength={120} value={profileDesignation} onChange={(event) => setProfileDesignation(event.target.value)} disabled={profileLoading || profileSaving} /></label>
   <label>Address<input autoComplete="street-address" maxLength={200} value={profileAddress} onChange={(event) => setProfileAddress(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
   <label>Tax Identification No.<input type="text" inputMode="numeric" autoComplete="off" maxLength={11} value={profileTaxIdentificationNo} onChange={(event) => updateTaxIdentificationNo(event, setProfileTaxIdentificationNo)} onKeyDown={(event) => handleTaxIdentificationNoKeyDown(event, setProfileTaxIdentificationNo)} required disabled={profileLoading || profileSaving} /></label>
+  <div className="profile-security-fields">
   <label>Email<input type="email" value={user.email ?? ""} readOnly /></label>
-  <div className="profile-password-fields">
   <label>Change Password<div className="password-field"><input type={showChangePassword ? "text" : "password"} autoComplete="new-password" value={changePassword} onChange={(event) => setChangePassword(event.target.value)} /><button type="button" className="password-toggle" aria-label={showChangePassword ? "Hide new password" : "Show new password"} onClick={() => setShowChangePassword((show) => !show)}>{showChangePassword ? "Hide" : "Show"}</button></div></label>
   <label>Confirmation Password<div className="password-field"><input type={showConfirmNewPassword ? "text" : "password"} autoComplete="new-password" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} /><button type="button" className="password-toggle" aria-label={showConfirmNewPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmNewPassword((show) => !show)}>{showConfirmNewPassword ? "Hide" : "Show"}</button></div></label>
   </div>

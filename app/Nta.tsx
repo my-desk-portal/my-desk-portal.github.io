@@ -301,28 +301,28 @@ function buildRosterPages(batches: NtaBatch[], firstPageRows: number, pageSettin
   }, []));
 }
 
-function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, hideFixedCopy = false, firstPageRows = 0, individualClosingUnits = [], individualSignatoryPulledBack = false }: { record: NtaRecord; page: "individual" | "individual-continuation" | "batch-overview" | "batch-attendees" | "batch-copy"; rosterSections?: NtaRosterSection[]; showFixedCopy?: boolean; hideFixedCopy?: boolean; firstPageRows?: number; individualClosingUnits?: NtaIndividualClosingUnit[]; individualSignatoryPulledBack?: boolean }) {
+function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, hideFixedCopy = false, firstPageRows = 0, individualClosingUnits = [], individualSignatoryPulledBack = false, individualClosingCompacted = false, copySpacingCompacted = false }: { record: NtaRecord; page: "individual" | "individual-continuation" | "batch-overview" | "batch-attendees" | "batch-copy"; rosterSections?: NtaRosterSection[]; showFixedCopy?: boolean; hideFixedCopy?: boolean; firstPageRows?: number; individualClosingUnits?: NtaIndividualClosingUnit[]; individualSignatoryPulledBack?: boolean; individualClosingCompacted?: boolean; copySpacingCompacted?: boolean }) {
   const batches = record.batches ?? [];
   const individual = page === "individual";
   const batchOverview = page === "batch-overview";
   const signatoryName = record.signatoryName || legacySignatoryName;
   const signatoryDesignation = record.signatoryDesignation || legacySignatoryDesignation;
-  return <article className="nta-document-page"><img className="nta-letterhead" src={asset("/Document-Header-Footer.jpg")} alt="" /><div className={`nta-document-content ${page}${showFixedCopy ? " nta-roster-copy-page" : ""}${hideFixedCopy ? " nta-roster-copy-hidden" : ""}`}>
+  return <article className="nta-document-page"><img className="nta-letterhead" src={asset("/Document-Header-Footer.jpg")} alt="" /><div className={`nta-document-content ${page}${showFixedCopy ? " nta-roster-copy-page" : ""}${hideFixedCopy ? " nta-roster-copy-hidden" : ""}${copySpacingCompacted && showFixedCopy ? " nta-roster-copy-compact" : ""}`}>
     {(individual || batchOverview) && <header className="nta-doc-title"><h1>NOTICE TO ATTEND</h1><p>No. ____________________</p><p>Series of {new Date().getFullYear()}</p></header>}
-    {page === "batch-copy" ? <NtaFixedCopy /> : page === "individual-continuation" ? <NtaIndividualClosing units={individualClosingUnits} signatoryName={signatoryName} signatoryDesignation={signatoryDesignation} continuation /> : individual ? <>
+    {page === "batch-copy" ? <NtaFixedCopy /> : page === "individual-continuation" ? <NtaIndividualClosing units={individualClosingUnits} signatoryName={signatoryName} signatoryDesignation={signatoryDesignation} continuation compacted={individualClosingCompacted} /> : individual ? <>
       <section className="nta-to-subject"><div className="nta-to-recipient"><p><b>TO</b><strong>:</strong><strong>{record.to?.toUpperCase()}</strong></p>{record.positionDesignation && <p className="nta-position-line"><span aria-hidden="true" /><span aria-hidden="true" /><span>{record.positionDesignation}</span></p>}</div><p><b>SUBJECT</b><strong>:</strong><strong>{record.subject.toUpperCase()}</strong></p></section>
       <hr className="nta-rule" /><p className="nta-directed">You are hereby directed to attend the activity with the following details:</p>
       <dl className="nta-details"><div><dt>Title of Activity</dt><b>:</b><dd>{record.activityTitle}</dd></div><div><dt>Organizer / Host</dt><b>:</b><dd>{record.organizer}</dd></div><div><dt>Date(s)</dt><b>:</b><dd>{formatDateRange(record.dateFrom ?? "", record.dateTo ?? "")}</dd></div><div><dt>Venue / Platform</dt><b>:</b><dd>{record.venue}</dd></div>{record.venueType === "virtual" && <div><dt>Link</dt><b>:</b><dd className="nta-link">{record.link}</dd></div>}</dl>
-      <NtaIndividualClosing units={individualClosingUnits} signatoryName={signatoryName} signatoryDesignation={signatoryDesignation} signatoryPulledBack={individualSignatoryPulledBack} />
+      <NtaIndividualClosing units={individualClosingUnits} signatoryName={signatoryName} signatoryDesignation={signatoryDesignation} signatoryPulledBack={individualSignatoryPulledBack} compacted={individualClosingCompacted} />
     </> : batchOverview ? <>
       <section className="nta-to-subject"><p><b>TO</b><strong>:</strong><strong>ALL CONCERNED PERSONNEL</strong></p><p className="nta-office-line"><span /> <strong>This Office</strong></p><p><b>SUBJECT</b><strong>:</strong><strong>{record.subject.toUpperCase()}</strong></p></section>
       <hr className="nta-rule" /><p className="nta-directed">You are hereby directed to attend the activity with the following details:</p>
       <dl className="nta-details nta-batch-overview">{[
         ["Title", <strong key="title">{record.activityTitle}</strong>],
         ["Organizer / Host", <strong key="organizer">{record.organizer}</strong>],
-        ["Date", batches.map((batch) => <strong key={batch.number}>Group – {formatDateRange(batch.dateFrom, batch.dateTo)}</strong>)],
-        ["Time", batches.map((batch) => <strong key={batch.number}>Group – {formatTime(batch.timeFrom)} – {formatTime(batch.timeTo)}</strong>)],
-        ["Venue / Platform", batches.map((batch) => <strong key={batch.number}>Group – {batch.venue}{batch.venueType === "virtual" && batch.link ? ` (${batch.link})` : ""}</strong>)],
+        ["Date", batches.map((batch) => <strong key={batch.number}>{formatDateRange(batch.dateFrom, batch.dateTo)}</strong>)],
+        ["Time", batches.map((batch) => <strong key={batch.number}>{formatTime(batch.timeFrom)} – {formatTime(batch.timeTo)}</strong>)],
+        ["Venue / Platform", batches.map((batch) => <strong key={batch.number}>{batch.venue}{batch.venueType === "virtual" && batch.link ? ` (${batch.link})` : ""}</strong>)],
       ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><b>:</b><dd>{value}</dd></div>)}</dl>
       <p className="nta-attendance-intro">The said concerned personnel are as follows:</p><div className="nta-batch-tables nta-first-page-attendees">{firstPageRows > 0 && batches.slice(0, 1).map((batch) => <NtaBatchTable batch={{ ...batch, attendees: batch.attendees.slice(0, firstPageRows) }} key={batch.number} />)}</div>
       {showFixedCopy && <NtaFixedCopy />}
@@ -334,9 +334,9 @@ function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, hid
   </div></article>;
 }
 
-function NtaIndividualClosing({ units, signatoryName, signatoryDesignation, signatoryPulledBack = false, continuation = false }: { units: NtaIndividualClosingUnit[]; signatoryName: string; signatoryDesignation: string; signatoryPulledBack?: boolean; continuation?: boolean }) {
+function NtaIndividualClosing({ units, signatoryName, signatoryDesignation, signatoryPulledBack = false, continuation = false, compacted = false }: { units: NtaIndividualClosingUnit[]; signatoryName: string; signatoryDesignation: string; signatoryPulledBack?: boolean; continuation?: boolean; compacted?: boolean }) {
   if (units.length === 0) return null;
-  return <div className={`nta-individual-closing${continuation ? " nta-individual-closing-continuation" : ""}${signatoryPulledBack ? " nta-individual-closing-pulled" : ""}`}>
+  return <div className={`nta-individual-closing${continuation ? " nta-individual-closing-continuation" : ""}${compacted ? " nta-individual-closing-compact" : ""}${signatoryPulledBack ? " nta-individual-closing-pulled" : ""}`}>
     {units.map((unit) => {
       if (unit === "signatory") return <footer className="nta-signatory nta-individual-closing-unit" data-nta-individual-closing-unit key={unit}><strong>{signatoryName}</strong><span>{signatoryDesignation === legacySignatoryDesignation ? <><i>Chief</i>, Field Operations Division</> : signatoryDesignation}</span></footer>;
       const copy = {
@@ -344,13 +344,13 @@ function NtaIndividualClosing({ units, signatoryName, signatoryDesignation, sign
         expenses: "Travel and other incidental expenses, if any, shall be subject to existing accounting and auditing rules and regulations.",
         issued: `Issued this ____ day of ______________, ${new Date().getFullYear()}.`,
       }[unit];
-      return <p className="nta-individual-closing-unit" data-nta-individual-closing-unit key={unit}>{copy}</p>;
+      return <p className={`nta-individual-closing-unit${unit === "issued" ? " nta-individual-issued" : ""}`} data-nta-individual-closing-unit key={unit}>{copy}</p>;
     })}
   </div>;
 }
 
 function NtaBatchTable({ batch, startIndex = 0, showCaption = true }: { batch: NtaBatch; startIndex?: number; showCaption?: boolean }) {
-  return <section className="nta-attendance-batch">{showCaption && <p className="nta-batch-caption">Group – {batch.venue}{batch.venueType === "virtual" && batch.link ? ` – ${batch.link}` : ""} ({formatDateRange(batch.dateFrom, batch.dateTo)} | {formatTime(batch.timeFrom)} – {formatTime(batch.timeTo)})</p>}<table><thead><tr><th>No.</th><th>Personnel</th><th>Office</th></tr></thead><tbody>{batch.attendees.map((attendee, index) => <tr key={`${attendee.name}-${index}`}><td>{startIndex + index + 1}</td><td><strong>{attendee.name}</strong>{attendee.position && <> - <em>{attendee.position}</em></>}</td><td>{attendee.office}</td></tr>)}</tbody></table></section>;
+  return <section className="nta-attendance-batch">{showCaption && <p className="nta-batch-caption">{batch.venue}{batch.venueType === "virtual" && batch.link ? ` – ${batch.link}` : ""} ({formatDateRange(batch.dateFrom, batch.dateTo)} | {formatTime(batch.timeFrom)} – {formatTime(batch.timeTo)})</p>}<table><thead><tr><th>No.</th><th>Personnel</th><th>Position</th><th>Office</th></tr></thead><tbody>{batch.attendees.map((attendee, index) => <tr key={`${attendee.name}-${index}`}><td>{startIndex + index + 1}</td><td><strong>{attendee.name}</strong></td><td>{attendee.position && <em>{attendee.position}</em>}</td><td>{attendee.office}</td></tr>)}</tbody></table></section>;
 }
 
 function formatTime(value: string) {
@@ -362,7 +362,7 @@ function formatTime(value: string) {
 }
 
 function NtaFixedCopy() {
-  return <div className="nta-fixed-copy"><p>As a representative, you are expected to actively participate and note key discussions and agreements. A brief report of feedback shall be submitted within ____ days after the activity.</p><p>Travel and other incidental expenses, if any, shall be subject to existing accounting and auditing rules and regulations.</p><p>Issued this ____ day of ______________, {new Date().getFullYear()}.</p></div>;
+  return <div className="nta-fixed-copy"><p>As a representative, you are expected to actively participate and note key discussions and agreements. A brief report of feedback shall be submitted within ____ days after the activity.</p><p>Travel and other incidental expenses, if any, shall be subject to existing accounting and auditing rules and regulations.</p><p className="nta-issued-date">Issued this ____ day of ______________, {new Date().getFullYear()}.</p></div>;
 }
 
 function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => void }) {
@@ -377,6 +377,8 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
   const [individualClosingCount, setIndividualClosingCount] = useState(ntaIndividualClosingUnits.length);
   const [individualClosingSaturated, setIndividualClosingSaturated] = useState(false);
   const [individualSignatoryPulledBack, setIndividualSignatoryPulledBack] = useState(false);
+  const [individualClosingCompacted, setIndividualClosingCompacted] = useState(false);
+  const [copySpacingCompacted, setCopySpacingCompacted] = useState(false);
   const batches = record.batches ?? [];
   const firstPageRows = measuredFirstPageRows ?? batches[0]?.attendees.length ?? 0;
   const rosterPages = record.mode === "batch" ? buildRosterPages(batches, firstPageRows, rosterPageSettings) : [];
@@ -385,12 +387,16 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
   const individualFirstPageClosing = ntaIndividualClosingUnits.slice(0, safeIndividualClosingCount);
   const individualContinuationClosing = ntaIndividualClosingUnits.slice(safeIndividualClosingCount);
   useEffect(() => {
-    if (record.mode !== "individual") return;
+    setCopySpacingCompacted(false);
+    setCopyOnSeparatePage(false);
     const recalculateClosingLayout = () => {
       setIndividualClosingCount(ntaIndividualClosingUnits.length);
       setIndividualClosingSaturated(false);
       setIndividualSignatoryPulledBack(false);
+      setIndividualClosingCompacted(false);
     };
+    recalculateClosingLayout();
+    if (record.mode !== "individual") return;
     window.addEventListener("resize", recalculateClosingLayout);
     return () => window.removeEventListener("resize", recalculateClosingLayout);
   }, [record.id, record.mode]);
@@ -412,18 +418,26 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
       const units = Array.from(firstPageContent.querySelectorAll<HTMLElement>("[data-nta-individual-closing-unit]"));
       const fitCount = units.filter((unit) => unit.getBoundingClientRect().bottom <= pageLimit(firstPage)).length;
       const signatureOnlyOverflows = units[units.length - 1]?.classList.contains("nta-signatory") && fitCount === units.length - 1;
+      if (fitCount < units.length && !individualClosingCompacted) {
+        setIndividualClosingCompacted(true);
+        return;
+      }
       if (signatureOnlyOverflows && individualClosingCount === ntaIndividualClosingUnits.length && !individualSignatoryPulledBack) {
         setIndividualSignatoryPulledBack(true);
         return;
       }
       if (signatureOnlyOverflows && individualSignatoryPulledBack) {
-        setIndividualClosingCount(Math.max(0, fitCount - 1));
+        setIndividualClosingCount(Math.max(0, fitCount - 2));
         setIndividualClosingSaturated(true);
         setIndividualSignatoryPulledBack(false);
         return;
       }
       if (fitCount < units.length) {
-        if (fitCount !== safeIndividualClosingCount) setIndividualClosingCount(fitCount);
+        const wouldLeaveOnlyDateAndSignatory = ntaIndividualClosingUnits.slice(fitCount).length === 2
+          && ntaIndividualClosingUnits[fitCount] === "issued"
+          && ntaIndividualClosingUnits[fitCount + 1] === "signatory";
+        const nextClosingCount = wouldLeaveOnlyDateAndSignatory ? Math.max(0, fitCount - 1) : fitCount;
+        if (nextClosingCount !== safeIndividualClosingCount) setIndividualClosingCount(nextClosingCount);
         setIndividualClosingSaturated(true);
         if (individualSignatoryPulledBack) setIndividualSignatoryPulledBack(false);
         return;
@@ -454,6 +468,10 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
       const signatory = copyContent.querySelector<HTMLElement>(".nta-signatory");
       const requiredBottom = Math.max(fixedCopy?.getBoundingClientRect().bottom ?? 0, signatory?.getBoundingClientRect().bottom ?? 0);
       const shouldSeparateCopy = requiredBottom > copyBottomLimit;
+      if (shouldSeparateCopy && !copySpacingCompacted) {
+        setCopySpacingCompacted(true);
+        return;
+      }
       if (shouldSeparateCopy !== copyOnSeparatePage) setCopyOnSeparatePage(shouldSeparateCopy);
     }
     const continuationPages = Array.from(pagesRef.current.querySelectorAll<HTMLElement>(".nta-document-content.batch-attendees"));
@@ -489,7 +507,7 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
       }
     }
     if (settingsChanged) setRosterPageSettings(nextSettings);
-  }, [record, firstPageRows, rosterPageSettings, rosterPages.length, copyOnSeparatePage, individualClosingCount, individualClosingSaturated, individualSignatoryPulledBack, safeIndividualClosingCount]);
+  }, [record, firstPageRows, rosterPageSettings, rosterPages.length, copyOnSeparatePage, copySpacingCompacted, individualClosingCount, individualClosingSaturated, individualSignatoryPulledBack, individualClosingCompacted, safeIndividualClosingCount]);
   async function downloadPdf() {
     if (!pagesRef.current) return;
     setDownloading(true); setError("");
@@ -530,7 +548,7 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
     }
   }
 
-  return <div className="preview-backdrop nta-preview-backdrop"><div className="preview-toolbar"><span>NTA preview</span><button type="button" className="ghost-button" onClick={onClose}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>{error && <small className="download-error">{error}</small>}{printError && <small className="download-error" role="alert">{printError}</small>}</div><div ref={pagesRef} className="nta-preview-pages">{record.mode === "individual" ? <><NtaPage record={record} page="individual" individualClosingUnits={individualFirstPageClosing} individualSignatoryPulledBack={individualSignatoryPulledBack} />{individualContinuationClosing.length > 0 && <NtaPage record={record} page="individual-continuation" individualClosingUnits={individualContinuationClosing} />}</> : <><NtaPage record={record} page="batch-overview" firstPageRows={firstPageRows} showFixedCopy={rosterPages.length === 0} hideFixedCopy={copyOnSeparatePage} />{rosterPages.map((sections, index) => <NtaPage key={`batch-attendees-${index}`} record={record} page="batch-attendees" rosterSections={sections} showFixedCopy={index === rosterPages.length - 1} hideFixedCopy={index === rosterPages.length - 1 && copyOnSeparatePage} />)}{copyOnSeparatePage && <NtaPage record={record} page="batch-copy" showFixedCopy />}</>}</div></div>;
+  return <div className="preview-backdrop nta-preview-backdrop"><div className="preview-toolbar"><span>NTA preview</span><button type="button" className="ghost-button" onClick={onClose}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>{error && <small className="download-error">{error}</small>}{printError && <small className="download-error" role="alert">{printError}</small>}</div><div ref={pagesRef} className="nta-preview-pages">{record.mode === "individual" ? <><NtaPage record={record} page="individual" individualClosingUnits={individualFirstPageClosing} individualSignatoryPulledBack={individualSignatoryPulledBack} individualClosingCompacted={individualClosingCompacted} />{individualContinuationClosing.length > 0 && <NtaPage record={record} page="individual-continuation" individualClosingUnits={individualContinuationClosing} individualClosingCompacted={individualClosingCompacted} />}</> : <><NtaPage record={record} page="batch-overview" firstPageRows={firstPageRows} showFixedCopy={rosterPages.length === 0} hideFixedCopy={copyOnSeparatePage} copySpacingCompacted={copySpacingCompacted} />{rosterPages.map((sections, index) => <NtaPage key={`batch-attendees-${index}`} record={record} page="batch-attendees" rosterSections={sections} showFixedCopy={index === rosterPages.length - 1} hideFixedCopy={index === rosterPages.length - 1 && copyOnSeparatePage} copySpacingCompacted={copySpacingCompacted} />)}{copyOnSeparatePage && <NtaPage record={record} page="batch-copy" showFixedCopy copySpacingCompacted={copySpacingCompacted} />}</>}</div></div>;
 }
 
 export default function NtaModule({ user }: { user: User }) {

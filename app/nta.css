@@ -31,6 +31,24 @@
 .nta-list-actions{align-items:center;display:flex;gap:10px;justify-content:flex-end}
 @media(max-width:720px){.nta-list-row>.nta-list-actions{grid-column:1/-1;justify-content:flex-start}}
 
+.nta-individual-closing-compact:not(.nta-individual-closing-continuation){margin-top:1.25cqi}
+.nta-individual-closing-compact>p{margin-bottom:.65cqi}
+.nta-individual-closing-compact .nta-signatory{margin-top:2cqi}
+.nta-individual-closing-compact.nta-individual-closing-pulled .nta-signatory{margin-top:1.25cqi}
+.nta-roster-copy-compact:not(.nta-batch-copy) .nta-fixed-copy{margin-top:.75cqi}
+.nta-roster-copy-compact .nta-fixed-copy p{margin-bottom:.75cqi}
+.nta-roster-copy-compact:not(.nta-batch-copy) .nta-signatory{margin-top:3cqi}
+.nta-individual-closing .nta-individual-issued,.nta-fixed-copy .nta-issued-date{margin:4.6cqi 0 0}
+.nta-individual-closing .nta-signatory,.nta-roster-copy-page .nta-signatory{margin-top:6.9cqi}
+.nta-individual-closing-compact .nta-individual-issued,.nta-roster-copy-compact .nta-issued-date{margin-top:4.6cqi}
+.nta-individual-closing-compact .nta-signatory,.nta-roster-copy-compact .nta-signatory{margin-top:6.9cqi}
+.nta-individual-closing-compact.nta-individual-closing-pulled .nta-signatory{margin-top:6.9cqi}
+.nta-attendance-intro{margin-bottom:2.32cqi}
+.nta-attendance-batch th:nth-child(2){width:32%}.nta-attendance-batch th:nth-child(3){width:35%}.nta-attendance-batch th:nth-child(4){width:25%}
+.nta-to-subject .nta-office-line strong{font-weight:400}
+.nta-to-subject{gap:3.8cqi;margin-top:4cqi}
+.nta-details b,.nta-details dd{font-weight:700}
+
 .nta-attendee-manual-fields{display:grid;gap:8px;grid-column:1/3;grid-template-columns:repeat(3,minmax(0,1fr));min-width:0}.nta-attendee-manual-fields input{min-width:0}
 @media(max-width:720px){.nta-attendee-manual-fields{grid-column:1;grid-template-columns:1fr}}
 
