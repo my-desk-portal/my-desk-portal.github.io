@@ -1,0 +1,32 @@
+@media(max-width:720px){
+  .calendar-of-activities-list-head{display:none}
+  .calendar-of-activities-list-row{align-items:start;gap:8px;grid-template-columns:1fr 1fr;padding:17px 0}
+  .calendar-of-activities-list-row>strong,.calendar-of-activities-list-unit,.calendar-of-activities-list-count,.calendar-of-activities-list-prepared,.calendar-of-activities-list-status,.calendar-of-activities-row-actions{grid-column:1/-1}
+  .calendar-of-activities-list-row>strong{font-size:14px}
+  .calendar-of-activities-list-unit::before,.calendar-of-activities-list-count::before,.calendar-of-activities-list-prepared::before,.calendar-of-activities-list-status::before{color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase}
+  .calendar-of-activities-list-unit::before{content:"Unit: "}
+  .calendar-of-activities-list-count::before{content:"Activities: "}
+  .calendar-of-activities-list-prepared::before{content:"Prepared by: "}
+  .calendar-of-activities-list-status::before{content:"Status: "}
+  .calendar-of-activities-row-actions{flex-wrap:wrap;gap:18px;justify-content:flex-start;padding-top:3px}
+  .calendar-of-activities-form{gap:17px;grid-template-columns:minmax(0,1fr)}
+  .calendar-of-activities-meta{grid-template-columns:1fr}
+  .calendar-of-activities-row{gap:12px;grid-template-columns:minmax(0,1fr);padding:14px}
+  .calendar-of-activities-dates{gap:9px;grid-template-columns:1fr}
+  .calendar-of-activities-entry{grid-column:1}
+  .calendar-of-activities-responsible-add{grid-template-columns:minmax(0,1fr)}
+  .calendar-of-activities-responsible-add .ghost-button{justify-self:start}
+  .calendar-of-activities-preview-backdrop{gap:12px;padding:var(--preview-toolbar-offset,122px) 8px calc(16px + env(safe-area-inset-bottom,0px))}
+  .calendar-of-activities-preview-toolbar{gap:7px;padding:9px}
+  .calendar-of-activities-preview-toolbar>span{flex:1 0 100%}
+  .calendar-of-activities-preview-toolbar .ghost-button,.calendar-of-activities-preview-toolbar .pdf-button{flex:1 1 auto;min-height:40px;padding-inline:8px}
+  .calendar-of-activities-preview-toolbar>small{text-align:left}
+  .calendar-of-activities-preview-pages{gap:14px;overflow:visible}
+  .calendar-of-activities-paper{width:min(98vw,297mm)}
+}
+@media(max-width:420px){
+  .calendar-of-activities-row{padding:11px}
+  .calendar-of-activities-paper-heading{gap:1.3cqi}
+  .calendar-of-activities-paper-title h1{font-size:2cqi}
+  .calendar-of-activities-paper-table th,.calendar-of-activities-paper-table td{padding:.48cqi .5cqi}
+}

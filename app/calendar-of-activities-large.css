@@ -1,0 +1,91 @@
+.calendar-of-activities-list-section,.calendar-of-activities-form-section{margin:0 auto;max-width:1100px;min-width:0}
+.calendar-of-activities-list{min-width:0}
+.calendar-of-activities-list-head,.calendar-of-activities-list-row{grid-template-columns:1.2fr .85fr .6fr 1.3fr 1fr 1.2fr;min-width:0}
+.calendar-of-activities-list-row>span,.calendar-of-activities-list-row>strong{min-width:0;overflow-wrap:anywhere}
+.calendar-of-activities-row-actions{min-width:0}
+.calendar-of-activities-list-status{min-width:0}
+.calendar-of-activities-list-status select{background:#fff;border:1px solid var(--line);border-radius:0;color:var(--ink);font-size:12px;font-weight:700;padding:7px 8px;width:100%}
+.calendar-of-activities-list-status select:focus{border-color:var(--accent-dark);outline:2px solid #df603c33}
+.calendar-of-activities-list-status.travel-order-status-pending select{background:#fff5e8;color:#8e5712}
+.calendar-of-activities-list-status.travel-order-status-approved select,.calendar-of-activities-status-badge.is-approved{background:#eaf5ed;color:#21603a}
+.calendar-of-activities-status-badge{border:1px solid var(--line);border-radius:0;display:block;font-size:12px;padding:8px;text-align:left;width:100%}
+.calendar-of-activities-form{align-items:start;display:grid;gap:22px;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
+.calendar-of-activities-meta{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(240px,.7fr)}
+.calendar-of-activities-meta label,.calendar-of-activities-row label{color:var(--ink);display:grid;font-size:12px;font-weight:700;gap:7px;min-width:0}
+.calendar-of-activities-meta input,.calendar-of-activities-row input,.calendar-of-activities-row select,.calendar-of-activities-row textarea{background:#fff;border:1px solid var(--line);border-radius:0;color:var(--ink);font:inherit;font-size:13px;font-weight:400;min-height:42px;min-width:0;padding:9px 11px;width:100%}
+.calendar-of-activities-meta input:focus,.calendar-of-activities-row input:focus,.calendar-of-activities-row select:focus,.calendar-of-activities-row textarea:focus{border-color:var(--accent-dark);outline:2px solid #df603c33}
+.calendar-of-activities-meta input[readonly],.calendar-of-activities-meta input:disabled{background:#f5f7f5;color:var(--muted);opacity:1}
+.calendar-of-activities-rows{display:grid;gap:14px;min-width:0}
+.calendar-of-activities-rows-heading{display:grid;gap:5px}
+.calendar-of-activities-rows-heading strong{color:var(--ink);font-size:14px}
+.calendar-of-activities-rows-heading span{color:var(--muted);font-size:12px}
+.calendar-of-activities-limit-note{color:var(--muted);font-size:11px}
+.calendar-of-activities-row{align-items:start;border:1px solid var(--line);display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);margin:0;min-width:0;padding:17px}
+.calendar-of-activities-row legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:11px;padding:0 7px}
+.calendar-of-activities-dates{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
+.calendar-of-activities-entry{grid-column:span 1}
+.calendar-of-activities-location{grid-column:1/-1}
+.calendar-of-activities-entry textarea{height:42px;line-height:1.4;resize:none}
+.calendar-of-activities-responsible-field{display:grid;gap:8px;grid-column:1/-1;min-width:0}
+.calendar-of-activities-responsible-label{color:var(--ink);font-size:12px;font-weight:700}
+.calendar-of-activities-responsible-add{display:grid;gap:10px;grid-template-columns:minmax(0,1fr) auto;min-width:0}
+.calendar-of-activities-responsible-list{display:flex;flex-wrap:wrap;gap:7px;margin:0;padding:0;list-style:none}
+.calendar-of-activities-responsible-list li{align-items:center;background:#edf4ef;border:1px solid #d6e4d9;color:var(--ink);display:inline-flex;font-size:12px;gap:8px;max-width:100%;padding:5px 8px}
+.calendar-of-activities-responsible-list li span{overflow-wrap:anywhere}
+.calendar-of-activities-responsible-list li button:not(.remove-action){background:transparent;border:0;color:#8c342b;cursor:pointer;font:inherit;font-size:11px;font-weight:700;padding:2px}
+.calendar-of-activities-row>.remove-participant{grid-column:1/-1;justify-self:start}
+.calendar-of-activities-prepared-summary{border-left:3px solid var(--accent);display:grid;gap:3px;padding:6px 0 6px 12px}
+.calendar-of-activities-prepared-summary span,.calendar-of-activities-prepared-summary em{color:var(--muted);font-size:12px;font-style:normal}
+.calendar-of-activities-prepared-summary strong{color:var(--ink);font-size:13px;text-transform:uppercase}
+.calendar-of-activities-error{margin:0 auto 18px;max-width:1180px}
+.calendar-of-activities-profile-notice{margin:0 auto;max-width:760px}
+.notification-section-title{background:#f7f9f7;color:var(--muted);font-family:'DM Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;margin:0;padding:8px 16px;text-transform:uppercase}
+.calendar-of-activities-notification.is-read{background:#fafbfa}
+.calendar-of-activities-notification.is-read>small{color:#87948b}
+.calendar-of-activities-notification-activity{border-left:2px solid #b8d2be;display:grid;gap:3px;margin-top:5px;padding-left:8px}
+.calendar-of-activities-notification-activity b{font-size:12px;line-height:1.3;overflow-wrap:anywhere}
+.calendar-of-activities-notification-activity span{color:var(--muted);font-size:11px;line-height:1.35;overflow-wrap:anywhere}
+.calendar-of-activities-preview-backdrop{align-content:start;animation:ui-fade-in 180ms ease both;background:#111a;display:grid;gap:18px;inset:0;justify-items:center;overflow:auto;overscroll-behavior:contain;padding:var(--preview-toolbar-offset,108px) 20px 28px;position:fixed;z-index:70}
+.calendar-of-activities-preview-toolbar{align-items:center;background:transparent;border:0;box-shadow:none;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;max-width:800px;padding:0;width:100%}
+.calendar-of-activities-preview-toolbar>span{color:#fff;font-family:'DM Mono',monospace;font-size:11px;font-weight:400;margin-right:auto;text-transform:uppercase}
+.calendar-of-activities-preview-toolbar>small{color:#a23d2d;flex:1 0 100%;font-size:12px;text-align:right}
+.calendar-of-activities-preview-pages{display:grid;gap:24px;justify-items:center;margin:0 auto;width:100%}
+.calendar-of-activities-paper{aspect-ratio:297/210;background:#fff;box-shadow:0 18px 50px #0004;box-sizing:border-box;color:#111;container-type:inline-size;font-family:Cambria,'Times New Roman',serif;overflow:hidden;padding:4.7% 5.8% 3%;position:relative;width:min(96vw,297mm)}
+.calendar-of-activities-paper-heading{align-items:center;display:flex;gap:2cqi;justify-content:center;min-height:10cqi;text-align:center}
+.calendar-of-activities-paper-heading img{height:6.5cqi;max-height:26mm;object-fit:contain;width:6.5cqi}
+.calendar-of-activities-paper-heading>div{display:grid;gap:.28cqi;line-height:1.12}
+.calendar-of-activities-paper-heading p,.calendar-of-activities-paper-heading strong,.calendar-of-activities-paper-heading span,.calendar-of-activities-paper-heading small{margin:0}
+.calendar-of-activities-paper-heading p{font-size:1.18cqi}
+.calendar-of-activities-paper-heading strong{font-size:1.45cqi;letter-spacing:.025em}
+.calendar-of-activities-paper-heading span{font-size:1.3cqi}
+.calendar-of-activities-paper-heading small{font-size:1.03cqi}
+.calendar-of-activities-paper-rule{border-top:1px solid #252525;margin:1.2cqi 0 1.15cqi}
+.calendar-of-activities-paper-title{margin:0 0 1.1cqi;text-align:center}
+.calendar-of-activities-paper-title h1{font-size:2.1cqi;letter-spacing:.04em;margin:0}
+.calendar-of-activities-paper-title .calendar-of-activities-paper-unit{font-size:1.25cqi;font-weight:400;margin:.25cqi 0 0;text-align:center}
+.calendar-of-activities-paper-title .calendar-of-activities-paper-month{font-size:1.3cqi;font-weight:700;margin:.25cqi 0 0}
+.calendar-of-activities-paper-table{border-collapse:collapse;table-layout:fixed;text-align:left;width:100%}
+.calendar-of-activities-paper-table th,.calendar-of-activities-paper-table td{border:1px solid #252525;font-size:1.18cqi;line-height:1.2;overflow-wrap:anywhere;padding:.48cqi .55cqi;vertical-align:middle}
+.calendar-of-activities-paper-table th{background:#00b050;color:#fff;font-family:Arial,sans-serif;font-size:1.12cqi;font-weight:700;text-align:left;text-transform:uppercase}
+.calendar-of-activities-paper-table th:first-child{width:13.3%}.calendar-of-activities-paper-table th:nth-child(2){width:34.7%}.calendar-of-activities-paper-table th:nth-child(3){width:30%}.calendar-of-activities-paper-table th:last-child{width:22%}
+.calendar-of-activities-paper-date{text-align:center}
+.calendar-of-activities-paper-responsible span{display:block}
+.calendar-of-activities-paper-footer{align-items:start;display:grid;gap:1cqi;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:1.65cqi;min-height:0}
+.calendar-of-activities-paper-signatory{display:grid;gap:.2cqi;min-width:0;text-align:left}
+.calendar-of-activities-paper-signatory>span{font-size:1.12cqi;min-height:1.4em}
+.calendar-of-activities-paper-signatory>strong{font-size:1.23cqi;margin-top:3.5cqi;text-transform:uppercase}
+.calendar-of-activities-paper-signatory>em{font-size:1.02cqi;font-style:italic;line-height:1.15}
+@media print{
+  @page calendar-of-activities{size:A4 landscape;margin:0}
+  body:has(.calendar-of-activities-preview-backdrop) *{visibility:hidden!important}
+  body:has(.calendar-of-activities-preview-backdrop) .calendar-of-activities-preview-backdrop,
+  body:has(.calendar-of-activities-preview-backdrop) .calendar-of-activities-preview-backdrop *{visibility:visible!important}
+  body:has(.calendar-of-activities-preview-backdrop){background:#fff!important}
+  body:has(.calendar-of-activities-preview-backdrop)>.system-background{display:none!important}
+  .calendar-of-activities-preview-backdrop{background:#fff!important;display:block!important;inset:0 auto auto 0!important;overflow:visible!important;padding:0!important;position:absolute!important;width:100%!important;z-index:auto!important}
+  .calendar-of-activities-preview-toolbar{display:none!important}
+  .calendar-of-activities-preview-pages{display:block!important;width:auto!important}
+  .calendar-of-activities-paper{box-shadow:none!important;height:210mm!important;margin:0!important;page:calendar-of-activities;page-break-after:always;width:297mm!important}
+  .calendar-of-activities-paper:last-child{page-break-after:auto}
+  .calendar-of-activities-paper,.calendar-of-activities-paper *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+}
