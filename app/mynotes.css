@@ -18,6 +18,7 @@
 .my-notes-empty-state{align-content:center;display:grid;justify-items:center;min-height:220px}
 .my-notes-empty-state p{margin-bottom:0}
 .my-notes-form{display:grid;gap:22px}
+.my-notes-date-field{min-width:0;width:100%}
 .my-notes-date-field input,.my-notes-filter-date input{min-height:44px}
 .my-notes-task-entry{border:1px solid var(--line);display:grid;gap:15px;margin:0;min-width:0;padding:18px}
 .my-notes-task-entry legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.07em;padding:0 8px;text-transform:uppercase}

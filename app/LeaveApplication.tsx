@@ -50,7 +50,6 @@ type LeaveApplicationRecord = {
   createdAt?: unknown;
 };
 
-const offices: Office[] = ["FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"];
 const leaveTypes: LeaveType[] = [
   "Vacation Leave",
   "Mandatory/Forced Leave",
@@ -449,7 +448,11 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
     const normalizedMiddleName = normalizeNamePart(middleName);
     const normalizedLastName = normalizeNamePart(lastName);
     if (!normalizedFirstName || !normalizedLastName) {
-      setError("Enter a first name and last name.");
+      setError("Complete your first and last name in your Profile before creating a Leave Application.");
+      return;
+    }
+    if (!office || !position.trim()) {
+      setError("Complete your office and position in your Profile before creating a Leave Application.");
       return;
     }
     if (inclusiveDateTo < inclusiveDateFrom) {
@@ -581,14 +584,7 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
     {view === "new" ? <>
       <div className="section-heading leave-application-heading"><div><p className="eyebrow">New record</p><h2>Create Leave Application</h2><p className="muted">Enter the details for the Civil Service Commission Leave Application form.</p></div><button type="button" className="ghost-button" onClick={() => { setView("list"); setError(""); }}>Cancel</button></div>
       <form className="leave-application-form" onSubmit={save}>
-        <div className="leave-application-applicant-row">
-          <label>Date of Filing<input type="date" value={filedDate} onChange={(event) => setFiledDate(event.target.value)} required /></label>
-          <label>First Name<input value={firstName} onChange={(event) => setFirstName(event.target.value)} maxLength={60} required /></label>
-          <label>Middle Name<input value={middleName} onChange={(event) => setMiddleName(event.target.value)} maxLength={60} /></label>
-          <label>Last Name<input value={lastName} onChange={(event) => setLastName(event.target.value)} maxLength={60} required /></label>
-        </div>
-        <label>Office<select value={office} onChange={(event) => setOffice(event.target.value as Office | "")} required><option value="" disabled>Select office</option>{offices.map((option) => <option key={option}>{option}</option>)}</select></label>
-        <label>Position<input value={position} onChange={(event) => setPosition(event.target.value)} maxLength={120} required /></label>
+        <label className="leave-application-wide-field">Date of Filing<input type="date" value={filedDate} onChange={(event) => setFiledDate(event.target.value)} required /></label>
         <label>Monthly Salary<div className="leave-application-currency-field"><span aria-hidden="true">₱</span><input type="number" inputMode="decimal" min="0" step="0.01" value={salary} onChange={(event) => setSalary(event.target.value)} onBlur={() => { if (salary !== "") setSalary(decimalSalary(salary)); }} aria-label="Monthly salary amount in Philippine pesos" placeholder="0.00" required /></div></label>
         <label>Type of Leave<select value={leaveType} onChange={(event) => { const selected = event.target.value as LeaveType | ""; setLeaveType(selected); setLeaveDetails(""); setSpecifyAbroad(""); setSpecifyIllness(""); setStudyLeaveOtherPurpose(""); }} required><option value="" disabled>Select type of leave</option>{leaveTypes.map((option) => <option key={option}>{option}</option>)}</select></label>
         {(["Vacation Leave", "Special Privilege Leave"].includes(leaveType) || leaveType === "Sick Leave" || leaveType === "Study Leave") && <label className="leave-application-wide-field">Details of Leave<select value={leaveDetails} onChange={(event) => { const selected = event.target.value; setLeaveDetails(selected); if (selected !== "Abroad") setSpecifyAbroad(""); if (selected !== "Other Purpose") setStudyLeaveOtherPurpose(""); }} required><option value="" disabled>Select details of leave</option>{(leaveType === "Sick Leave" ? sickLeaveDetails : leaveType === "Study Leave" ? studyLeaveDetails : travelLeaveDetails).map((option) => <option key={option}>{option}</option>)}</select></label>}

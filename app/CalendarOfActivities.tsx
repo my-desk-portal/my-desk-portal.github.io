@@ -408,7 +408,6 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
         <button type="button" className="text-button plain-action add-item-text-button" disabled={activities.length >= maximumActivities} onClick={() => setActivities((current) => current.length < maximumActivities ? [...current, emptyActivity()] : current)}>+ Add another activity</button>
         {activities.length >= maximumActivities && <small className="calendar-of-activities-limit-note">A calendar can contain up to {maximumActivities} activities.</small>}
       </div>
-      <div className="calendar-of-activities-prepared-summary wide-field"><span>Prepared by</span><strong>{plan?.preparedName ?? profile.name}</strong><em>{plan?.preparedPosition ?? (profile.position || "Position not set in Profile")}</em></div>
       <div className="form-actions"><button className="primary-button" disabled={saving}>{saving ? "Saving…" : plan ? "Save changes" : "Save"}</button></div>
     </form>
   </section>;

@@ -11,8 +11,6 @@
 .leave-application-currency-field{align-items:stretch;display:flex;min-width:0}
 .leave-application-currency-field>span{align-items:center;background:#f7faf6;border:1px solid var(--line);border-right:0;color:var(--muted);display:flex;font-size:14px;padding:0 14px}
 .leave-application-currency-field>input{flex:1;min-width:0}
-.leave-application-applicant-row{display:grid;gap:18px;grid-column:1/-1;grid-template-columns:minmax(0,1.1fr) repeat(3,minmax(0,1fr));min-width:0}
-.leave-application-applicant-row label{min-width:0}
 .leave-application-wide-field,.leave-application-form-actions{grid-column:1/-1}
 .leave-application-date-range{align-items:end;border:0;display:grid;gap:10px;grid-column:1/-1;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);margin:0;padding:0}
 .leave-application-date-range legend{color:#4e5b55;font-size:12px;font-weight:600;grid-column:1/-1;letter-spacing:.02em;margin-bottom:8px;padding:0}
@@ -44,7 +42,6 @@
   .leave-application-record-head,.leave-application-record{grid-template-columns:1fr 1.2fr 1.2fr 1.2fr 132px 112px;gap:10px}
 }
 @media(max-width:760px){
-  .leave-application-applicant-row{grid-template-columns:repeat(2,minmax(0,1fr))}
   .leave-application-record-head{display:none}
   .leave-application-record{align-items:start;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr));padding:17px 0}
   .leave-application-record-date,.leave-application-record-name,.leave-application-record-type,.leave-application-record-dates,.leave-application-status,.leave-application-actions{grid-column:1/-1}
@@ -57,7 +54,6 @@
   .leave-application-heading{align-items:flex-start;gap:12px}
   .leave-application-heading h2{font-size:clamp(21px,6vw,26px);line-height:1.12}
   .leave-application-form{grid-template-columns:minmax(0,1fr);gap:16px}
-  .leave-application-applicant-row{grid-column:auto;grid-template-columns:minmax(0,1fr)}
   .leave-application-wide-field,.leave-application-form-actions{grid-column:auto}
   .leave-application-date-range{gap:7px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
   .leave-application-date-range input{padding:12px 8px}

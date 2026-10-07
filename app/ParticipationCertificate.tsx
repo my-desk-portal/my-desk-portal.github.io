@@ -111,10 +111,6 @@ function ordinalDay(value: string) {
   return <><strong>{day}<sup className="participation-ordinal-suffix">{suffix}</sup></strong> day of <strong>{month} {date.getFullYear()}</strong></>;
 }
 
-function dateLabel(value: string) {
-  return value ? displayDate(value) : "Set the event end date";
-}
-
 export default function ParticipationCertificate({ user }: { user: User }) {
   const [records, setRecords] = useState<ParticipationRecord[]>([]);
   const [view, setView] = useState<"list" | "new" | "edit">("list");
@@ -431,8 +427,7 @@ function ParticipationForm({ onCancel, onSubmit, saving, error }: { onCancel: ()
       </div>
       <label className="wide-field">Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
       <label className="wide-field participation-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event&apos;s Destination is the same as where the certificate will be awarded</label>
-      <label>Certificate Distribution Place<input name="distribution-place" maxLength={240} value={sameLocation ? eventDestination : distributionPlace} onChange={(event) => setDistributionPlace(event.target.value)} readOnly={sameLocation} required={!sameLocation} placeholder={sameLocation ? "Same as event destination" : "Enter distribution place"} /></label>
-      <label>Certificate Distribution Date<input type="text" value={dateLabel(eventDateTo)} readOnly /><small>Automatically set to the last day of the event.</small></label>
+      <label className="wide-field">Certificate Distribution Place<input name="distribution-place" maxLength={240} value={sameLocation ? eventDestination : distributionPlace} onChange={(event) => setDistributionPlace(event.target.value)} readOnly={sameLocation} required={!sameLocation} placeholder={sameLocation ? "Same as event destination" : "Enter distribution place"} /></label>
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;

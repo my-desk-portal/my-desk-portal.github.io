@@ -419,7 +419,6 @@ function AppreciationForm({ onCancel, onSubmit, saving, error }: { onCancel: () 
       <label className="wide-field">Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
       <label className="wide-field appreciation-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event&apos;s Destination is the same as where the certificate will be awarded</label>
       {!sameLocation && <label className="wide-field">Certificate Distribution Place<input name="distribution-place" maxLength={240} value={distributionPlace} onChange={(event) => setDistributionPlace(event.target.value)} required placeholder="Enter distribution place" /></label>}
-      <label className="wide-field">Certificate Distribution Date<input type="text" value={eventDateTo ? displayDate(eventDateTo) : "Set the event end date"} readOnly /><small>Automatically set to the last day of the event.</small></label>
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;

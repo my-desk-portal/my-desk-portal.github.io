@@ -36,3 +36,6 @@
 
 .nta-edit-actions{align-items:center;justify-content:space-between}.nta-edit-actions .nta-remove-notice{align-self:center;border-color:#efc8bb;color:var(--accent-dark)}.nta-edit-actions .primary-button{min-width:150px}
 @media(max-width:720px){.nta-edit-actions{align-items:stretch;flex-direction:column}.nta-edit-actions .nta-remove-notice{align-self:flex-start}.nta-edit-actions .primary-button{width:100%}}
+
+.nta-recipient-field-grid.nta-recipient-dropdown-grid{grid-template-columns:minmax(0,1fr) auto}.nta-recipient-field-grid.nta-recipient-dropdown-grid>label:first-child{min-width:0}
+@media(max-width:720px){.nta-recipient-field-grid.nta-recipient-dropdown-grid{grid-template-columns:1fr}}

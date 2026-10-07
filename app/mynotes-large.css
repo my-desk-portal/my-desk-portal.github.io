@@ -1,5 +1,4 @@
 @media(min-width:721px){
-  .my-notes-date-field{max-width:320px}
   .my-notes-records-header{gap:14px}
   .my-notes-records-header{grid-template-columns:minmax(210px,20%) minmax(0,1fr)}
   .my-notes-record-toolbar>.primary-button{align-self:center;grid-column:2;grid-row:1;justify-self:end}

@@ -39,6 +39,16 @@ import "./mytev-mobile.css";
 
 const maxTravelReferences = 8;
 const maxItineraries = 8;
+const tevEvidenceOptions = [
+  { label: "Approved Itinerary of Travel", pattern: /\bapproved itinerary of travel\b/i },
+  { label: "Approved Travel Orders", pattern: /\bapproved travel orders?\b/i },
+  { label: "Boarding Pass", pattern: /\bboarding passes?\b/i },
+  { label: "Boat Ticket", pattern: /\bboat tickets?\b/i },
+  { label: "Bus Ticket", pattern: /\bbus tickets?\b/i },
+  { label: "Certificate of Appearance", pattern: /\bcertificate of appearance\b/i },
+  { label: "Communication Letters", pattern: /\bcommunication letters?\b/i },
+  { label: "Plane Ticket", pattern: /\bplane tickets?\b/i },
+] as const;
 
 function localMonthValue() {
   const today = new Date();
@@ -91,7 +101,10 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
   const [month, setMonth] = useState(() => initialRecord?.month ?? localMonthValue());
   const [officialStation, setOfficialStation] = useState<TevOfficialStation>(() => initialRecord?.officialStation ?? tevOfficialStations[0]);
   const [references, setReferences] = useState<TevTravelReference[]>(() => initialRecord ? initialRecord.travelReferences.map((reference) => ({ ...reference })) : [blankTevTravelReference()]);
-  const [evidenceOfTravel, setEvidenceOfTravel] = useState(() => initialRecord?.evidenceOfTravel ?? "");
+  const [selectedEvidence, setSelectedEvidence] = useState<string[]>(() => initialRecord
+    ? tevEvidenceOptions.filter((option) => option.pattern.test(initialRecord.evidenceOfTravel ?? "")).map((option) => option.label)
+    : []);
+  const evidenceOfTravel = selectedEvidence.join(", ");
   const [divisionName, setDivisionName] = useState<TevDivision>(() => initialRecord?.divisionName ?? tevDivisions[0]);
   const [itineraries, setItineraries] = useState<TevItinerary[]>(() => initialRecord
     ? initialRecord.itineraries.map((itinerary) => ({ ...itinerary, rows: itinerary.rows.map((row) => ({ ...row, meansOfTransportation: normalizeTevTransportationMeansForEditor(row.meansOfTransportation), claims: [...row.claims] })) }))
@@ -148,6 +161,13 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
     updateRow(itineraryId, rowIndex, { claims });
   }
 
+  function toggleEvidence(option: string, checked: boolean) {
+    setSelectedEvidence((current) => checked
+      ? tevEvidenceOptions.filter((item) => current.includes(item.label) || item.label === option).map((item) => item.label)
+      : current.filter((item) => item !== option));
+    setMessage("");
+  }
+
   function continueToItineraries(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
@@ -175,8 +195,8 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
       setMessage("Each Travel Order end date must be on or after its start date.");
       return;
     }
-    if (!evidenceOfTravel.trim()) {
-      setMessage("Enter the evidence of travel.");
+    if (!selectedEvidence.length) {
+      setMessage("Select at least one evidence of travel.");
       return;
     }
     setStep("itineraries");
@@ -291,9 +311,9 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
           }} required /></label>
           {references.length > 1 && <button type="button" className="mytev-remove-reference remove-action" aria-label={`Remove travel reference ${index + 1}`} onClick={() => setReferences((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
         </fieldset>)}</div>
-        <label className="mytev-evidence-field">Evidence of Travel<textarea rows={2} maxLength={240} value={evidenceOfTravel} onChange={(event) => setEvidenceOfTravel(event.target.value)} placeholder="Approved Itinerary of Travel, Approved Travel Order, bus tickets, certificate of appearance" required /></label>
+        <fieldset className="mytev-evidence-picker"><legend>Evidence of Travel</legend><div className="mytev-evidence-options">{tevEvidenceOptions.map((option) => <label key={option.label}><input type="checkbox" checked={selectedEvidence.includes(option.label)} onChange={(event) => toggleEvidence(option.label, event.target.checked)} disabled={saving} /><span>{option.label}</span></label>)}</div></fieldset>
       </section>
-      <div className="mytev-form-actions"><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button><button className="primary-button">Continue to Itineraries</button></div>
+      <div className="mytev-form-actions"><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button><button className="primary-button">Continue</button></div>
     </form> : <form className="mytev-form mytev-itinerary-form" onSubmit={saveRecord}>
       {itineraries.map((itinerary, itineraryIndex) => {
         const rowLimitReached = itinerary.rows.length >= maxItineraryRows;

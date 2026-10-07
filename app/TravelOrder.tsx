@@ -95,6 +95,8 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
     setPeople((current) => current.map((person, itemIndex) => itemIndex === index ? { ...person, ...update } : person));
   }
 
+  const selectedPersonnelIds = new Set(people.flatMap((person) => person.userId ? [person.userId] : []));
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!db) { onError("Firebase is not configured."); return; }
@@ -145,7 +147,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
         {personnelStatus === "error" && <p className="travel-order-number-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</p>}
         {people.map((person, index) => <fieldset className="travel-order-person" key={index}>
           <legend>Personnel {index + 1}</legend>
-          <label>Name<select value={person.userId ?? ""} onChange={(event) => { const userId = event.target.value; const selectedPerson = personnel.find((entry) => entry.userId === userId); updatePerson(index, { userId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.map((entry) => <option key={entry.userId} value={entry.userId}>{entry.name}</option>)}</select></label>
+          <label>Name<select value={person.userId ?? ""} onChange={(event) => { const userId = event.target.value; const selectedPerson = personnel.find((entry) => entry.userId === userId); updatePerson(index, { userId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((entry) => entry.userId === person.userId || !selectedPersonnelIds.has(entry.userId)).map((entry) => <option key={entry.userId} value={entry.userId}>{entry.name}</option>)}</select></label>
           <label>Position<input value={person.position} readOnly required /></label>
           <label>Monthly Salary <span className="muted-inline">(optional)</span><div className="travel-order-currency-field"><span aria-hidden="true">₱</span><input type="number" inputMode="decimal" min="0" step="0.01" value={person.salary} onChange={(event) => updatePerson(index, { salary: event.target.value })} onBlur={() => { if (person.salary !== "") updatePerson(index, { salary: Number(person.salary).toFixed(2) }); }} aria-label="Monthly salary amount in Philippine pesos" placeholder="0.00" /></div></label>
           {people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}
