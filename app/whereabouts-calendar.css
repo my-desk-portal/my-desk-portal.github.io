@@ -91,6 +91,12 @@
 .whereabouts-pagination button:focus-visible{outline:3px solid #df603c;outline-offset:2px}
 .whereabouts-pagination button:disabled{color:#9ca9a0;cursor:not-allowed}
 .whereabouts-pagination span{color:var(--muted);font-size:11px;min-width:72px;text-align:center}
+.whereabouts-date-pagination{display:grid;gap:8px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);width:100%}
+.whereabouts-date-pagination button{min-height:40px;min-width:0;padding:0 8px;white-space:nowrap}
+.whereabouts-date-pagination button:first-child{background:var(--accent);border-color:var(--accent);color:#fff}
+.whereabouts-date-pagination button:first-child:hover:not(:disabled){background:var(--accent-dark);border-color:var(--accent-dark)}
+.whereabouts-date-pagination button:last-child{background:#ffe58a;border-color:#e8c34d;color:#594500;grid-column:3}
+.whereabouts-date-pagination button:last-child:hover:not(:disabled){background:#ffdc62;border-color:#d4aa27}
 @media(max-width:720px){
   .whereabouts-calendar-section{gap:16px}
   .whereabouts-calendar,.whereabouts-date-details{padding:16px}
