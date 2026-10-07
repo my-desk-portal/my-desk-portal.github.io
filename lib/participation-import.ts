@@ -16,7 +16,7 @@ export type ImportedParticipationRecord = {
 };
 
 const requiredColumns = [
-  "unit", "name", "gender", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "distributionplace", "distributiondate",
+  "unit", "name", "gender", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "distributionplace",
 ] as const;
 
 function normalizeHeader(value: string) {
@@ -111,7 +111,7 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
   const headers = readRow(rows[0]);
   const columns = new Map([...headers].map(([index, value]) => [normalizeHeader(value), index] as const));
   if (requiredColumns.some((column) => !columns.has(column))) {
-    throw new Error("Use the Participation_Importing_Template.xlsx columns: Unit, Name, Gender, Title, Destination, Date From, Date To, Time Start, Time End, Distribution Place, and Distribution Date.");
+    throw new Error("Use the Participation_Importing_Template.xlsx columns: Unit, Name, Gender, Title, Destination, Date From, Date To, Time Start, Time End, and Distribution Place.");
   }
 
   const grouped = new Map<string, ImportedParticipationRecord>();
@@ -132,7 +132,8 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
     const eventDestination = valueFor(values, "destination");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
-    const rawDistributionDate = valueFor(values, "distributiondate");
+    const distributionDateColumn = columns.get("distributiondate");
+    const rawDistributionDate = distributionDateColumn === undefined ? "" : values.get(distributionDateColumn)?.trim() ?? "";
     const parsedDistributionDate = parseDate(rawDistributionDate);
     const distributionDate = parsedDistributionDate || eventDateTo;
     const eventTimeFrom = parseTime(valueFor(values, "timestart"));
@@ -182,4 +183,3 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
   if (!grouped.size) throw new Error("The workbook has no completed participant rows to import.");
   return [...grouped.values()];
 }
-

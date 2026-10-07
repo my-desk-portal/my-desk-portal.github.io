@@ -14,7 +14,7 @@ export type ImportedCompletionRecord = {
 };
 
 const requiredColumns = [
-  "unit", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "name", "distributionplace", "distributiondate",
+  "unit", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "name", "distributionplace",
 ] as const;
 
 function normalizeHeader(value: string) {
@@ -109,7 +109,7 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
   const headers = readRow(rows[0]);
   const columns = new Map([...headers].map(([index, value]) => [normalizeHeader(value), index] as const));
   if (requiredColumns.some((column) => !columns.has(column))) {
-    throw new Error("Use the Completion_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Time Start, Time End, Name, Distribution Place, and Distribution Date.");
+    throw new Error("Use the Completion_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Time Start, Time End, Name, and Distribution Place.");
   }
 
   const grouped = new Map<string, ImportedCompletionRecord>();

@@ -21,7 +21,7 @@ export type ImportedAppreciationRecord = {
 };
 
 const requiredColumns = [
-  "unit", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "name", "gender", "position", "office", "distributionplace", "distributiondate",
+  "unit", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "name", "gender", "position", "office", "distributionplace",
 ] as const;
 const MAX_IMPORTED_SPEAKERS = 100;
 
@@ -117,7 +117,7 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
   const headers = readRow(rows[0]);
   const columns = new Map([...headers].map(([index, value]) => [normalizeHeader(value), index] as const));
   if (requiredColumns.some((column) => !columns.has(column))) {
-    throw new Error("Use the Appreciation_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Time Start, Time End, Name, Gender, Position, Office, Distribution Place, and Distribution Date.");
+    throw new Error("Use the Appreciation_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Time Start, Time End, Name, Gender, Position, Office, and Distribution Place.");
   }
 
   const valueFor = (values: Map<number, string>, column: typeof requiredColumns[number]) => values.get(columns.get(column)!)?.trim() ?? "";
