@@ -94,7 +94,7 @@ export default function MyNotes({ user }: { user: User }) {
   const [selectedDate, setSelectedDate] = useState(manilaDateKey);
   const [today, setToday] = useState(manilaDateKey);
   const [dateFilterTouched, setDateFilterTouched] = useState(false);
-  const [formDate, setFormDate] = useState(manilaDateKey);
+  const [formDate, setFormDate] = useState("");
   const [formTasks, setFormTasks] = useState([""]);
   const [draggedCreateIndex, setDraggedCreateIndex] = useState<number | null>(null);
   const [dropCreateIndex, setDropCreateIndex] = useState<number | null>(null);
@@ -161,7 +161,7 @@ export default function MyNotes({ user }: { user: User }) {
   function startNewNotes() {
     if (savingDraftRef.current) return;
     if (hasDraftChanges && !window.confirm("Discard unsaved changes to this date's notes?")) return;
-    setFormDate(selectedDate || manilaDateKey());
+    setFormDate("");
     setFormTasks([""]);
     setMessage(null);
     setShowForm(true);

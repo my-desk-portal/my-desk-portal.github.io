@@ -287,7 +287,7 @@
 @media(max-width:560px){.profile-form{grid-template-columns:1fr}.profile-form>label,.profile-form>.profile-security-fields,.profile-form>.profile-password-actions,.profile-form>.auth-message{grid-column:1/-1}.profile-security-fields{grid-template-columns:1fr}}
 .permit-form{grid-template-columns:repeat(2,minmax(0,1fr))}
 .permit-form>label,.permit-form>.date-range-field{min-width:0}
-.permit-date-input{font-size:16px;max-width:100%;min-width:0;width:100%}
+.permit-date-input{font-size:12px;max-width:100%;min-width:0;width:100%}
 @media(max-width:720px){.permit-form{grid-template-columns:minmax(0,1fr)}.permit-form>*{min-width:0}.permit-date-field{grid-column:auto}.notification-dropdown{max-height:calc(100dvh - 124px);position:fixed;right:12px;top:112px;width:min(420px,calc(100vw - 24px))}}
 
 .brand-logo,.auth-title-logo{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}

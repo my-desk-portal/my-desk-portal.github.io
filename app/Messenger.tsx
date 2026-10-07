@@ -21,7 +21,12 @@ const unitOptions = [
   { value: "AGRISTAT", label: "FOD-AGRISTAT" },
   { value: "AMIA", label: "FOD-AMIA" },
   { value: "DRRM", label: "FOD-DRRM" },
+  { value: "Field Operations Division", label: "Field Operations Division" },
 ];
+const profileUnitFilterValue = (unit?: string | null) => {
+  const normalizedUnit = unit?.trim().replace(/^FOD[-\s]+/i, "").toUpperCase() ?? "";
+  return unitOptions.find((option) => option.value.toUpperCase() === normalizedUnit)?.value ?? "All";
+};
 const emojis = ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤔", "😅", "😢", "😭", "😡", "🥳", "😴", "🙄", "👍", "👎", "👏", "🙏", "💪", "🤝", "👌", "✌️", "❤️", "💔", "🔥", "✨", "🎉", "✅", "❌", "⭐"];
 const stickers = ["👍", "❤️", "😂", "🎉", "🙏", "😍", "🔥", "👏", "😢", "😎", "🥳", "💯", "🤝", "🙌", "😴", "🤔"];
 const MAX_TEXT = 2000;
@@ -175,12 +180,12 @@ export function MessengerButton({ user, active, onClick }: { user: User; active:
   </button>;
 }
 
-export default function MessengerModule({ user }: { user: User }) {
+export default function MessengerModule({ user, profileUnit }: { user: User; profileUnit?: string | null }) {
   const chats = useChats(user.uid);
   const [people, setPeople] = useState<Person[]>([]);
   const [loadingPeople, setLoadingPeople] = useState(true);
   const [search, setSearch] = useState("");
-  const [unitFilter, setUnitFilter] = useState("All");
+  const [unitFilter, setUnitFilter] = useState(() => profileUnitFilterValue(profileUnit));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -198,6 +203,10 @@ export default function MessengerModule({ user }: { user: User }) {
   const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
   const [deleting, setDeleting] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (profileUnit) setUnitFilter(profileUnitFilterValue(profileUnit));
+  }, [profileUnit]);
 
   useEffect(() => {
     if (!db) { setLoadingPeople(false); return; }

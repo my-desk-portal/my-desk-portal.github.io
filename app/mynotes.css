@@ -3,7 +3,7 @@
 .my-notes-entry-section .section-heading{margin-bottom:22px}
 .my-notes-entry-section>.auth-message,.my-notes-records-section>.auth-message{margin:0 0 18px}
 .my-notes-records-section>.auth-message{align-items:center;display:flex;gap:14px;justify-content:space-between}
-.my-notes-records-header{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.section-heading.my-notes-records-header{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .my-notes-records-header>.eyebrow{grid-column:1;grid-row:1;margin:0}
 .my-notes-record-toolbar{display:contents}
 .my-notes-record-toolbar>.primary-button{align-self:center;grid-column:2;grid-row:1;justify-self:end;min-height:44px;min-width:76px;white-space:nowrap}

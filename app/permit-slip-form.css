@@ -54,23 +54,20 @@
   align-items: end;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.permit-person-entry-multiple {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .permit-person-entry > label {
   min-width: 0;
 }
 
-.permit-person-unit-warning {
-  color: #9e3824;
-  font-size: 11px;
-  font-weight: 500;
-}
-
 @media (max-width: 720px) {
   .permit-person-entry {
     gap: 8px;
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   }
 
   .permit-person-entry > .remove-participant {

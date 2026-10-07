@@ -3,10 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
-import { parseAppreciationImportWorkbook } from "@/lib/appreciation-import";
+import { loadPdfTools } from "@/lib/pdf-tools";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./appreciation.css";
 import "./appreciation-amia.css";
@@ -250,6 +248,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
     setImporting(true);
     let imported: AppreciationRecord[] = [];
     try {
+      const { parseAppreciationImportWorkbook } = await import("@/lib/appreciation-import");
       const parsed = parseAppreciationImportWorkbook(new Uint8Array(await file.arrayBuffer()));
       const target = collection(db, "appreciationCertificates");
       for (let offset = 0; offset < parsed.length; offset += 450) {
@@ -302,6 +301,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
     let papers: HTMLElement[] = [];
     let originalPaperSizes: Array<[string, string]> = [];
     try {
+      const { html2canvas, jsPDF } = await loadPdfTools();
       await waitForBlank();
       papers = Array.from(pagesRef.current?.querySelectorAll<HTMLElement>(".appreciation-print-sheet") ?? []);
       if (!papers.length) throw new Error("The Appreciation certificate preview is unavailable.");

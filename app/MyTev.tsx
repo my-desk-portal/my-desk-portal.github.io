@@ -3,9 +3,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
+import { loadPdfTools } from "@/lib/pdf-tools";
 import {
   blankTevItinerary,
   blankTevItineraryRow,
@@ -503,6 +502,7 @@ export default function MyTevModule({ user }: { user: User }) {
     setPreviewError("");
     pagesRef.current?.classList.add("mytev-document-pages-export");
     try {
+      const { html2canvas, jsPDF } = await loadPdfTools();
       const pages = await preparePages();
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       for (const [index, page] of pages.entries()) {

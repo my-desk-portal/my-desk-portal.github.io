@@ -3,11 +3,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
-import { PDFDocument } from "pdf-lib";
 import { db } from "@/lib/firebase";
-import { parseCertificateImportWorkbook } from "@/lib/certificate-import";
+import { loadPdfTools } from "@/lib/pdf-tools";
 import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./certificate-of-appearance.css";
@@ -256,6 +253,7 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     setImporting(true);
     let imported: CertificateRecord[] = [];
     try {
+      const { parseCertificateImportWorkbook } = await import("@/lib/certificate-import");
       const parsed = parseCertificateImportWorkbook(new Uint8Array(await file.arrayBuffer()));
       const certificateCollection = collection(db, "certificatesOfAppearance");
       for (let offset = 0; offset < parsed.length; offset += 450) {
@@ -298,6 +296,7 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     setDownloading(true);
     setError("");
     try {
+      const { html2canvas, jsPDF } = await loadPdfTools();
       await waitForImages();
       const sheets = Array.from(pagesRef.current!.querySelectorAll<HTMLElement>(".coa-print-sheet"));
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -335,6 +334,7 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     try {
       const response = await fetch(blankCertificatePdfAsset);
       if (!response.ok) throw new Error("The Certificate of Appearance PDF could not be loaded.");
+      const { PDFDocument } = await import("pdf-lib");
       const pdf = await PDFDocument.load(await response.arrayBuffer());
       const page = pdf.getPages()[0];
       if (!page) throw new Error("The Certificate of Appearance PDF has no pages.");

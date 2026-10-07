@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import type { PDFFont, PDFPage } from "pdf-lib";
+import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
@@ -72,6 +71,7 @@ const sickLeaveDetails = ["In Hospital", "Out Patient"] as const;
 const studyLeaveDetails = ["Completion of Master's Degree", "BAR/Board Examination Review", "Other Purpose"] as const;
 const studyLeaveOtherPurposes = ["Monetization of Leave Credits", "Terminal Leave"] as const;
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+const pdfTextColor: RGB = { type: "RGB" as RGB["type"], red: 0.08, green: 0.08, blue: 0.08 };
 
 function localDateValue() {
   const today = new Date();
@@ -203,10 +203,11 @@ function drawFitText(page: PDFPage, font: PDFFont, value: string, x: number, y: 
     while (characters.length && font.widthOfTextAtSize(`${characters.join("")}...`, size) > maxWidth) characters.pop();
     fittedText = characters.length ? `${characters.join("")}...` : "";
   }
-  if (fittedText) page.drawText(fittedText, { x, y, size, font, color: rgb(0.08, 0.08, 0.08) });
+  if (fittedText) page.drawText(fittedText, { x, y, size, font, color: pdfTextColor });
 }
 
 async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
   const response = await fetch(asset("/a4_size_application_letter_template.pdf"), { cache: "force-cache" });
   if (!response.ok) throw new Error("The CSC leave application template could not be loaded.");
   const pdf = await PDFDocument.load(await response.arrayBuffer());
@@ -244,9 +245,9 @@ async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
     "Adoption Leave": 559.73,
   };
   const selectedLeaveRow = record.leaveType === "Others" ? 522.92 : leaveTypeRows[record.leaveType];
-  page.drawText("X", { x: record.leaveType === "Others" ? 68.5 : 79.1, y: selectedLeaveRow - 1, size: 8.5, font: bold, color: rgb(0.08, 0.08, 0.08) });
+  page.drawText("X", { x: record.leaveType === "Others" ? 68.5 : 79.1, y: selectedLeaveRow - 1, size: 8.5, font: bold, color: pdfTextColor });
   if (record.leaveType === "Others") drawFitText(page, font, record.leaveDetails, 86.43, 506.56, 332, 8.5);
-  const markLeaveDetail = (x: number, y: number) => page.drawText("X", { x, y: y - 1, size: 8.5, font: bold, color: rgb(0.08, 0.08, 0.08) });
+  const markLeaveDetail = (x: number, y: number) => page.drawText("X", { x, y: y - 1, size: 8.5, font: bold, color: pdfTextColor });
   if (["Vacation Leave", "Special Privilege Leave"].includes(record.leaveType)) {
     if (record.leaveDetails === "Within the Philippines") markLeaveDetail(429.6, 760.63);
     if (record.leaveDetails === "Abroad") {

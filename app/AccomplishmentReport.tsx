@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type Ref } from "react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import type { User } from "firebase/auth";
 import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { loadPdfTools } from "@/lib/pdf-tools";
 import "./myar.css";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
@@ -128,6 +127,7 @@ function AccomplishmentReportPreview({ report, onClose }: { report: Report; onCl
     setDownloading(true);
     setDownloadError("");
     try {
+      const { html2canvas, jsPDF } = await loadPdfTools();
       await Promise.all(Array.from(page.querySelectorAll("img")).map(async (image) => {
         if (!image.complete) await new Promise<void>((resolve, reject) => {
           image.onload = () => resolve();

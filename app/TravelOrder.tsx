@@ -2,11 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { loadPdfTools } from "@/lib/pdf-tools";
 import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
 import { getDocumentNotificationReferences, makeDocumentNotification } from "@/lib/document-notifications";
 import DeleteConfirmation from "./DeleteConfirmation";
@@ -268,6 +267,7 @@ function TravelOrderPreview({ order, onClose }: { order: TravelOrder; onClose: (
     setDownloading(true);
     setError("");
     try {
+      const { html2canvas, jsPDF } = await loadPdfTools();
       await Promise.all(Array.from(pagesRef.current.querySelectorAll("img")).map(async (image) => {
         if (!image.complete) await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("The Travel Order header image could not be loaded.")); });
         if (image.naturalWidth === 0) throw new Error("The Travel Order header image could not be loaded.");

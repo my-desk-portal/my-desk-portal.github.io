@@ -1,7 +1,7 @@
 @media(max-width:720px){
   .my-notes-module{gap:16px}
   .my-notes-entry-section .section-heading{align-items:flex-start;display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
-  .my-notes-records-header{align-items:center;gap:12px;grid-template-columns:minmax(0,1fr) auto}
+  .section-heading.my-notes-records-header{align-items:center;gap:12px;grid-template-columns:minmax(0,1fr) auto}
   .my-notes-records-header>.eyebrow{grid-column:1;grid-row:1}
   .my-notes-record-toolbar{display:contents}
   .my-notes-filter-date{grid-column:1/-1;grid-row:2;min-width:0}

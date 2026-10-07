@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import { collection, doc, getDocs, query, serverTimestamp, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { loadPdfTools } from "@/lib/pdf-tools";
 import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
 import { getDocumentNotificationReferences, makeDocumentNotification } from "@/lib/document-notifications";
 import DeleteConfirmation from "./DeleteConfirmation";
@@ -65,8 +64,8 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
   const [subject, setSubject] = useState("");
   const [activityTitle, setActivityTitle] = useState("");
   const [organizer, setOrganizer] = useState("");
-  const [signatoryName, setSignatoryName] = useState("");
-  const selectedSignatory = ntaSignatories.find((signatory) => signatory.name === signatoryName);
+  const [signatoryDesignation, setSignatoryDesignation] = useState("");
+  const selectedSignatory = ntaSignatories.find((signatory) => signatory.designation === signatoryDesignation);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [venueType, setVenueType] = useState<"physical" | "virtual">("physical");
@@ -168,7 +167,7 @@ function NtaForm({ user, onSaved, onCancel }: { user: User; onSaved: (record: Nt
           {batches.length > 1 && <button type="button" className="remove-participant nta-remove-batch" aria-label={`Delete group ${batch.number}`} onClick={() => setBatches((current) => current.filter((_, index) => index !== batchIndex))}>Delete</button>}
         </fieldset>)}<button type="button" className="text-button plain-action add-item-text-button" onClick={() => setBatches((current) => [...current, { ...initialBatch(), number: String(current.length + 1) }])}>+ Add group</button></div>
       </>}
-      <label className="wide-field">Signatory Name<select value={signatoryName} onChange={(event) => setSignatoryName(event.target.value)} required><option value="" disabled>Select a signatory</option>{ntaSignatories.map((signatory) => <option key={signatory.name} value={signatory.name}>{signatory.name}</option>)}</select></label>
+      <label className="wide-field">Signatory<select value={signatoryDesignation} onChange={(event) => setSignatoryDesignation(event.target.value)} required><option value="" disabled>Select a signatory</option>{ntaSignatories.map((signatory) => <option key={signatory.designation} value={signatory.designation}>{signatory.designation}</option>)}</select></label>
       <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
@@ -512,6 +511,7 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
     if (!pagesRef.current) return;
     setDownloading(true); setError("");
     try {
+      const { html2canvas, jsPDF } = await loadPdfTools();
       await Promise.all(Array.from(pagesRef.current.querySelectorAll("img")).map(async (img) => { if (!img.complete) await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(new Error("The notice letterhead could not be loaded.")); }); if (img.decode) await img.decode(); }));
       const pageElements = Array.from(pagesRef.current.querySelectorAll<HTMLElement>(".nta-document-page"));
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });

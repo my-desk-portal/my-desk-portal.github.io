@@ -3,10 +3,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import { db } from "@/lib/firebase";
-import { parseCompletionImportWorkbook } from "@/lib/completion-import";
+import { loadPdfTools } from "@/lib/pdf-tools";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./completion.css";
 import "./completion-amia.css";
@@ -249,6 +247,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
     setImporting(true);
     let imported: CompletionRecord[] = [];
     try {
+      const { parseCompletionImportWorkbook } = await import("@/lib/completion-import");
       const parsed = parseCompletionImportWorkbook(new Uint8Array(await file.arrayBuffer()));
       const certificateCollection = collection(db, "completionCertificates");
       for (let offset = 0; offset < parsed.length; offset += 450) {
@@ -303,6 +302,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
     setError("");
     let originalPaperSizes: Array<[string, string]> = [];
     try {
+      const { html2canvas, jsPDF } = await loadPdfTools();
       await waitForTemplate();
       const sheets = Array.from(pageRef.current!.querySelectorAll<HTMLElement>(".completion-print-sheet"));
       const paperFormat = preview!.unit === "AMIA" ? "a4" : "letter";

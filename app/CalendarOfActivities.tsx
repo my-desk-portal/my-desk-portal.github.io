@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import { collection, deleteField, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type DocumentReference } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { loadPdfTools } from "@/lib/pdf-tools";
 import { isSuperadminRole } from "@/lib/user-roles";
 import { calendarOfActivitiesApprovalNotificationsCollection, calendarOfActivitiesCollection, calendarOfActivitiesNotificationsCollection } from "@/lib/calendar-of-activities-storage";
 import DeleteConfirmation from "./DeleteConfirmation";
@@ -186,6 +185,7 @@ function CalendarOfActivitiesPreview({ plan, onClose }: { plan: CalendarOfActivi
     setDownloading(true);
     setError("");
     try {
+      const { html2canvas, jsPDF } = await loadPdfTools();
       await waitForImages();
       const paperPages = Array.from(pagesRef.current!.querySelectorAll<HTMLElement>(".calendar-of-activities-paper"));
       const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
@@ -385,7 +385,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
   return <section className="content-section form-section calendar-of-activities-form-section">
     <div className="section-heading"><div><p className="eyebrow">{plan ? "Edit record" : "New record"}</p><h2>{plan ? "Edit Calendar of Activities" : "Calendar of Activities"}</h2><p className="muted">{plan ? "Update the date, activity, location, or responsible people for this calendar." : `Add one or more activities for ${unitLabel(profile.unit)}. Selected colleagues receive an in-app notification with each activity’s dates, activity, and location.`}</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     <form className="permit-form travel-order-form calendar-of-activities-form" onSubmit={save}>
-      <div className="calendar-of-activities-meta wide-field"><label>Unit<input value={unitLabel(plan?.unit ?? profile.unit)} readOnly /></label><label>Month and Year<input type="month" value={month} onChange={(event) => updateMonth(event.target.value)} disabled={Boolean(plan)} required /></label></div>
+      <div className="calendar-of-activities-meta wide-field"><label>Month and Year<input type="month" value={month} onChange={(event) => updateMonth(event.target.value)} disabled={Boolean(plan)} required /></label></div>
       <div className="calendar-of-activities-rows wide-field"><div className="calendar-of-activities-rows-heading"><strong>Activities</strong><span>Set one responsible person or add several for each row.</span></div>
         {activities.map((activity, index) => <fieldset className="calendar-of-activities-row" key={index}>
           <legend>Activity {index + 1}</legend>
