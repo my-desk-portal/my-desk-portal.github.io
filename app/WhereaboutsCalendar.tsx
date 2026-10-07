@@ -409,6 +409,11 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   });
   const selectedPeople = [...selectedPeopleByDetails.values()];
   const personnelNotInOfficeCount = new Set(selectedPeopleEntries.map((person) => person.name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase())).size;
+  const [selectedYear, selectedMonth, selectedDay] = selectedDate.split("-").map(Number);
+  const selectedDateWeekday = new Date(selectedYear, selectedMonth - 1, selectedDay).getDay();
+  const zeroPersonnelMessage = selectedDateWeekday === 0 || selectedDateWeekday === 6
+    ? "All personnel are off-duty."
+    : "All personnel are in the stationed office.";
   const selectedPeoplePageSize = 8;
   const selectedPeoplePageCount = Math.max(1, Math.ceil(selectedPeople.length / selectedPeoplePageSize));
   const currentSelectedPeoplePage = Math.min(selectedPeoplePage, selectedPeoplePageCount - 1);
@@ -477,7 +482,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     <section className="whereabouts-date-details" aria-live="polite">
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>
       <p className="whereabouts-personnel-count">No. of Personnel Not in the Stationed Office <strong>{loading ? "Loading..." : personnelNotInOfficeCount}</strong></p>
-      {loading ? <p className="muted">Loading Travel Orders, Permit Slips, and Leave Applications...</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No Travel Orders, Permit Slips, or Leave Applications on this date.</p> : <>
+      {loading ? <p className="muted">Loading Travel Orders, Permit Slips, and Leave Applications...</p> : personnelNotInOfficeCount === 0 ? <p className="whereabouts-empty-date">{zeroPersonnelMessage}</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No Travel Orders, Permit Slips, or Leave Applications on this date.</p> : <>
         <div className="whereabouts-date-table-wrap"><table className="whereabouts-date-table"><thead><tr><th>Person</th><th>Date</th><th>Purpose / Destination</th></tr></thead><tbody>
           {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span>{person.statuses.map((status) => <span key={status} className={`whereabouts-status-label whereabouts-status-label-${status.toLowerCase()}`}>{status}</span>)}<strong>{person.names.join(", ")}</strong>{person.unit && <small>{displayUnit(person.unit)}</small>}</td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
         </tbody></table></div>
