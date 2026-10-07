@@ -132,10 +132,7 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
     const eventDestination = valueFor(values, "destination");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
-    const distributionDateColumn = columns.get("distributiondate");
-    const rawDistributionDate = distributionDateColumn === undefined ? "" : values.get(distributionDateColumn)?.trim() ?? "";
-    const parsedDistributionDate = parseDate(rawDistributionDate);
-    const distributionDate = parsedDistributionDate || eventDateTo;
+    const distributionDate = eventDateTo;
     const eventTimeFrom = parseTime(valueFor(values, "timestart"));
     const eventTimeTo = parseTime(valueFor(values, "timeend"));
     const name = valueFor(values, "name");
@@ -143,7 +140,6 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
     if (!eventTitle || !eventDestination || !name || !participantGender || !eventDateFrom || !eventDateTo || !eventTimeFrom || !eventTimeTo) {
       throw new Error(`Row ${rowNumber}: complete the Unit, Name, Gender, event, date, time, and destination fields.`);
     }
-    if (rawDistributionDate && !parsedDistributionDate) throw new Error(`Row ${rowNumber}: enter a valid Distribution Date.`);
     if (name.length > 180) throw new Error(`Row ${rowNumber}: Name must be 180 characters or fewer.`);
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
     if (!distributionPlace || distributionPlace.length > 240 || eventDestination.length > 240 || eventTitle.length > 240) {
