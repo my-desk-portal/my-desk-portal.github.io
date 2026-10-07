@@ -111,17 +111,18 @@ function recordRefForReminder(reminder) {
   return null;
 }
 
-function permitDecisionKey(data, index) {
+function permitDecisionKey(data, index, permitId) {
   const numbers = Array.isArray(data.permitNos) ? data.permitNos : [];
   if (typeof numbers[index] === "string") return numbers[index];
   const names = Array.isArray(data.names) ? data.names : [];
-  return names.length > 1 ? `${data.permitNo}__person_${index + 1}` : data.permitNo;
+  const permitNo = typeof data.permitNo === "string" && data.permitNo ? data.permitNo : permitId;
+  return names.length > 1 ? `${permitNo}__person_${index + 1}` : permitNo;
 }
 
-function pendingPermitIndices(data) {
+function pendingPermitIndices(data, permitId) {
   const names = Array.isArray(data.names) ? data.names : typeof data.name === "string" ? [data.name] : [];
   return names.flatMap((_, index) => {
-    const decision = data.personStatuses?.[permitDecisionKey(data, index)];
+    const decision = data.personStatuses?.[permitDecisionKey(data, index, permitId)];
     return isPending(decision?.status) ? [index] : [];
   });
 }
@@ -139,7 +140,7 @@ async function processPendingPermit(permitSnapshot, now) {
     const currentCreatedAt = timestampMillis(data.createdAt);
     if (!currentCreatedAt || now < currentCreatedAt + permitWarningAfter) return { removedUserIds: [], deletedPermit: false, shouldWarn: false };
     const names = Array.isArray(data.names) ? data.names : typeof data.name === "string" ? [data.name] : [];
-    const pendingIndices = pendingPermitIndices(data);
+    const pendingIndices = pendingPermitIndices(data, permitRef.id);
     if (!pendingIndices.length) return { removedUserIds: [], deletedPermit: false, shouldWarn: false };
 
     if (now < currentCreatedAt + permitDeletionAfter) {
@@ -160,14 +161,14 @@ async function processPendingPermit(permitSnapshot, now) {
     const permitNos = Array.isArray(data.permitNos) ? data.permitNos : [];
     const personUnits = Array.isArray(data.personUnits) ? data.personUnits : [];
     const keptStatuses = { ...(data.personStatuses ?? {}) };
-    pendingIndices.forEach((index) => delete keptStatuses[permitDecisionKey(data, index)]);
+    pendingIndices.forEach((index) => delete keptStatuses[permitDecisionKey(data, index, permitRef.id)]);
     const keptPersonIds = keepIndices.map((index) => personIds[index]).filter((id) => typeof id === "string");
     const keptPermitNos = keepIndices.map((index) => permitNos[index]).filter((number) => typeof number === "string");
     const keptPersonUnits = keepIndices.map((index) => personUnits[index]).filter((unit) => typeof unit === "string");
     const nextData = {
       names: keepIndices.map((index) => names[index]),
       personStatuses: keptStatuses,
-      permitNo: keptPermitNos[0] ?? data.permitNo,
+      permitNo: keptPermitNos[0] ?? data.permitNo ?? "",
       unit: keptPersonUnits[0] ?? data.unit,
     };
     if (personIds.length) nextData.personIds = keptPersonIds;

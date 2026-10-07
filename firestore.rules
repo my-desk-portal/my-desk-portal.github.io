@@ -317,12 +317,15 @@ service cloud.firestore {
       allow read: if isVerifiedUser();
       allow create, update: if isPermitAdmin()
         && request.resource.data.keys().hasAll(["permitId", "statusKey", "status", "permitNo", "name", "date", "purpose", "unit"])
-        && request.resource.data.keys().hasOnly(["permitId", "statusKey", "status", "permitNo", "name", "date", "purpose", "unit"])
+        && request.resource.data.keys().hasOnly(["permitId", "statusKey", "status", "permitNo", "approvedPermitNo", "name", "date", "purpose", "unit"])
         && request.resource.data.permitId is string
         && request.resource.data.statusKey is string
         && request.resource.data.status == "Approved"
+        && (!request.resource.data.keys().hasAny(["approvedPermitNo"])
+          || (request.resource.data.approvedPermitNo is string
+            && request.resource.data.approvedPermitNo.matches("^[0-9]{4}-[0-9]{4,}$")))
         && getAfter(/databases/$(database)/documents/permits/$(request.resource.data.permitId)).data.personStatuses[request.resource.data.statusKey].status == "Approved";
-      allow delete: if isPermitAdmin() || (isVerifiedUser()
+      allow delete: if (isPermitAdmin() && resource.data.get("status", "") != "Approved") || (isVerifiedUser()
         && resource.data.permitId is string
         && get(/databases/$(database)/documents/permits/$(resource.data.permitId)).data.ownerId == request.auth.uid
         && !existsAfter(/databases/$(database)/documents/permits/$(resource.data.permitId)));

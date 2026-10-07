@@ -24,6 +24,7 @@ type ApprovedPermitSlip = {
   id: string;
   status: string;
   permitNo: string;
+  approvedPermitNo?: string;
   name: string;
   date: string;
   purpose: string;
@@ -60,7 +61,7 @@ type StoredPermit = {
   personUnits?: string[];
   purpose: string;
   unit?: string;
-  personStatuses?: Record<string, { status?: string }>;
+  personStatuses?: Record<string, { status?: string; approvedPermitNo?: string }>;
 };
 
 type PermitUnitFilter = "All" | "AGRISTAT" | "AMIA" | "DRRM";
@@ -133,20 +134,25 @@ async function publishExistingApprovedPermits(firestore: Firestore) {
     getDocs(collection(firestore, "permits")),
     getDocs(collection(firestore, "approvedPermitCalendar")),
   ]);
-  const existingCalendarIds = new Set(calendarSnapshot.docs.map((item) => item.id));
+  const existingCalendarEntries = new Map(calendarSnapshot.docs.map((item) => [item.id, item.data()]));
   const missingEntries: { id: string; data: Omit<ApprovedPermitSlip, "id"> & { permitId: string; statusKey: string } }[] = [];
 
   permitSnapshot.docs.forEach((item) => {
     const permit = { id: item.id, ...item.data() } as StoredPermit;
     const names = Array.isArray(permit.names) ? permit.names : permit.name ? [permit.name] : [];
     names.forEach((name, index) => {
-      const permitNo = permit.permitNos?.[index] ?? permit.permitNo;
-      const statusKey = permit.permitNos?.[index] ?? (names.length > 1 ? `${permit.permitNo}__person_${index + 1}` : permit.permitNo);
+      const permitNo = typeof permit.permitNos?.[index] === "string" && permit.permitNos[index]
+        ? permit.permitNos[index]
+        : typeof permit.permitNo === "string" ? permit.permitNo : "";
+      const statusKey = permit.permitNos?.[index] || (names.length > 1 ? `${permitNo || permit.id}__person_${index + 1}` : permitNo || permit.id);
       const calendarId = `${permit.id}_${encodeURIComponent(statusKey)}`;
-      if (permit.personStatuses?.[statusKey]?.status !== "Approved" || existingCalendarIds.has(calendarId) || !permit.date || !name) return;
+      const decision = permit.personStatuses?.[statusKey];
+      const existingEntry = existingCalendarEntries.get(calendarId);
+      if (decision?.status !== "Approved" || !permit.date || !name
+        || (existingEntry && existingEntry.approvedPermitNo === decision.approvedPermitNo)) return;
       missingEntries.push({
         id: calendarId,
-        data: { permitId: permit.id, statusKey, status: "Approved", permitNo, name, date: permit.date, purpose: permit.purpose ?? "", unit: permit.personUnits?.[index] ?? permit.unit ?? "" },
+        data: { permitId: permit.id, statusKey, status: "Approved", permitNo, ...(decision.approvedPermitNo ? { approvedPermitNo: decision.approvedPermitNo } : {}), name, date: permit.date, purpose: permit.purpose ?? "", unit: permit.personUnits?.[index] ?? permit.unit ?? "" },
       });
     });
   });
@@ -368,7 +374,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       type: "Permit Slip",
       status: permit.status,
       name: permit.name,
-      number: permit.permitNo ? `PS No. ${approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)}` : "",
+      number: permit.approvedPermitNo || permit.permitNo ? `PS No. ${permit.approvedPermitNo ?? approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)}` : "",
       date: formatCalendarDate(permit.date),
       purpose: permit.purpose || "—",
       destination: "",
@@ -461,23 +467,23 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     {error && <div className="error-message whereabouts-error">{error}</div>}
     <section className="whereabouts-calendar" aria-label="Travel Order, Leave Application, and Permit Slip calendar">
       <header className="whereabouts-calendar-toolbar"><button type="button" className="whereabouts-month-arrow" aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button><h3>{monthName}</h3><button type="button" className="whereabouts-month-arrow" aria-label="Next month" onClick={() => changeMonth(1)}>›</button><button type="button" className="whereabouts-today-button" onClick={() => { setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(todayKey); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); setLeavePage(0); }}>Today</button></header>
-      <div className="whereabouts-weekdays" aria-hidden="true">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((name) => <span key={name}>{name}</span>)}</div>
+      <div className="whereabouts-weekdays" aria-hidden="true">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((name, index) => <span className={index === 0 ? "whereabouts-weekday-sunday" : index === 6 ? "whereabouts-weekday-saturday" : undefined} key={name}>{name}</span>)}</div>
       <div className="whereabouts-days">
         {cells.map((day, index) => {
           if (day === null) return <span className="whereabouts-day whereabouts-day-empty" aria-hidden="true" key={`blank-${index}`} />;
           const key = dateKey(year, monthIndex, day);
           const peopleCount = peopleOnDate(key);
           const selected = selectedDate === key;
-          const level = peopleCount > 4 ? 3 : peopleCount > 1 ? 2 : peopleCount > 0 ? 1 : 0;
           const hasPending = hasPendingItemOnDate(key);
           const hasApproved = hasApprovedItemOnDate(key);
-          const statusClass = hasPending ? (hasApproved ? "whereabouts-day-mixed-status" : "whereabouts-day-pending") : "";
-          const classes = ["whereabouts-day", level ? `whereabouts-day-level-${level}` : "", statusClass, selected ? "whereabouts-day-selected" : ""].filter(Boolean).join(" ");
+          const statusClass = hasPending ? (hasApproved ? "whereabouts-day-mixed-status" : "whereabouts-day-pending") : hasApproved ? "whereabouts-day-approved" : "";
+          const classes = ["whereabouts-day", statusClass, selected ? "whereabouts-day-selected" : ""].filter(Boolean).join(" ");
+          const weekendNumberClass = index % 7 === 0 ? "whereabouts-day-number-sunday" : index % 7 === 6 ? "whereabouts-day-number-saturday" : "";
           const label = `${formatCalendarDate(key, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${peopleCount ? `, ${peopleCount} ${peopleCount === 1 ? "person or calendar record" : "people or calendar records"}` : ", no Travel Orders, Permit Slips, or Leave Applications"}${hasPending ? ", includes a Pending Travel Order or Leave Application" : ""}`;
-          return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className="whereabouts-day-number">{day}</span>{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
+          return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className={`whereabouts-day-number ${weekendNumberClass}`}>{day}</span>{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
         })}
       </div>
-      <div className="whereabouts-legend"><span><i className="whereabouts-legend-pending" />Pending Travel Order or Leave Application</span><span><i className="whereabouts-legend-mixed" />Approved and Pending</span><span><i className="whereabouts-legend-level-1" />1 person or calendar record</span><span><i className="whereabouts-legend-level-2" />2–4 people or calendar records</span><span><i className="whereabouts-legend-level-3" />5+ people or calendar records</span></div>
+      <div className="whereabouts-legend"><span><i className="whereabouts-legend-approved" />Approved Travel Order or Leave Application</span><span><i className="whereabouts-legend-pending" />Pending Travel Order or Leave Application</span><span><i className="whereabouts-legend-mixed" />Approved and Pending</span></div>
     </section>
     <section className="whereabouts-date-details" aria-live="polite">
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>
@@ -499,7 +505,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       {documentFilter === "permit" && <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-permit-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-permit-summary-title">Approved Permit Slips</h3><span>{annualPermits.length === 0 ? "0 records" : `${currentPermitPage * 10 + 1}–${Math.min(currentPermitPage * 10 + visibleAnnualPermits.length, annualPermits.length)} of ${annualPermits.length}`}</span></div>
         <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Date</th><th>Name</th><th>Unit</th><th>Purpose</th></tr></thead><tbody>
-          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.permitNo ? ` (PS No. ${approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.unit ? displayUnit(permit.unit) : "—"}</td><td>{permit.purpose || "—"}</td></tr>)}
+          {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.approvedPermitNo || permit.permitNo ? ` (PS No. ${permit.approvedPermitNo ?? approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.unit ? displayUnit(permit.unit) : "—"}</td><td>{permit.purpose || "—"}</td></tr>)}
           {!loading && visibleAnnualPermits.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={4}>No approved Permit Slips match this year and filter.</td></tr>}
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={4}>Loading approved Permit Slips…</td></tr>}
         </tbody></table></div>

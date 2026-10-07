@@ -62,7 +62,7 @@ import { documentRemindersCollection, type DocumentReminder } from "@/lib/docume
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
 type AccountUnit = Unit | "Field Operations Division";
-type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string };
+type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string; approvedPermitNo?: string };
 type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personIds?: string[]; recipientIds?: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; participantPositions?: string[]; participantOffices?: string[]; participantUserIds?: string[]; participantIds?: string[]; recipientIds?: string[]; signatoryName?: string; signatoryDesignation?: string; createdAt?: unknown };
 
@@ -452,7 +452,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The permit number is generated automatically when you save.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="permit-person-fields wide-field">{people.map((person, index) => { const personnelRecord = personnel.find((candidate) => candidate.userId === person.userId); const personnelUnit = permitUnitForPersonnel(personnelRecord); const unitNeedsManualSelection = Boolean(person.name) && !personnelUnit && !person.unit; return <div className="permit-person-entry" key={index}><label>Personnel<select aria-label={`Personnel ${index + 1}`} value={person.userId} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((candidate) => candidate.userId === person.userId || !selectedPermitPersonnelIds.has(candidate.userId)).map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.name}</option>)}</select></label><label>Unit<select aria-label={`Unit for ${person.name || `person ${index + 1}`}`} value={person.unit} onChange={(event) => selectPersonUnit(index, event.target.value as Unit | "")} required={Boolean(person.name)} disabled={personnelStatus !== "ready" || !person.name || Boolean(personnelUnit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : person.name ? "Select unit" : "Choose personnel first"}</option>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{unitNeedsManualSelection && <span className="permit-person-unit-warning" role="status">No supported unit is listed for this person. Select a unit.</span>}</label>{people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => removePerson(index)}>Delete</button>}</div>; })}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setPeople((current) => [...current, { name: "", userId: "", unit: "" }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={1} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
+  return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The PS No. is assigned when the Permit Slip is approved.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="permit-person-fields wide-field">{people.map((person, index) => { const personnelRecord = personnel.find((candidate) => candidate.userId === person.userId); const personnelUnit = permitUnitForPersonnel(personnelRecord); const unitNeedsManualSelection = Boolean(person.name) && !personnelUnit && !person.unit; return <div className="permit-person-entry" key={index}><label>Personnel<select aria-label={`Personnel ${index + 1}`} value={person.userId} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((candidate) => candidate.userId === person.userId || !selectedPermitPersonnelIds.has(candidate.userId)).map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.name}</option>)}</select></label><label>Unit<select aria-label={`Unit for ${person.name || `person ${index + 1}`}`} value={person.unit} onChange={(event) => selectPersonUnit(index, event.target.value as Unit | "")} required={Boolean(person.name)} disabled={personnelStatus !== "ready" || !person.name || Boolean(personnelUnit)}><option value="" disabled>{unitNeedsManualSelection ? "Select unit" : person.name ? "Select unit" : "Choose personnel first"}</option>{profileUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{unitNeedsManualSelection && <span className="permit-person-unit-warning" role="status">No supported unit is listed for this person. Select a unit.</span>}</label>{people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => removePerson(index)}>Delete</button>}</div>; })}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setPeople((current) => [...current, { name: "", userId: "", unit: "" }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={1} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
 function hasApprovedPermitStatus(permit: Permit) {
@@ -462,9 +462,10 @@ function hasApprovedPermitStatus(permit: Permit) {
 function PermitList({ permits, approvedPermitNumbers, deletingId, onNew, onPrint, onDelete }: { permits: Permit[]; approvedPermitNumbers: Record<string, string>; deletingId: string | null; onNew: () => void; onPrint: (permit: Permit) => void; onDelete: (permit: Permit) => void }) {
   return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Permit Slip</button></div> : <div className="permit-table"><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span aria-hidden="true" /></div>{permits.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.names.map((_, index) => {
     const originalNumber = permit.permitNos?.[index] ?? permit.permitNo;
-    if (normalizeWorkflowStatus(permit.personStatuses?.[permitDecisionKey(permit, index)]?.status) !== "Approved") return "Pending";
+    const decision = permit.personStatuses?.[permitDecisionKey(permit, index)];
+    if (normalizeWorkflowStatus(decision?.status) !== "Approved") return "Pending";
     const key = displayPermitNumber(originalNumber);
-    return approvedPermitNumbers[key] ?? key;
+    return (decision?.approvedPermitNo ?? approvedPermitNumbers[key] ?? key) || "—";
   }).join(", ")}</strong><span>{formatDate(permit.date)}</span><span><span className="permit-person-name-list">{permit.names.map((name, index) => <span key={`${permit.id}-name-${index}`}>{name}</span>)}</span></span><span><span className="permit-person-unit-list">{permit.names.map((_, index) => <b className="unit-tag" key={`${permit.id}-unit-${index}`}>{permit.personUnits?.[index] ?? permit.unit}</b>)}</span></span><span className="permit-row-actions"><button type="button" className="row-action" onClick={() => onPrint(permit)}>View</button>{!hasApprovedPermitStatus(permit) && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(permit)}>{deletingId === permit.id ? "Deleting..." : "Delete"}</button>}</span></div>)}</div>}</section>;
 }
 
@@ -475,11 +476,19 @@ function chunkNames(names: string[], size: number) {
 }
 
 function permitDecisionKey(permit: Permit, index: number) {
-  return permit.permitNos?.[index] ?? (permit.names.length > 1 ? `${permit.permitNo}__person_${index + 1}` : permit.permitNo);
+  const personNumber = permit.permitNos?.[index];
+  if (typeof personNumber === "string" && personNumber) return personNumber;
+  const permitNo = typeof permit.permitNo === "string" ? permit.permitNo : "";
+  const keyBase = permitNo || permit.id;
+  return permit.names.length > 1 ? `${keyBase}__person_${index + 1}` : keyBase;
 }
 
-function permitPersonNumber(permit: Pick<Permit, "permitNo" | "permitNos" | "names">, index: number) {
-  return permit.permitNos?.[index] ?? (permit.names.length > 1 ? `${permit.permitNo}__person_${index + 1}` : permit.permitNo);
+function permitPersonNumber(permit: Pick<Permit, "id" | "permitNo" | "permitNos" | "names">, index: number) {
+  const personNumber = permit.permitNos?.[index];
+  if (typeof personNumber === "string" && personNumber) return personNumber;
+  const permitNo = typeof permit.permitNo === "string" ? permit.permitNo : "";
+  const keyBase = permitNo || permit.id;
+  return permit.names.length > 1 ? `${keyBase}__person_${index + 1}` : keyBase;
 }
 
 function timestampMillis(value: unknown) {
@@ -531,7 +540,7 @@ function hasNewNotificationDocuments(snapshot: QuerySnapshot, state: Notificatio
 }
 
 function singlePersonPermitPreview(permit: Permit | AdminPermit, personIndex: number): Permit {
-  const personNumber = permit.permitNos?.[personIndex] ?? (permit.names.length > 1 ? `${permit.permitNo}__person_${personIndex + 1}` : permit.permitNo);
+  const personNumber = permitPersonNumber(permit, personIndex);
   const personUnit = permit.personUnits?.[personIndex] ?? permit.unit ?? "AGRISTAT";
   return {
     ...permit,
@@ -706,7 +715,7 @@ function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers
   const decision = permit.personStatuses?.[decisionKey];
   const decisionTime = signatureTime(decision?.decidedAt);
   const isApproved = normalizeWorkflowStatus(decision?.status) === "Approved";
-  const displayNumber = isApproved ? approvedPermitNumbers[displayPermitNumber(permitNo)] ?? displayPermitNumber(permitNo) : "Pending";
+  const displayNumber = isApproved ? (decision?.approvedPermitNo ?? approvedPermitNumbers[displayPermitNumber(permitNo)] ?? displayPermitNumber(permitNo)) || "—" : "Pending";
   return <article className="permit-document">
     <header className="permit-header">
       <div className="permit-logos">
@@ -1742,9 +1751,9 @@ export default function Home() {
     if (!user || !db) { setApprovedPermitNumbers({}); return; }
     return onSnapshot(collection(db, "approvedPermitCalendar"), (snapshot) => {
       const approvedNumbers = snapshot.docs
-        .map((item) => item.data() as { status?: string; permitNo?: string })
-        .filter((permit): permit is { status: string; permitNo: string } => permit.status === "Approved" && typeof permit.permitNo === "string")
-        .map((permit) => ({ permitNo: permit.permitNo }));
+        .map((item) => item.data() as { status?: string; permitNo?: string; approvedPermitNo?: string })
+        .filter((permit) => permit.status === "Approved" && (typeof permit.permitNo === "string" || typeof permit.approvedPermitNo === "string"))
+        .map((permit) => ({ permitNo: typeof permit.permitNo === "string" ? permit.permitNo : "", approvedPermitNo: permit.approvedPermitNo }));
       setApprovedPermitNumbers(assignApprovedPermitNumbers(approvedNumbers));
     }, () => setApprovedPermitNumbers({}));
   }, [user]);
