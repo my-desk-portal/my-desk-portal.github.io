@@ -319,7 +319,8 @@
     width:100%;
   }
   .mobile-nav-link>span:first-child{min-width:0;overflow-wrap:anywhere}
-  .mobile-nav-link:focus-visible,.mobile-profile-link:focus-visible,.mobile-sign-out:focus-visible,.mobile-nav-submenu button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+  .mobile-nav-link,.mobile-nav-link:hover,.mobile-nav-link:focus,.mobile-nav-link:active{appearance:none;-webkit-appearance:none;background:transparent;box-shadow:none;outline:none;text-decoration:none}
+  .mobile-profile-link:focus-visible,.mobile-sign-out:focus-visible,.mobile-nav-submenu button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
   .mobile-nav-chevron{
     border-bottom:1px solid var(--accent);
     border-right:1px solid var(--accent);
@@ -374,4 +375,21 @@
     text-decoration:none;
   }
   .mobile-nav-submenu .mobile-nav-submenu-link:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+}
+
+@media(max-width:720px){
+  .mobile-nav-scrim{background:transparent}
+  .mobile-navigation{background:linear-gradient(160deg,#ed704b 0%,#d85532 55%,#bf482b 100%);border-radius:0;box-shadow:none;color:#fff;max-width:calc(100vw - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));width:min(88vw,380px)}
+  .mobile-navigation button,.mobile-navigation a{border-radius:0}
+  .mobile-profile-link{background:transparent;border-bottom-color:#ffffff80;color:#fff;height:auto;justify-content:flex-start;min-height:64px;padding:12px 20px;text-align:left}
+  .mobile-navigation-links{padding:9px 20px 0}
+  .mobile-nav-link{flex-direction:row;justify-content:space-between;padding:0 12px;text-align:left}
+  .mobile-nav-link,.mobile-nav-link:hover,.mobile-nav-link:focus,.mobile-nav-link:active{background:transparent;color:#fff}
+  .mobile-nav-chevron{border-color:#fff}
+  .mobile-nav-submenu{border-left:1px solid #ffffff80;margin-left:4px;padding:0 0 8px 10px}
+  .mobile-nav-submenu button,.mobile-nav-submenu-label{color:#fff;text-align:left}
+  .mobile-nav-submenu .mobile-nav-submenu-link{color:#fff;text-align:left}
+  .mobile-nav-submenu .mobile-nav-submenu-link:hover,.mobile-nav-submenu .mobile-nav-submenu-link:focus-visible{background:#ffffff18;color:#fff}
+  .mobile-nav-submenu button:focus-visible,.mobile-profile-link:focus-visible,.mobile-sign-out:focus-visible{outline-color:#fff}
+  .mobile-sign-out{border-top-color:#ffffff80;color:#fff;justify-content:flex-start;padding:8px 20px;text-align:left}
 }

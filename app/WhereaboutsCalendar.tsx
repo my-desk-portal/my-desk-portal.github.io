@@ -8,6 +8,7 @@ import { calendarOfActivitiesCollection } from "@/lib/calendar-of-activities-sto
 import { isPermitAdmin } from "./PermitSlipAdmin";
 import { LEGACY_PENDING_STATUS, normalizeWorkflowStatus } from "./workflow-status";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
+import { loadPersonnel } from "@/lib/personnel";
 import "./whereabouts-calendar.css";
 
 type CalendarTravelOrder = {
@@ -195,6 +196,8 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const [permitSlips, setPermitSlips] = useState<ApprovedPermitSlip[]>([]);
   const [leaveApplications, setLeaveApplications] = useState<ApprovedLeaveApplication[]>([]);
   const [calendarsOfActivities, setCalendarsOfActivities] = useState<ApprovedCalendarOfActivities[]>([]);
+  const [totalPersonnelCount, setTotalPersonnelCount] = useState<number | null>(null);
+  const [totalPersonnelLoading, setTotalPersonnelLoading] = useState(true);
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [nameSearch, setNameSearch] = useState("");
@@ -218,9 +221,18 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     setPermitSlips([]);
     setLeaveApplications([]);
     setCalendarsOfActivities([]);
+    setTotalPersonnelCount(null);
+    setTotalPersonnelLoading(true);
     setError("");
-    if (!db) { setError("Firebase is not configured."); setLoading(false); return () => { active = false; }; }
+    if (!db) { setError("Firebase is not configured."); setLoading(false); setTotalPersonnelLoading(false); return () => { active = false; }; }
     const firestore = db;
+    void loadPersonnel().then((personnel) => {
+      if (active) setTotalPersonnelCount(personnel.length);
+    }).catch(() => {
+      if (active) setTotalPersonnelCount(null);
+    }).finally(() => {
+      if (active) setTotalPersonnelLoading(false);
+    });
     if (isPermitAdmin(user.email)) {
       void publishExistingApprovedPermits(firestore).catch((cause) => {
         const code = (cause as { code?: string }).code;
@@ -417,9 +429,11 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const personnelNotInOfficeCount = new Set(selectedPeopleEntries.map((person) => person.name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase())).size;
   const [selectedYear, selectedMonth, selectedDay] = selectedDate.split("-").map(Number);
   const selectedDateWeekday = new Date(selectedYear, selectedMonth - 1, selectedDay).getDay();
-  const zeroPersonnelMessage = selectedDateWeekday === 0 || selectedDateWeekday === 6
-    ? "All personnel are off-duty."
-    : "All personnel are in the stationed office.";
+  const zeroPersonnelMessage = selectedDateWeekday === 6
+    ? "Personnel are off duty on Saturday."
+    : selectedDateWeekday === 0
+      ? "Personnel are off duty on Sunday."
+      : "All personnel are present in the office.";
   const selectedPeoplePageSize = 3;
   const selectedPeoplePageCount = Math.max(1, Math.ceil(selectedPeople.length / selectedPeoplePageSize));
   const currentSelectedPeoplePage = Math.min(selectedPeoplePage, selectedPeoplePageCount - 1);
@@ -487,8 +501,8 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     </section>
     <section className="whereabouts-date-details" aria-live="polite">
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>
-      <p className="whereabouts-personnel-count">No. of Personnel Not in the Stationed Office <strong>{loading ? "Loading..." : personnelNotInOfficeCount}</strong></p>
-      {loading ? <p className="muted">Loading Travel Orders, Permit Slips, and Leave Applications...</p> : personnelNotInOfficeCount === 0 ? <p className="whereabouts-empty-date">{zeroPersonnelMessage}</p> : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No Travel Orders, Permit Slips, or Leave Applications on this date.</p> : <>
+      {loading ? <p className="whereabouts-personnel-count"><span>No. of Personnel Out of Office</span><strong>Loading...</strong><span>of</span><strong>Loading...</strong></p> : personnelNotInOfficeCount === 0 ? <p className="whereabouts-personnel-count">{zeroPersonnelMessage}</p> : <p className="whereabouts-personnel-count"><span>No. of Personnel Out of Office</span><strong>{personnelNotInOfficeCount}</strong><span>of</span><strong>{totalPersonnelLoading ? "Loading..." : totalPersonnelCount ?? "Unavailable"}</strong></p>}
+      {loading ? <p className="muted">Loading Travel Orders, Permit Slips, and Leave Applications...</p> : personnelNotInOfficeCount === 0 ? null : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No Travel Orders, Permit Slips, or Leave Applications on this date.</p> : <>
         {selectedPeoplePageCount > 1 && <nav className="whereabouts-pagination whereabouts-date-pagination" aria-label="Selected date people pages"><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.max(0, page - 1))} disabled={currentSelectedPeoplePage === 0}>Previous</button><span aria-live="polite">Page {currentSelectedPeoplePage + 1} of {selectedPeoplePageCount}</span><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.min(selectedPeoplePageCount - 1, page + 1))} disabled={currentSelectedPeoplePage >= selectedPeoplePageCount - 1}>Next</button></nav>}
         <div className="whereabouts-date-table-wrap"><table className="whereabouts-date-table"><thead><tr><th>Person</th><th>Date</th><th>Purpose / Destination</th></tr></thead><tbody>
           {visibleSelectedPeople.map((person) => <tr key={person.id}><td><span className="whereabouts-date-person-type">{person.type}</span>{person.statuses.map((status) => <span key={status} className={`whereabouts-status-label whereabouts-status-label-${status.toLowerCase()}`}>{status}</span>)}<strong>{person.names.join(", ")}</strong>{person.unit && <small>{displayUnit(person.unit)}</small>}</td><td>{person.date}</td><td className="whereabouts-date-purpose">{person.purpose}{person.destination && <small>{person.destination}</small>}</td></tr>)}
