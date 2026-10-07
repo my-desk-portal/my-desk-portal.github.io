@@ -142,7 +142,7 @@
 /* Single-screen layout: the page fills the viewport and only the people list and thread scroll. */
 .app-shell:has(.messenger){--messenger-frame-width:min(1560px,77.2vw);display:flex;flex-direction:column;height:100dvh;overflow:hidden}
 .app-shell:has(.messenger)>.topbar{flex:0 0 auto}
-.app-shell:has(.messenger)>.dashboard{display:flex;flex:1 1 auto;flex-direction:column;margin:0 auto;max-width:1800px;min-height:0;padding:clamp(44px,4.7vh,57px) clamp(24px,5vw,76px) 65px;width:100%}
+.app-shell:has(.messenger)>.dashboard{display:flex;flex:1 1 auto;flex-direction:column;margin:0 auto;max-width:1800px;min-height:0;padding:28px clamp(24px,5vw,76px) 65px;width:100%}
 .app-shell:has(.messenger) .dashboard-header{flex:0 0 auto;margin-inline:auto;max-width:var(--messenger-frame-width);width:100%}
 .app-shell:has(.messenger) .messenger,
 .app-shell:has(.messenger) .messenger:is(*){flex:1 1 auto;height:auto;max-height:none;min-height:0}
