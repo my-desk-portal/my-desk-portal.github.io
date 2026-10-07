@@ -226,7 +226,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     setError("");
     if (!db) { setError("Firebase is not configured."); setLoading(false); setTotalPersonnelLoading(false); return () => { active = false; }; }
     const firestore = db;
-    void loadPersonnel().then((personnel) => {
+    void loadPersonnel({ includeAllAccounts: true }).then((personnel) => {
       if (active) setTotalPersonnelCount(personnel.length);
     }).catch(() => {
       if (active) setTotalPersonnelCount(null);
