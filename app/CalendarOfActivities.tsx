@@ -417,15 +417,14 @@ function CalendarOfActivitiesList({ plans, onNew, onEdit, onView, onDelete, onSt
   return <section className="content-section calendar-of-activities-list-section">
     <div className="section-heading"><div><p className="eyebrow">{adminRecordsOnly ? "Approved records" : "Your records"}</p><h2>{adminRecordsOnly ? "Calendar of Activities Records" : "Calendar of Activities"}</h2><p className="muted">{adminRecordsOnly ? `${plans.length} approved calendar ${plans.length === 1 ? "record" : "records"}.` : `${plans.length} calendar ${plans.length === 1 ? "record" : "records"} registered to your account.`}</p></div>{!adminRecordsOnly && <button type="button" className="primary-button" onClick={onNew}>Add</button>}</div>
     {plans.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>{adminRecordsOnly ? "No approved records yet" : "No calendars of activities yet"}</h3>{!adminRecordsOnly && <><p>Create a monthly calendar and notify responsible colleagues in your unit.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Calendar of Activities</button></>}</div> : <div className="permit-table calendar-of-activities-list">
-      <div className="table-head calendar-of-activities-list-head"><span>Month and Year</span><span>Unit</span><span>Activities</span><span>Prepared by</span><span>Status</span></div>
+      <div className="table-head calendar-of-activities-list-head"><span>Month and Year</span><span>Unit</span><span>Activities</span><span>Status</span></div>
       {plans.map((plan) => {
         const status = calendarOfActivitiesStatus(plan);
         return <div className="table-row calendar-of-activities-list-row" key={plan.id}>
           <strong>{formatMonth(plan.month)}</strong>
           <span className="calendar-of-activities-list-unit">{unitLabel(plan.unit)}</span>
           <span className="calendar-of-activities-list-count">{plan.activities.length}</span>
-          <span className="calendar-of-activities-list-prepared">{plan.preparedName}</span>
-          {adminRecordsOnly ? <span className="travel-order-status calendar-of-activities-list-status"><span className="sr-only">Status</span><strong className="calendar-of-activities-status-badge is-approved">Approved</strong></span> : <label className={`travel-order-status travel-order-status-${status.toLowerCase()} calendar-of-activities-list-status`}><span className="sr-only">Status</span><select aria-label={`Status for ${unitLabel(plan.unit)}, ${formatMonth(plan.month)}`} value={status} disabled={updatingStatusId !== null || deletingId !== null} onChange={(event) => onStatusChange(plan, event.target.value as CalendarOfActivitiesStatus)}><option value="Pending">Pending</option><option value="Approved">Approved</option></select></label>}
+          {adminRecordsOnly ? <span className="travel-order-status calendar-of-activities-list-status"><span className="sr-only">Status</span><strong className="calendar-of-activities-status-badge is-approved">Approved</strong></span> : <label className={`travel-order-status travel-order-status-${status.toLowerCase()} calendar-of-activities-list-status`}><span className="sr-only">Status</span><select aria-label={`Status for ${unitLabel(plan.unit)}, ${formatMonth(plan.month)}`} value={status} disabled={status === "Approved" || updatingStatusId !== null || deletingId !== null} onChange={(event) => onStatusChange(plan, event.target.value as CalendarOfActivitiesStatus)}><option value="Pending">Pending</option><option value="Approved">Approved</option></select></label>}
           <span className="travel-order-row-actions calendar-of-activities-row-actions">{adminRecordsOnly ? <button type="button" className="row-action" onClick={() => onView(plan)}>View</button> : <>{status !== "Approved" && <button type="button" className="row-action" disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onEdit(plan)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onView(plan)}>View</button><button type="button" className="delete-button" hidden={status === "Approved"} disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onDelete(plan)}>{deletingId === plan.id ? "Deleting…" : "Delete"}</button></>}</span>
         </div>;
       })}
@@ -486,7 +485,12 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
   }, [user.uid, mode, profileRevision]);
 
   async function updateCalendarOfActivitiesStatus(plan: CalendarOfActivities, status: CalendarOfActivitiesStatus) {
-    if (!db || updatingStatusId || calendarOfActivitiesStatus(plan) === status) return;
+    const currentStatus = calendarOfActivitiesStatus(plan);
+    if (currentStatus === "Approved") {
+      if (status !== currentStatus) setError("Approved Calendars of Activities cannot change status.");
+      return;
+    }
+    if (!db || updatingStatusId || currentStatus === status) return;
     setUpdatingStatusId(plan.id);
     setError("");
     try {

@@ -1,6 +1,6 @@
 .calendar-of-activities-list-section,.calendar-of-activities-form-section{margin:0 auto;max-width:1100px;min-width:0}
 .calendar-of-activities-list{min-width:0}
-.calendar-of-activities-list-head,.calendar-of-activities-list-row{grid-template-columns:1.2fr .85fr .6fr 1.3fr 1fr 1.2fr;min-width:0}
+.calendar-of-activities-list-head,.calendar-of-activities-list-row{grid-template-columns:1.2fr .85fr .6fr 1.2fr 1.2fr;min-width:0}
 .calendar-of-activities-list-row>span,.calendar-of-activities-list-row>strong{min-width:0;overflow-wrap:anywhere}
 .calendar-of-activities-row-actions{min-width:0}
 .calendar-of-activities-list-status{min-width:0}

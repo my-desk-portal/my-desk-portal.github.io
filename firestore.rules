@@ -148,6 +148,7 @@ service cloud.firestore {
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.diff(resource.data).affectedKeys().hasAny(["activities", "status"])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["activities", "status"])
+        && (resource.data.status != "Approved" || request.resource.data.status == resource.data.status)
         && (!request.resource.data.keys().hasAny(["status"])
           || request.resource.data.status in ["Pending", "Approved"])
         && request.resource.data.activities is list
@@ -626,7 +627,10 @@ service cloud.firestore {
     match /travelOrders/{travelOrderId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || resource.data.status in ["Approved", "Pending", "Processing"]);
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && (resource.data.status != "Approved" || request.resource.data.status == resource.data.status);
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /travelOrderNumbers/{numberId} {
       allow get: if isVerifiedUser();

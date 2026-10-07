@@ -204,7 +204,7 @@ function TravelOrderList({ orders, onNew, onPreview, onDelete, onStatusChange, u
       {orders.map((order) => <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">
           <strong>{order.date ? formatTravelDate(order.date) : "Pending approval"}</strong><span className="travel-order-list-people">{order.people.map((person) => person.name).join(", ")}</span><span>{order.placeOfTravel}</span>
-          <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={updatingId === order.id || deletingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label>
+          <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={order.status === "Approved" || updatingId === order.id || deletingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label>
           <span className="travel-order-row-actions"><button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onPreview(order)}>View</button>{order.status !== "Approved" && <button type="button" className="delete-button" disabled={updatingId !== null || deletingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span>
         </div>
         {approvalOrderId === order.id && <form className="travel-order-approval-editor" onSubmit={(event) => confirmApproval(event, order)}>
@@ -368,6 +368,10 @@ export default function TravelOrderModule({ user }: { user: User }) {
   }
 
   async function changeStatus(order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]): Promise<boolean> {
+    if (order.status === "Approved") {
+      if (status !== "Approved") setError("Approved Travel Orders cannot change status.");
+      return status === "Approved";
+    }
     const firestore = db;
     if (!firestore) { setError("Firebase is not configured."); return false; }
     setUpdatingId(order.id);
