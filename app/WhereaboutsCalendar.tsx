@@ -483,7 +483,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
           return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className={`whereabouts-day-number ${weekendNumberClass}`}>{day}</span>{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
         })}
       </div>
-      <div className="whereabouts-legend"><span><i className="whereabouts-legend-approved" />Approved Travel Order or Leave Application</span><span><i className="whereabouts-legend-pending" />Pending Travel Order or Leave Application</span><span><i className="whereabouts-legend-mixed" />Approved and Pending</span></div>
+      <div className="whereabouts-legend"><span><i className="whereabouts-legend-approved" />Approved</span><span><i className="whereabouts-legend-pending" />Pending</span><span><i className="whereabouts-legend-mixed" />Approved and Pending</span></div>
     </section>
     <section className="whereabouts-date-details" aria-live="polite">
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>
