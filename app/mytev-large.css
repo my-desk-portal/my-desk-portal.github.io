@@ -89,7 +89,7 @@
 .mytev-paper.mytev-cenrr-paper{--mytev-font-8:1.03cqi;--mytev-font-10:1.29cqi;--mytev-font-11:1.42cqi;--mytev-font-12:1.55cqi;--mytev-medium-line:.53mm solid #111;--mytev-thin-line:.14mm solid #111}
 .mytev-paper.mytev-ctc-paper{--mytev-font-8:1.34cqi;--mytev-font-9:1.51cqi;--mytev-font-10:1.68cqi;--mytev-font-11:1.85cqi;--mytev-font-12:2.02cqi;--mytev-medium-line:.53mm solid #111;--mytev-thin-line:.18mm solid #111}
 .mytev-letterhead{align-items:center;border-bottom:var(--mytev-medium-line);display:grid;gap:2mm;grid-template-columns:16% minmax(0,1fr) 14%;min-height:21mm;padding:0 1mm 1.5mm;position:relative;font-family:Cambria,serif}
-.mytev-letterhead>img{height:17mm;object-fit:contain;width:17mm}
+.mytev-letterhead>img{height:17mm;object-fit:contain;transform:translateX(4mm);width:17mm}
 .mytev-letterhead>div{display:grid;font-size:var(--mytev-letterhead-size,var(--mytev-font-12));gap:.5mm;justify-items:center;line-height:1.1;text-align:center}
 .mytev-letterhead>div>span,.mytev-letterhead>div>strong,.mytev-letterhead>div>b,.mytev-letterhead>div>small{font-size:inherit}
 .mytev-letterhead>.mytev-appendix{align-self:start;font-size:var(--mytev-font-8);justify-self:end;white-space:nowrap}
@@ -99,7 +99,7 @@
 .mytev-dv-paper .mytev-letterhead>.mytev-appendix{font-size:var(--mytev-font-12);font-style:italic}
 .mytev-itinerary-document{font-family:Arial,sans-serif;font-size:var(--mytev-font-12);inset:0;line-height:1.18;position:absolute;z-index:1}
 .mytev-itinerary-letterhead{inset:0;position:absolute}
-.mytev-itinerary-letterhead>img{height:6.3%;left:4.85%;object-fit:contain;position:absolute;top:6.4%;width:9.1%}
+.mytev-itinerary-letterhead>img{height:6.3%;left:calc(4.85% + 20mm);object-fit:contain;position:absolute;top:6.4%;width:9.1%}
 .mytev-itinerary-letterhead>div{display:grid;font-family:'Times New Roman',serif;font-size:var(--mytev-font-18);gap:.13%;justify-items:center;left:20%;line-height:1.03;position:absolute;text-align:center;top:7.05%;width:60%}
 .mytev-itinerary-letterhead>div>span,.mytev-itinerary-letterhead>div>strong,.mytev-itinerary-letterhead>div>b,.mytev-itinerary-letterhead>div>small{font-size:inherit}
 .mytev-itinerary-appendix{font-family:'Times New Roman',serif;font-size:var(--mytev-font-16);font-style:italic;position:absolute;right:4.05%;top:13.7%;white-space:nowrap}
@@ -181,7 +181,7 @@
 .mytev-ors-document{display:grid;font-family:Cambria,serif;font-size:var(--mytev-font-10);gap:0;grid-template-rows:28mm 11mm 14mm 5mm 50mm 8mm 37mm minmax(0,1fr);inset:4.8% 7.2%;line-height:1.12;position:absolute}
 .mytev-ors-top{height:100%;min-height:0;min-width:0;overflow:hidden}
 .mytev-ors-top>.mytev-letterhead{border:var(--mytev-medium-line);grid-template-columns:16% minmax(0,1fr) 14%;grid-template-rows:minmax(0,1fr) auto;height:100%;min-height:0;overflow:hidden;padding:1mm}
-.mytev-ors-top>.mytev-letterhead>img{height:17mm;width:17mm}
+.mytev-ors-top>.mytev-letterhead>img{height:17mm;transform:translateX(16mm);width:17mm}
 .mytev-ors-top>.mytev-letterhead>div>span,.mytev-ors-top>.mytev-letterhead>div>strong,.mytev-ors-top>.mytev-letterhead>div>b,.mytev-ors-top>.mytev-letterhead>div>small{font-size:inherit}
 .mytev-ors-top>.mytev-letterhead>.mytev-appendix{align-self:start;font-size:var(--mytev-font-11);font-weight:700;grid-column:2;grid-row:2;justify-self:center;white-space:normal}
 .mytev-ors-title-row{border-left:var(--mytev-medium-line);border-right:var(--mytev-medium-line);display:grid;grid-template-columns:72% minmax(0,1fr);min-height:0;min-width:0;overflow:hidden}
@@ -362,6 +362,7 @@
 .mytev-dv-receipt-jev>strong+strong{border-top:var(--mytev-medium-line)}
 .mytev-cenrr-document{display:grid;font-family:Cambria,serif;font-size:var(--mytev-font-12);gap:0;grid-template-rows:28.6mm 16.4mm 12.6mm 4.3mm 140.5mm 7mm 15.5mm 25.2mm;inset:6.4% 8% 9.4%;line-height:1.2;position:absolute}
 .mytev-cenrr-document>.mytev-letterhead{border:var(--mytev-medium-line);grid-template-columns:15% minmax(0,1fr) 10%;min-height:0;padding:1mm}
+.mytev-cenrr-document>.mytev-letterhead>img{transform:translateX(16mm)}
 .mytev-cenrr-heading{border:var(--mytev-medium-line);border-top:0;display:grid;grid-template-rows:8.2mm 8.2mm;min-height:0;text-align:center}
 .mytev-cenrr-heading>h1{align-self:center;font-size:var(--mytev-font-12);line-height:1.15;margin:0}
 .mytev-cenrr-legal{font-size:var(--mytev-font-12);font-style:italic;line-height:1.15;margin:0}
