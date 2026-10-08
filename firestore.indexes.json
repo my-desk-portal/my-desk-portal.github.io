@@ -21,7 +21,8 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "calendarId", "order": "ASCENDING" },
-        { "fieldPath": "ownerId", "order": "ASCENDING" }
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "unit", "order": "ASCENDING" }
       ]
     },
     {

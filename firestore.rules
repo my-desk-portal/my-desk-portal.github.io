@@ -8,6 +8,13 @@ service cloud.firestore {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
       return exists(userPath) ? get(userPath).data.unit : null;
     }
+    function isCalendarOwnerOrSameUnit(calendarId) {
+      let calendarRef = /databases/$(database)/documents/calendarOfActivities/$(calendarId);
+      return isVerifiedUser()
+        && exists(calendarRef)
+        && (get(calendarRef).data.ownerId == request.auth.uid
+          || get(calendarRef).data.unit == signedInUnit());
+    }
     function ownerUnitCanBeUpdated() {
       return (resource.data.keys().hasAny(["ownerUnit"])
           && request.resource.data.keys().hasAny(["ownerUnit"])
@@ -136,6 +143,7 @@ service cloud.firestore {
     }
     match /calendarOfActivities/{calendarId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
+        || resource.data.unit == signedInUnit()
         || resource.data.status == "Approved");
       allow create: if isVerifiedUser()
         && request.resource.data.keys().hasAll(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
@@ -156,8 +164,13 @@ service cloud.firestore {
         && request.resource.data.preparedPosition.size() <= 120
         && request.resource.data.createdAt is timestamp;
       allow update: if isVerifiedUser()
-        && resource.data.ownerId == request.auth.uid
+        && (resource.data.ownerId == request.auth.uid || resource.data.unit == signedInUnit())
         && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.unit == resource.data.unit
+        && request.resource.data.month == resource.data.month
+        && request.resource.data.preparedName == resource.data.preparedName
+        && request.resource.data.preparedPosition == resource.data.preparedPosition
+        && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.diff(resource.data).affectedKeys().hasAny(["activities", "status"])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["activities", "status"])
         && (resource.data.status != "Approved" || request.resource.data.status == resource.data.status)
@@ -176,13 +189,14 @@ service cloud.firestore {
       allow create: if isVerifiedUser()
         && request.resource.data.keys().hasAll(["calendarId", "ownerId", "unit", "month", "preparedName", "status", "readBy", "createdAt"])
         && request.resource.data.keys().hasOnly(["calendarId", "ownerId", "unit", "month", "preparedName", "status", "readBy", "createdAt"])
-        && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.calendarId is string
         && exists(calendarPath(request.resource.data.calendarId))
-        && get(calendarPath(request.resource.data.calendarId)).data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == get(calendarPath(request.resource.data.calendarId)).data.ownerId
+        && (get(calendarPath(request.resource.data.calendarId)).data.ownerId == request.auth.uid
+          || get(calendarPath(request.resource.data.calendarId)).data.unit == signedInUnit())
         && (!get(calendarPath(request.resource.data.calendarId)).data.keys().hasAny(["status"])
           || get(calendarPath(request.resource.data.calendarId)).data.status == "Pending")
-        && getAfter(calendarPath(request.resource.data.calendarId)).data.ownerId == request.auth.uid
+        && getAfter(calendarPath(request.resource.data.calendarId)).data.ownerId == request.resource.data.ownerId
         && getAfter(calendarPath(request.resource.data.calendarId)).data.status == "Approved"
         && getAfter(calendarPath(request.resource.data.calendarId)).data.unit == request.resource.data.unit
         && getAfter(calendarPath(request.resource.data.calendarId)).data.month == request.resource.data.month
@@ -205,20 +219,31 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /calendarActivityNotifications/{notificationId} {
-      allow read: if isVerifiedUser() && (resource.data.recipientId == request.auth.uid || resource.data.ownerId == request.auth.uid);
+      function calendarPath(calendarId) {
+        return /databases/$(database)/documents/calendarOfActivities/$(calendarId);
+      }
+      allow read: if isVerifiedUser() && (resource.data.recipientId == request.auth.uid
+        || resource.data.ownerId == request.auth.uid
+        || (resource.data.calendarId is string
+          && isCalendarOwnerOrSameUnit(resource.data.calendarId)
+          && get(calendarPath(resource.data.calendarId)).data.ownerId == resource.data.ownerId
+          && get(calendarPath(resource.data.calendarId)).data.unit == resource.data.unit));
       allow create: if isVerifiedUser()
         && request.resource.data.keys().hasAll(["recipientId", "ownerId", "calendarId", "unit", "month", "activities", "read", "createdAt"])
         && request.resource.data.keys().hasOnly(["recipientId", "ownerId", "calendarId", "unit", "month", "activities", "read", "createdAt"])
-        && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.recipientId is string
         && request.resource.data.recipientId != request.auth.uid
         && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"]
         && get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.unit == request.resource.data.unit
         && request.resource.data.calendarId is string
-        && getAfter(/databases/$(database)/documents/calendarOfActivities/$(request.resource.data.calendarId)).data.ownerId == request.auth.uid
-        && getAfter(/databases/$(database)/documents/calendarOfActivities/$(request.resource.data.calendarId)).data.unit == request.resource.data.unit
+        && getAfter(calendarPath(request.resource.data.calendarId)).data.ownerId == request.resource.data.ownerId
+        && getAfter(calendarPath(request.resource.data.calendarId)).data.unit == request.resource.data.unit
+        && (request.resource.data.ownerId == request.auth.uid
+          || (exists(calendarPath(request.resource.data.calendarId))
+            && get(calendarPath(request.resource.data.calendarId)).data.ownerId == request.resource.data.ownerId
+            && get(calendarPath(request.resource.data.calendarId)).data.unit == signedInUnit()))
         && request.resource.data.month is string
-        && getAfter(/databases/$(database)/documents/calendarOfActivities/$(request.resource.data.calendarId)).data.month == request.resource.data.month
+        && getAfter(calendarPath(request.resource.data.calendarId)).data.month == request.resource.data.month
         && request.resource.data.activities is list
         && request.resource.data.activities.size() > 0
         && request.resource.data.activities.size() <= 100
@@ -229,7 +254,10 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read", "readAt"])
           && request.resource.data.read == true
           && request.resource.data.readAt is timestamp)
-        || (resource.data.ownerId == request.auth.uid
+        || (resource.data.calendarId is string
+          && isCalendarOwnerOrSameUnit(resource.data.calendarId)
+          && get(calendarPath(resource.data.calendarId)).data.ownerId == resource.data.ownerId
+          && get(calendarPath(resource.data.calendarId)).data.unit == resource.data.unit
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["month", "activities", "read", "readAt", "createdAt"])
           && request.resource.data.keys().hasAll(["recipientId", "ownerId", "calendarId", "unit", "month", "activities", "read", "createdAt"])
           && request.resource.data.keys().hasOnly(["recipientId", "ownerId", "calendarId", "unit", "month", "activities", "read", "createdAt"])
@@ -237,18 +265,20 @@ service cloud.firestore {
           && request.resource.data.ownerId == resource.data.ownerId
           && request.resource.data.calendarId == resource.data.calendarId
           && request.resource.data.unit == resource.data.unit
-          && request.resource.data.ownerId == request.auth.uid
-          && resource.data.calendarId is string
-          && getAfter(/databases/$(database)/documents/calendarOfActivities/$(resource.data.calendarId)).data.ownerId == request.auth.uid
-          && getAfter(/databases/$(database)/documents/calendarOfActivities/$(resource.data.calendarId)).data.unit == request.resource.data.unit
-          && getAfter(/databases/$(database)/documents/calendarOfActivities/$(resource.data.calendarId)).data.month == request.resource.data.month
+          && getAfter(calendarPath(resource.data.calendarId)).data.ownerId == request.resource.data.ownerId
+          && getAfter(calendarPath(resource.data.calendarId)).data.unit == request.resource.data.unit
+          && getAfter(calendarPath(resource.data.calendarId)).data.month == request.resource.data.month
           && request.resource.data.month is string
           && request.resource.data.activities is list
           && request.resource.data.activities.size() > 0
           && request.resource.data.activities.size() <= 100
           && request.resource.data.read == false
           && request.resource.data.createdAt is timestamp));
-      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow delete: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
+        || (resource.data.calendarId is string
+          && isCalendarOwnerOrSameUnit(resource.data.calendarId)
+          && get(calendarPath(resource.data.calendarId)).data.ownerId == resource.data.ownerId
+          && get(calendarPath(resource.data.calendarId)).data.unit == resource.data.unit));
     }
     match /documentNotifications/{notificationId} {
       function documentPath(collectionName, documentId) {

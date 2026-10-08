@@ -297,7 +297,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
     try {
       if (plan) {
         const planRef = doc(firestore, calendarOfActivitiesCollection, plan.id);
-        const notificationSnapshot = await getDocs(query(collection(firestore, calendarOfActivitiesNotificationsCollection), where("calendarId", "==", plan.id), where("ownerId", "==", user.uid)));
+        const notificationSnapshot = await getDocs(query(collection(firestore, calendarOfActivitiesNotificationsCollection), where("calendarId", "==", plan.id), where("ownerId", "==", plan.ownerId), where("unit", "==", plan.unit)));
         const existingByRecipient = new Map<string, typeof notificationSnapshot.docs>();
         notificationSnapshot.docs.forEach((notification) => {
           const recipientId = String(notification.data().recipientId ?? "");
@@ -319,7 +319,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
             notificationChanges.push({
               kind: "create",
               reference: doc(collection(firestore, calendarOfActivitiesNotificationsCollection)),
-              data: { recipientId, ownerId: user.uid, calendarId: plan.id, unit: profile.unit, month, activities: notices, read: false, createdAt: serverTimestamp() },
+              data: { recipientId, ownerId: plan.ownerId, calendarId: plan.id, unit: plan.unit, month, activities: notices, read: false, createdAt: serverTimestamp() },
             });
           }
         }
@@ -366,7 +366,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
       let cleanupSucceeded = false;
       try {
         if (!createdPlanRef) throw new Error("The new Calendar of Activities was not created.");
-        const notificationSnapshot = await getDocs(query(collection(firestore, calendarOfActivitiesNotificationsCollection), where("calendarId", "==", createdPlanRef.id), where("ownerId", "==", user.uid)));
+        const notificationSnapshot = await getDocs(query(collection(firestore, calendarOfActivitiesNotificationsCollection), where("calendarId", "==", createdPlanRef.id), where("ownerId", "==", user.uid), where("unit", "==", profile.unit)));
         const references = notificationSnapshot.docs.map((notification) => notification.ref);
         if (references.length > 0) references.push(createdPlanRef);
         for (let start = 0; start < references.length; start += 450) {
@@ -383,7 +383,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
   }
 
   return <section className="content-section form-section calendar-of-activities-form-section">
-    <div className="section-heading"><div><p className="eyebrow">{plan ? "Edit record" : "New record"}</p><h2>{plan ? "Edit Calendar of Activities" : "Calendar of Activities"}</h2><p className="muted">{plan ? "Update the date, activity, location, or responsible people for this calendar." : `Add one or more activities for ${unitLabel(profile.unit)}. Selected colleagues receive an in-app notification with each activity’s dates, activity, and location.`}</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">{plan ? "Edit record" : "New record"}</p><h2>{plan ? "Edit Calendar of Activities" : "Calendar of Activities"}</h2><p className="muted">{plan ? `Update the date, activity, location, or responsible people for this calendar. The original preparer remains ${plan.preparedName}, ${plan.preparedPosition}.` : `Add one or more activities for ${unitLabel(profile.unit)}. Selected colleagues receive an in-app notification with each activity’s dates, activity, and location.`}</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     <form className="permit-form travel-order-form calendar-of-activities-form" onSubmit={save}>
       <div className="calendar-of-activities-meta wide-field"><label>Month and Year<input type="month" value={month} onChange={(event) => updateMonth(event.target.value)} disabled={Boolean(plan)} required /></label></div>
       <div className="calendar-of-activities-rows wide-field"><div className="calendar-of-activities-rows-heading"><strong>Activities</strong><span>Set one responsible person or add several for each row.</span></div>
@@ -413,9 +413,9 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
   </section>;
 }
 
-function CalendarOfActivitiesList({ plans, onNew, onEdit, onView, onDelete, onStatusChange, deletingId, updatingStatusId, adminRecordsOnly = false }: { plans: CalendarOfActivities[]; onNew: () => void; onEdit: (plan: CalendarOfActivities) => void; onView: (plan: CalendarOfActivities) => void; onDelete: (plan: CalendarOfActivities) => void; onStatusChange: (plan: CalendarOfActivities, status: CalendarOfActivitiesStatus) => void; deletingId: string | null; updatingStatusId: string | null; adminRecordsOnly?: boolean }) {
+function CalendarOfActivitiesList({ plans, currentUserId, onNew, onEdit, onView, onDelete, onStatusChange, deletingId, updatingStatusId, adminRecordsOnly = false }: { plans: CalendarOfActivities[]; currentUserId: string; onNew: () => void; onEdit: (plan: CalendarOfActivities) => void; onView: (plan: CalendarOfActivities) => void; onDelete: (plan: CalendarOfActivities) => void; onStatusChange: (plan: CalendarOfActivities, status: CalendarOfActivitiesStatus) => void; deletingId: string | null; updatingStatusId: string | null; adminRecordsOnly?: boolean }) {
   return <section className="content-section calendar-of-activities-list-section">
-    <div className="section-heading"><div><p className="eyebrow">{adminRecordsOnly ? "Approved records" : "Your records"}</p><h2>{adminRecordsOnly ? "Calendar of Activities Records" : "Calendar of Activities"}</h2><p className="muted">{adminRecordsOnly ? `${plans.length} approved calendar ${plans.length === 1 ? "record" : "records"}.` : `${plans.length} calendar ${plans.length === 1 ? "record" : "records"} registered to your account.`}</p></div>{!adminRecordsOnly && <button type="button" className="primary-button" onClick={onNew}>Add</button>}</div>
+    <div className="section-heading"><div><p className="eyebrow">{adminRecordsOnly ? "Approved records" : "Unit records"}</p><h2>{adminRecordsOnly ? "Calendar of Activities Records" : "Calendar of Activities"}</h2><p className="muted">{adminRecordsOnly ? `${plans.length} approved calendar ${plans.length === 1 ? "record" : "records"}.` : `${plans.length} calendar ${plans.length === 1 ? "record" : "records"} available to your unit.`}</p></div>{!adminRecordsOnly && <button type="button" className="primary-button" onClick={onNew}>Add</button>}</div>
     {plans.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>{adminRecordsOnly ? "No approved records yet" : "No calendars of activities yet"}</h3>{!adminRecordsOnly && <><p>Create a monthly calendar and notify responsible colleagues in your unit.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Calendar of Activities</button></>}</div> : <div className="permit-table calendar-of-activities-list">
       <div className="table-head calendar-of-activities-list-head"><span>Month and Year</span><span>Unit</span><span>Activities</span><span>Status</span></div>
       {plans.map((plan) => {
@@ -425,7 +425,7 @@ function CalendarOfActivitiesList({ plans, onNew, onEdit, onView, onDelete, onSt
           <span className="calendar-of-activities-list-unit">{unitLabel(plan.unit)}</span>
           <span className="calendar-of-activities-list-count">{plan.activities.length}</span>
           {adminRecordsOnly ? <span className="travel-order-status calendar-of-activities-list-status"><span className="sr-only">Status</span><strong className="calendar-of-activities-status-badge is-approved">Approved</strong></span> : <label className={`travel-order-status travel-order-status-${status.toLowerCase()} calendar-of-activities-list-status`}><span className="sr-only">Status</span><select aria-label={`Status for ${unitLabel(plan.unit)}, ${formatMonth(plan.month)}`} value={status} disabled={status === "Approved" || updatingStatusId !== null || deletingId !== null} onChange={(event) => onStatusChange(plan, event.target.value as CalendarOfActivitiesStatus)}><option value="Pending">Pending</option><option value="Approved">Approved</option></select></label>}
-          <span className="travel-order-row-actions calendar-of-activities-row-actions">{adminRecordsOnly ? <button type="button" className="row-action" onClick={() => onView(plan)}>View</button> : <>{status !== "Approved" && <button type="button" className="row-action" disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onEdit(plan)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onView(plan)}>View</button><button type="button" className="delete-button" hidden={status === "Approved"} disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onDelete(plan)}>{deletingId === plan.id ? "Deleting…" : "Delete"}</button></>}</span>
+          <span className="travel-order-row-actions calendar-of-activities-row-actions">{adminRecordsOnly ? <button type="button" className="row-action" onClick={() => onView(plan)}>View</button> : <>{status !== "Approved" && <button type="button" className="row-action" disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onEdit(plan)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onView(plan)}>View</button>{plan.ownerId === currentUserId && <button type="button" className="delete-button" hidden={status === "Approved"} disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onDelete(plan)}>{deletingId === plan.id ? "Deleting…" : "Delete"}</button>}</>}</span>
         </div>;
       })}
     </div>}
@@ -460,17 +460,19 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
           if (!cancelled) setPlans(rows);
           return;
         }
-        const [profileSnapshot, plansSnapshot] = await Promise.all([
-          getDoc(doc(firestore, "users", user.uid)),
-          getDocs(query(collection(firestore, calendarOfActivitiesCollection), where("ownerId", "==", user.uid))),
-        ]);
+        const profileSnapshot = await getDoc(doc(firestore, "users", user.uid));
         if (!profileSnapshot.exists()) throw new Error("Complete your name, position, and unit in Profile before creating a calendar.");
         const profileData = profileSnapshot.data();
-        if (typeof profileData.name !== "string" || !profileData.name.trim() || typeof profileData.position !== "string" || !profileData.position.trim() || !["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"].includes(profileData.unit)) throw new Error("Complete your name, position, and unit in Profile before creating a calendar.");
-        const loadedProfile: Profile = { name: profileData.name, position: profileData.position, unit: profileData.unit as Unit };
-        const accountSnapshot = await getDocs(query(collection(firestore, "users"), where("unit", "==", loadedProfile.unit)));
+        if (!["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"].includes(profileData.unit)) throw new Error("Set your unit in Profile to view your unit’s Calendar of Activities.");
+        const loadedProfile: Profile = { name: typeof profileData.name === "string" ? profileData.name : "", position: typeof profileData.position === "string" ? profileData.position : "", unit: profileData.unit as Unit };
+        const [accountSnapshot, unitPlansSnapshot, ownedPlansSnapshot] = await Promise.all([
+          getDocs(query(collection(firestore, "users"), where("unit", "==", loadedProfile.unit))),
+          getDocs(query(collection(firestore, calendarOfActivitiesCollection), where("unit", "==", loadedProfile.unit))),
+          getDocs(query(collection(firestore, calendarOfActivitiesCollection), where("ownerId", "==", user.uid))),
+        ]);
         const colleagues = accountSnapshot.docs.filter((item) => item.id !== user.uid && !isSuperadminRole(item.data().accountRole)).map((item) => ({ id: item.id, name: String(item.data().name ?? "") })).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
-        const rows = plansSnapshot.docs.map((item) => ({ id: item.id, ...item.data() } as CalendarOfActivities));
+        const rowsById = new Map<string, CalendarOfActivities>([...unitPlansSnapshot.docs, ...ownedPlansSnapshot.docs].map((item): [string, CalendarOfActivities] => [item.id, { id: item.id, ...item.data() } as CalendarOfActivities]));
+        const rows = [...rowsById.values()];
         rows.sort((first, second) => timestampMillis(second.createdAt) - timestampMillis(first.createdAt));
         if (!cancelled) { setProfile(loadedProfile); setAccounts(colleagues); setPlans(rows); }
       } catch (cause) {
@@ -502,7 +504,7 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
         const notificationRef = doc(collection(firestore, calendarOfActivitiesApprovalNotificationsCollection));
         batch.set(notificationRef, {
           calendarId: plan.id,
-          ownerId: user.uid,
+          ownerId: plan.ownerId,
           unit: plan.unit,
           month: plan.month,
           preparedName: plan.preparedName,
@@ -522,10 +524,15 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
   async function deleteCalendarOfActivities(plan: CalendarOfActivities) {
     const firestore = db;
     if (!firestore) return;
+    if (plan.ownerId !== user.uid) {
+      setError("Only the original preparer can delete this Calendar of Activities.");
+      setPendingDelete(null);
+      return;
+    }
     setDeletingId(plan.id);
     setError("");
     try {
-      const notificationSnapshot = await getDocs(query(collection(firestore, calendarOfActivitiesNotificationsCollection), where("calendarId", "==", plan.id), where("ownerId", "==", user.uid)));
+      const notificationSnapshot = await getDocs(query(collection(firestore, calendarOfActivitiesNotificationsCollection), where("calendarId", "==", plan.id), where("ownerId", "==", plan.ownerId), where("unit", "==", plan.unit)));
       const batch = writeBatch(firestore);
       notificationSnapshot.docs.forEach((notification) => batch.delete(notification.ref));
       batch.delete(doc(firestore, calendarOfActivitiesCollection, plan.id));
@@ -542,7 +549,7 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
 
   return <>
     {error && <div className="error-message calendar-of-activities-error" role="alert">{error}</div>}
-    {loading ? <section className="content-section"><p className="muted">Loading Calendar of Activities records…</p></section> : mode === "prepared" && !profile ? <section className="content-section calendar-of-activities-profile-notice"><h2>Profile details needed</h2><p>Add your name, position, and unit in Profile before preparing a Calendar of Activities.</p></section> : mode === "prepared" && (view === "new" || (view === "edit" && editingPlan)) ? <CalendarOfActivitiesForm key={view === "edit" ? editingPlan!.id : "new"} user={user} profile={profile!} accounts={accounts} plan={view === "edit" ? editingPlan! : undefined} onSaved={(plan) => { if (view === "edit") setPlans((current) => current.map((item) => item.id === plan.id ? plan : item)); else setPlans((current) => [plan, ...current]); setEditingPlan(null); setView("list"); }} onCancel={() => { setEditingPlan(null); setView("list"); }} onError={setError} /> : <CalendarOfActivitiesList plans={plans} onNew={() => { setError(""); setEditingPlan(null); setView("new"); }} onEdit={(plan) => { setError(""); setEditingPlan(plan); setView("edit"); }} onView={setPreview} onDelete={setPendingDelete} onStatusChange={(plan, status) => void updateCalendarOfActivitiesStatus(plan, status)} deletingId={deletingId} updatingStatusId={updatingStatusId} adminRecordsOnly={mode === "approved-records"} />}
+    {loading ? <section className="content-section"><p className="muted">Loading Calendar of Activities records…</p></section> : mode === "prepared" && !profile ? <section className="content-section calendar-of-activities-profile-notice"><h2>Profile details needed</h2><p>Set your unit in Profile to view your unit’s Calendar of Activities.</p></section> : mode === "prepared" && (view === "new" || (view === "edit" && editingPlan)) ? <CalendarOfActivitiesForm key={view === "edit" ? editingPlan!.id : "new"} user={user} profile={profile!} accounts={accounts} plan={view === "edit" ? editingPlan! : undefined} onSaved={(plan) => { if (view === "edit") setPlans((current) => current.map((item) => item.id === plan.id ? plan : item)); else setPlans((current) => [plan, ...current]); setEditingPlan(null); setView("list"); }} onCancel={() => { setEditingPlan(null); setView("list"); }} onError={setError} /> : <CalendarOfActivitiesList plans={plans} currentUserId={user.uid} onNew={() => { if (!profile?.name.trim() || !profile.position.trim()) { setError("Complete your name and position in Profile before preparing a new Calendar of Activities."); return; } setError(""); setEditingPlan(null); setView("new"); }} onEdit={(plan) => { setError(""); setEditingPlan(plan); setView("edit"); }} onView={setPreview} onDelete={setPendingDelete} onStatusChange={(plan, status) => void updateCalendarOfActivitiesStatus(plan, status)} deletingId={deletingId} updatingStatusId={updatingStatusId} adminRecordsOnly={mode === "approved-records"} />}
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Calendar of Activities Deletion?" description="Are you sure you want to delete this Calendar of Activities? This action cannot be undone, and its activity notifications will also be removed." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteCalendarOfActivities(pendingDelete); }} />
     {preview && <CalendarOfActivitiesPreview plan={preview} onClose={() => setPreview(null)} />}
   </>;
