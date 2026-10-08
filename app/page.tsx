@@ -1928,8 +1928,8 @@ export default function Home() {
   }
 
   async function copySpecialOrder(order: SpecialOrder) {
-    const ownerUnit = accountProfileUnit?.userId === user?.uid ? accountProfileUnit.unit : null;
     if (!db || !user) return;
+    const ownerUnit = accountProfileUnit && accountProfileUnit.userId === user.uid ? accountProfileUnit.unit : null;
     if (!ownerUnit) { setError("Your account unit is still loading. Try copying again in a moment."); return; }
     setCopyingSpecialOrderId(order.id);
     setError("");
