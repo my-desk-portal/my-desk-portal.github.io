@@ -39,6 +39,7 @@ type TravelOrder = {
 
 const officeStations = ["DA-RFO XIII", "DA-ILD Caraga"] as const;
 const chargeOptions = ["FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"];
+const travelTransportationOptions = ["Boat", "MCH", "Plane", "PUB", "PUV", "RP"] as const;
 const statuses: TravelOrderStatus[] = ["Pending", "Approved", "Disapproved"];
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 
@@ -70,7 +71,10 @@ function TravelOrderForm({ user, unit, initialOrder, onSaved, onCancel, onError 
   const [perDiemsAllowed, setPerDiemsAllowed] = useState<"" | "Yes" | "No">(initialOrder?.perDiemsAllowed ?? "");
   const [assistantLaborersAllowed, setAssistantLaborersAllowed] = useState<"" | "Yes" | "No">(initialOrder?.assistantLaborersAllowed ?? "");
   const [chargeTo, setChargeTo] = useState(initialOrder?.chargeTo ?? "");
-  const [transportation, setTransportation] = useState(initialOrder?.transportation ?? "");
+  const [transportation, setTransportation] = useState<string[]>(() => {
+    const selected = new Set((initialOrder?.transportation ?? "").split(/,\s*/).map((option) => option === "Plane (GS)" || option === "Plane (Credit)" ? "Plane" : option));
+    return travelTransportationOptions.filter((option) => selected.has(option));
+  });
   const [remarks, setRemarks] = useState(initialOrder?.remarks ?? "");
   const [busy, setBusy] = useState(false);
 
@@ -103,6 +107,7 @@ function TravelOrderForm({ user, unit, initialOrder, onSaved, onCancel, onError 
     event.preventDefault();
     if (!db) { onError("Firebase is not configured."); return; }
     if (!unit) { onError("Your account unit is still loading. Try saving again in a moment."); return; }
+    if (!transportation.length) { onError("Select at least one means of transportation."); return; }
     setBusy(true);
     onError("");
     const record = {
@@ -118,7 +123,7 @@ function TravelOrderForm({ user, unit, initialOrder, onSaved, onCancel, onError 
       perDiemsAllowed: perDiemsAllowed as "Yes" | "No",
       assistantLaborersAllowed: assistantLaborersAllowed as "Yes" | "No",
       chargeTo,
-      transportation: transportation.trim(),
+      transportation: travelTransportationOptions.filter((option) => transportation.includes(option)).join(", "),
       remarks: remarks.trim(),
       status: initialOrder?.status ?? "Pending" as const,
       ownerId: user.uid,
@@ -163,13 +168,20 @@ function TravelOrderForm({ user, unit, initialOrder, onSaved, onCancel, onError 
         {!travelersLocked && <button type="button" className="text-button plain-action add-item-text-button" onClick={() => setPeople((current) => [...current, { name: "", position: "", salary: "" }])}>+ Add Personnel</button>}
       </div>
       <div className="date-range-field wide-field travel-order-date-range"><span>Departure Date to Return Date</span><div><input aria-label="Departure date" type="date" value={departureDate} onChange={(event) => setDepartureDate(event.target.value)} required /><span>to</span><input aria-label="Return date" type="date" min={departureDate} value={returnDate} onChange={(event) => setReturnDate(event.target.value)} required /></div></div>
-      <label className="wide-field">Place of Travel<input value={placeOfTravel} onChange={(event) => setPlaceOfTravel(event.target.value)} required /></label>
-      <label className="wide-field">Specific Purpose of the Trip<textarea rows={2} value={purpose} onChange={(event) => setPurpose(event.target.value)} required /></label>
-      <label className="wide-field">Objective(s)<textarea rows={2} value={objective} onChange={(event) => setObjective(event.target.value)} required /></label>
-      <label>Per Diems Allowed<select value={perDiemsAllowed} onChange={(event) => setPerDiemsAllowed(event.target.value as "" | "Yes" | "No")} required><option value="" disabled>Select Yes or No</option><option>Yes</option><option>No</option></select></label>
-      <label>Assistant Laborers Allowed<select value={assistantLaborersAllowed} onChange={(event) => setAssistantLaborersAllowed(event.target.value as "" | "Yes" | "No")} required><option value="" disabled>Select Yes or No</option><option>Yes</option><option>No</option></select></label>
-      <label>Charge to<select value={chargeTo} onChange={(event) => setChargeTo(event.target.value)} required><option value="" disabled>Select appropriation</option>{chargeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-      <label>Means of Transportation<input value={transportation} onChange={(event) => setTransportation(event.target.value)} required /></label>
+      <div className="travel-order-trip-details wide-field">
+        <label>Place of Travel<input value={placeOfTravel} onChange={(event) => setPlaceOfTravel(event.target.value)} required /></label>
+        <label>Specific Purpose of the Trip<textarea rows={2} value={purpose} onChange={(event) => setPurpose(event.target.value)} required /></label>
+        <label>Objective(s)<textarea rows={2} value={objective} onChange={(event) => setObjective(event.target.value)} required /></label>
+      </div>
+      <div className="travel-order-allowances wide-field">
+        <label>Per Diems Allowed<select value={perDiemsAllowed} onChange={(event) => setPerDiemsAllowed(event.target.value as "" | "Yes" | "No")} required><option value="" disabled>Select Yes or No</option><option>Yes</option><option>No</option></select></label>
+        <label>Assistant Laborers Allowed<select value={assistantLaborersAllowed} onChange={(event) => setAssistantLaborersAllowed(event.target.value as "" | "Yes" | "No")} required><option value="" disabled>Select Yes or No</option><option>Yes</option><option>No</option></select></label>
+        <label>Charge to<select value={chargeTo} onChange={(event) => setChargeTo(event.target.value)} required><option value="" disabled>Select appropriation</option>{chargeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+      </div>
+      <fieldset className="travel-order-transportation-field wide-field">
+        <legend>Means of Transportation</legend>
+        <div className="travel-order-transportation-options">{travelTransportationOptions.map((option) => <label className="travel-order-transportation-option" key={option}><input type="checkbox" checked={transportation.includes(option)} onChange={(event) => setTransportation((current) => event.target.checked ? [...current, option] : current.filter((selected) => selected !== option))} />{option}</label>)}</div>
+      </fieldset>
       <label className="wide-field">Remarks or Special Instructions <span className="muted-inline">(optional)</span><input value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Enter any remarks or special instructions" /></label>
       <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
     </form>
@@ -224,8 +236,8 @@ function TravelOrderList({ orders, ownerId, onNew, onEdit, onPreview, onCopy, on
         return <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">
           <strong>{order.date ? formatTravelDate(order.date) : "Pending approval"}</strong><span className="travel-order-list-people">{order.people.map((person) => person.name).join(", ")}</span><span>{order.placeOfTravel}</span>
-          {isOwner ? <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={order.status === "Approved" || updatingId === order.id || deletingId !== null || copyingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label> : <span className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}>{order.status}</span>}
-          <span className="travel-order-row-actions">{isOwner && order.status !== "Approved" && <button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onPreview(order)}>View</button><button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null || approvalOrderId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && order.status !== "Approved" && <button type="button" className="delete-button" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span>
+          {isOwner ? <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={order.status !== "Pending" || updatingId === order.id || deletingId !== null || copyingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label> : <span className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}>{order.status}</span>}
+          <span className="travel-order-row-actions">{isOwner && order.status === "Pending" && <button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onPreview(order)}>View</button><button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null || approvalOrderId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && order.status === "Pending" && <button type="button" className="delete-button" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span>
         </div>
         {approvalOrderId === order.id && <form className="travel-order-approval-editor" onSubmit={(event) => confirmApproval(event, order)}>
           <div><strong>Complete approval details</strong><p>Enter the approval date and assign a unique TO No. to each person.</p></div>
@@ -359,8 +371,8 @@ export default function TravelOrderModule({ user, unit }: { user: User; unit: st
   async function deleteOrder(order: TravelOrder) {
     const firestore = db;
     if (!firestore || order.ownerId !== user.uid) return;
-    if (order.status === "Approved") {
-      setError("Approved Travel Orders cannot be deleted.");
+    if (order.status !== "Pending") {
+      setError("Approved or Disapproved Travel Orders cannot be deleted.");
       setPendingDelete(null);
       return;
     }
@@ -445,9 +457,9 @@ export default function TravelOrderModule({ user, unit }: { user: User; unit: st
 
   async function changeStatus(order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]): Promise<boolean> {
     if (order.ownerId !== user.uid) return false;
-    if (order.status === "Approved") {
-      if (status !== "Approved") setError("Approved Travel Orders cannot change status.");
-      return status === "Approved";
+    if (order.status !== "Pending") {
+      setError("Approved or Disapproved Travel Orders cannot change status.");
+      return false;
     }
     const firestore = db;
     if (!firestore) { setError("Firebase is not configured."); return false; }

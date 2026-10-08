@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import type { User } from "firebase/auth";
 import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { divisionSignatory, tevDivisions } from "@/lib/mytev";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./myar.css";
@@ -21,11 +22,27 @@ type Report = {
   unit: Unit;
   preparedName: string;
   preparedPosition: string;
+  signatoryName?: string;
+  signatoryPosition?: string;
+  signatoryDivision?: string;
   createdAt?: unknown;
 };
 
 const MAX_ACTIVITIES = 30;
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+const arSignatoryOptions = [
+  ...tevDivisions.map((division) => {
+    const signatory = divisionSignatory(division);
+    return {
+      value: `division:${division}`,
+      label: division,
+      name: signatory.name,
+      position: signatory.position,
+      division,
+    };
+  }),
+].sort((first, second) => first.label.localeCompare(second.label));
+const legacyNotedSignatory = { name: "MELODY M. GUIMARY", position: "Chief", division: "Field Operations Division" };
 
 function currentMonth() {
   const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit" }).formatToParts(new Date());
@@ -98,6 +115,15 @@ function createdTime(value: unknown) {
     : 0;
 }
 
+function AccomplishmentReportNotedSignatory({ report }: { report: Report }) {
+  const signatory = {
+    name: report.signatoryName || legacyNotedSignatory.name,
+    position: report.signatoryPosition || legacyNotedSignatory.position,
+    division: report.signatoryName ? report.signatoryDivision ?? "" : legacyNotedSignatory.division,
+  };
+  return <div><strong>{signatory.name.toLocaleUpperCase("en-PH")}</strong><span><em>{signatory.position}{signatory.division ? "," : ""}</em>{signatory.division ? ` ${signatory.division}` : ""}</span></div>;
+}
+
 function AccomplishmentReportDocument({ report, pageRef }: { report: Report; pageRef?: Ref<HTMLElement> }) {
   const estimatedActivityLines = report.activities.reduce((total, activity) => total + activity.split(/\r?\n/).reduce((lineTotal, line) => lineTotal + Math.max(1, Math.ceil(line.length / 90)), 0), 0);
   const activityDensity = Math.min(1, Math.max(0, (estimatedActivityLines - 5) / 25));
@@ -112,7 +138,7 @@ function AccomplishmentReportDocument({ report, pageRef }: { report: Report; pag
       <p className="ar-document-unit">{reportUnit(report.unit)}</p>
       <ol className="ar-document-activities">{report.activities.map((activity, index) => <li key={`${index}-${activity}`}>{activity}</li>)}</ol>
       <section className="ar-document-prepared"><p>Prepared:</p><div><strong>{report.preparedName.toLocaleUpperCase("en-PH")}</strong><em>{report.preparedPosition}</em></div></section>
-      <section className="ar-document-noted"><p>Noted:</p><div><strong>MELODY M. GUIMARY</strong><span><em>Chief,</em> Field Operations Division</span></div></section>
+      <section className="ar-document-noted"><p>Noted:</p><AccomplishmentReportNotedSignatory report={report} /></section>
     </div>
   </article>;
 }
@@ -178,11 +204,13 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [editingReport, setEditingReport] = useState<Report | null>(null);
+  const [signatorySelection, setSignatorySelection] = useState("");
   const [today, setToday] = useState(manilaDateKey);
   const lastDay = lastDayOfMonth(month);
   const startDay = cycle === 1 ? 1 : 16;
   const endDay = cycle === 1 ? 15 : lastDay;
   const preparedProfile = profile;
+  const selectedSignatory = arSignatoryOptions.find((option) => option.value === signatorySelection);
   const previewReport = selectedReport ? applyCurrentProfile(selectedReport, profile) : null;
   const duplicateReport = !editingReport && reports.some((report) => report.month === month && report.cycle === cycle);
 
@@ -194,6 +222,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
 
   function startNewReport() {
     setEditingReport(null);
+    setSignatorySelection("");
     setMonth(currentMonth());
     setCycle(1);
     setActivities([""]);
@@ -218,6 +247,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
 
   function cancelEdit() {
     setEditingReport(null);
+    setSignatorySelection("");
     setMonth(currentMonth());
     setCycle(1);
     setActivities([""]);
@@ -329,6 +359,10 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
         setMessage({ kind: "success", text: "Report activities updated." });
         return;
       }
+      if (!selectedSignatory) {
+        setMessage({ kind: "error", text: "Select a division for the Noted signatory." });
+        return;
+      }
       const data = {
         ownerId: user.uid,
         month,
@@ -339,6 +373,9 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
         unit: preparedProfile.unit,
         preparedName: preparedProfile.name.trim().replace(/\s+/g, " "),
         preparedPosition: preparedProfile.position.trim().replace(/\s+/g, " "),
+        signatoryName: selectedSignatory.name,
+        signatoryPosition: selectedSignatory.position,
+        signatoryDivision: selectedSignatory.division,
         createdAt: serverTimestamp(),
       };
       const reportId = `${user.uid}_${month}_${cycle === 1 ? "first" : "second"}`;
@@ -366,6 +403,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
             <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} required disabled={!!editingReport} /></label>
             <label>Half-month Cycle<select value={cycle} onChange={(event) => setCycle(Number(event.target.value) as 1 | 2)} disabled={!!editingReport}><option value={1}>1–15</option><option value={2}>16–{lastDay}</option></select></label>
           </div>
+          {!editingReport && <label className="ar-division-field">Division<select value={signatorySelection} onChange={(event) => setSignatorySelection(event.target.value)} required><option value="" disabled>Select a division</option>{arSignatoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
           {duplicateReport && <p className="auth-message auth-message-error" role="status">A report for {reportPeriod({ month, startDay, endDay })} is already saved. Edit it from Saved Reports.</p>}
           <fieldset className="ar-activities-entry"><legend>Activities</legend><p id="ar-reorder-hint" className="ar-reorder-hint">Drag the grip to rearrange activities, or focus a grip and press Alt + Up or Alt + Down.</p><div className="ar-activity-list">{activities.map((activity, index) => <div className={`ar-activity-entry${draggedActivityIndex === index ? " is-dragging" : ""}${dropActivityIndex === index ? " is-drop-target" : ""}`} key={index} onDragOver={(event) => { event.preventDefault(); setDropActivityIndex(index); }} onDragLeave={() => setDropActivityIndex((current) => current === index ? null : current)} onDrop={(event) => { event.preventDefault(); const draggedValue = event.dataTransfer.getData("text/plain"); setDraggedActivityIndex(null); setDropActivityIndex(null); if (!/^\d+$/.test(draggedValue)) return; const draggedIndex = Number(draggedValue); const bounds = event.currentTarget.getBoundingClientRect(); const insertAfter = event.clientY >= bounds.top + bounds.height / 2; const insertionIndex = index + (insertAfter ? 1 : 0); reorderActivity(draggedIndex, draggedIndex < insertionIndex ? insertionIndex - 1 : insertionIndex); }}><button type="button" className="ar-drag-activity" draggable aria-label={`Reorder activity ${index + 1}`} aria-describedby="ar-reorder-hint" onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", String(index)); setDraggedActivityIndex(index); }} onDragEnd={() => { setDraggedActivityIndex(null); setDropActivityIndex(null); }} onKeyDown={(event) => { if (event.altKey && event.key === "ArrowUp" && index > 0) { event.preventDefault(); reorderActivity(index, index - 1); } else if (event.altKey && event.key === "ArrowDown" && index < activities.length - 1) { event.preventDefault(); reorderActivity(index, index + 1); } }}><svg className="ar-drag-grip" viewBox="0 0 12 20" aria-hidden="true"><circle cx="3" cy="3" r="1.7"/><circle cx="9" cy="3" r="1.7"/><circle cx="3" cy="10" r="1.7"/><circle cx="9" cy="10" r="1.7"/><circle cx="3" cy="17" r="1.7"/><circle cx="9" cy="17" r="1.7"/></svg></button><label htmlFor={`ar-activity-${index}`}>Activity {index + 1}<textarea id={`ar-activity-${index}`} value={activity} maxLength={1200} rows={2} onChange={(event) => setActivities((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder="Describe the activity or accomplishment" required /></label><div className="ar-activity-actions">{activities.length > 1 && <button type="button" className="ar-remove-activity" aria-label={`Delete activity ${index + 1}`} onClick={() => setActivities((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div></div>)}</div>{activities.length < MAX_ACTIVITIES && <button type="button" className="text-button plain-action add-item-text-button ar-add-activity" onClick={() => setActivities((current) => [...current, ""])}>+ Add activity</button>}</fieldset>
           <div className="form-actions ar-form-actions"><button className="primary-button" disabled={saving || duplicateReport}>{saving ? "Saving..." : editingReport ? "Update" : "Save"}</button></div>

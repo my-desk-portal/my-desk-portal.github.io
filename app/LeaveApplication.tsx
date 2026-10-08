@@ -6,6 +6,7 @@ import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
 import DeleteConfirmation from "./DeleteConfirmation";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./leave-application.css";
@@ -46,6 +47,9 @@ type LeaveApplicationRecord = {
   workingDays: number;
   inclusiveDateFrom: string;
   inclusiveDateTo: string;
+  division?: TevDivision;
+  signatoryName?: string;
+  signatoryPosition?: "Chief" | "OIC";
   status: LeaveStatus;
   createdAt?: unknown;
 };
@@ -215,6 +219,7 @@ async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
   const page = pdf.getPage(0);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
   const parsedApplicant = parseName(record.name);
   const applicant = {
     last: record.lastName?.trim() || parsedApplicant.last,
@@ -222,13 +227,13 @@ async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
     middle: typeof record.middleName === "string" ? record.middleName.trim() : parsedApplicant.middle,
   };
 
-  drawFitText(page, font, record.office, 165.64, 878.38, 120, 9.5);
-  drawFitText(page, font, applicant.last, 367.41, 880.68, 103, 9.5);
-  drawFitText(page, font, applicant.first, 476.53, 880.68, 96, 9.5);
-  drawFitText(page, font, applicant.middle, 579.13, 880.68, 103.72, 9.5);
-  drawFitText(page, font, fileDate(record.filedDate), 175.08, 852.47, 104, 9.5);
-  drawFitText(page, font, record.position, 365, 851.98, 161, 9.5);
-  drawFitText(page, font, decimalSalary(record.salary), 611.04, 851.98, 78, 9.5);
+  drawFitText(page, bold, record.office, 165.64, 878.38, 120, 9.5);
+  drawFitText(page, bold, applicant.last, 367.41, 880.68, 103, 9.5);
+  drawFitText(page, bold, applicant.first, 476.53, 880.68, 96, 9.5);
+  drawFitText(page, bold, applicant.middle, 579.13, 880.68, 103.72, 9.5);
+  drawFitText(page, bold, fileDate(record.filedDate), 175.08, 852.47, 104, 9.5);
+  drawFitText(page, bold, record.position, 365, 851.98, 161, 9.5);
+  drawFitText(page, bold, decimalSalary(record.salary), 611.04, 851.98, 78, 9.5);
 
   const leaveTypeRows: Record<Exclude<LeaveType, "Others">, number> = {
     "Vacation Leave": 778.86,
@@ -247,27 +252,27 @@ async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
   };
   const selectedLeaveRow = record.leaveType === "Others" ? 522.92 : leaveTypeRows[record.leaveType];
   page.drawText("X", { x: record.leaveType === "Others" ? 68.5 : 79.1, y: selectedLeaveRow - 1, size: 8.5, font: bold, color: pdfTextColor });
-  if (record.leaveType === "Others") drawFitText(page, font, record.leaveDetails, 86.43, 506.56, 332, 8.5);
+  if (record.leaveType === "Others") drawFitText(page, bold, record.leaveDetails, 86.43, 506.56, 332, 8.5);
   const markLeaveDetail = (x: number, y: number) => page.drawText("X", { x, y: y - 1, size: 8.5, font: bold, color: pdfTextColor });
   if (["Vacation Leave", "Special Privilege Leave"].includes(record.leaveType)) {
     if (record.leaveDetails === "Within the Philippines") markLeaveDetail(429.6, 760.63);
     if (record.leaveDetails === "Abroad") {
       markLeaveDetail(429.6, 742.4);
-      drawFitText(page, font, record.specifyAbroad ?? "", 520, 742.4, 163, 8.5);
+      drawFitText(page, bold, record.specifyAbroad ?? "", 520, 742.4, 163, 8.5);
     }
   }
   if (record.leaveType === "Sick Leave") {
     if (record.leaveDetails === "In Hospital") {
       markLeaveDetail(429.6, 705.91);
-      drawFitText(page, font, record.specifyIllness ?? "", 566, 705.91, 116, 8.5);
+      drawFitText(page, bold, record.specifyIllness ?? "", 566, 705.91, 116, 8.5);
     }
     if (record.leaveDetails === "Out Patient") {
       markLeaveDetail(429.6, 687.67);
-      drawFitText(page, font, record.specifyIllness ?? "", 568, 687.67, 114, 8.5);
+      drawFitText(page, bold, record.specifyIllness ?? "", 568, 687.67, 114, 8.5);
     }
   }
   if (record.leaveType === "Special Leave Benefits for Women") {
-    drawFitText(page, font, record.specifyIllness ?? "", 502, 633.1, 178, 8.5);
+    drawFitText(page, bold, record.specifyIllness ?? "", 502, 633.1, 178, 8.5);
   }
   if (record.leaveType === "Study Leave") {
     if (record.leaveDetails === "Completion of Master's Degree") markLeaveDetail(429.6, 578.27);
@@ -278,8 +283,37 @@ async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
       if (record.studyLeaveOtherPurpose === "Terminal Leave") markLeaveDetail(429.6, 504.5);
     }
   }
-  drawFitText(page, font, String(record.workingDays), 98.27, 466.51, 240, 9.5);
-  drawFitText(page, font, inclusiveDates(record), 97.65, 429.73, 303, 9.5);
+  drawFitText(page, bold, String(record.workingDays), 98.27, 466.51, 240, 9.5);
+  drawFitText(page, bold, inclusiveDates(record), 97.65, 429.73, 303, 9.5);
+
+  if (record.division && record.signatoryName && record.signatoryPosition) {
+    const signatureCenter = 561.6;
+    const signatureMaxWidth = 205;
+    page.drawRectangle({ x: 501, y: 201.5, width: 124, height: 29, color: { type: "RGB", red: 1, green: 1, blue: 1 } });
+    page.drawRectangle({ x: 443, y: 213, width: 243, height: 1.5, color: { type: "RGB", red: 1, green: 1, blue: 1 } });
+
+    const name = safePdfText(record.signatoryName.toLocaleUpperCase("en-PH"));
+    let nameSize = 11;
+    while (nameSize > 6 && bold.widthOfTextAtSize(name, nameSize) > signatureMaxWidth) nameSize -= 0.25;
+    page.drawText(name, { x: signatureCenter - bold.widthOfTextAtSize(name, nameSize) / 2, y: 217.34, size: nameSize, font: bold, color: pdfTextColor });
+
+    const positionText = safePdfText(record.signatoryPosition);
+    const divisionText = safePdfText(record.division);
+    let positionSize = 9;
+    while (positionSize > 6 && italic.widthOfTextAtSize(`${positionText}, `, positionSize) + font.widthOfTextAtSize(divisionText, positionSize) > signatureMaxWidth) positionSize -= 0.25;
+    const positionWidth = italic.widthOfTextAtSize(`${positionText}, `, positionSize);
+    const divisionWidth = font.widthOfTextAtSize(divisionText, positionSize);
+    const lineX = signatureCenter - (positionWidth + divisionWidth) / 2;
+    page.drawText(`${positionText}, `, { x: lineX, y: 205.8, size: positionSize, font: italic, color: pdfTextColor });
+    page.drawText(divisionText, { x: lineX + positionWidth, y: 205.8, size: positionSize, font, color: pdfTextColor });
+  }
+
+  const secondPageResponse = await fetch(asset("/2nd-page-leave-application.jpg"), { cache: "force-cache" });
+  if (!secondPageResponse.ok) throw new Error("The second Leave Application page could not be loaded.");
+  const instructionsImage = await pdf.embedJpg(await secondPageResponse.arrayBuffer());
+  const { width, height } = page.getSize();
+  const secondPage = pdf.addPage([width, height]);
+  secondPage.drawImage(instructionsImage, { x: 0, y: 0, width, height });
 
   pdf.setTitle(`Leave Application - ${fullName(record)}`);
   pdf.setSubject("Civil Service Commission Leave Application (CS Form No. 6, Revised 2020)");
@@ -319,6 +353,14 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
   const [studyLeaveOtherPurpose, setStudyLeaveOtherPurpose] = useState("");
   const [inclusiveDateFrom, setInclusiveDateFrom] = useState("");
   const [inclusiveDateTo, setInclusiveDateTo] = useState("");
+  const [division, setDivision] = useState<TevDivision | "">("");
+  const selectedDivisionSignatory = division ? divisionSignatory(division) : null;
+  const showLeaveDetails = ["Vacation Leave", "Special Privilege Leave", "Sick Leave", "Study Leave"].includes(leaveType);
+  const showSpecifyOthers = leaveType === "Others";
+  const showSpecifyAbroad = ["Vacation Leave", "Special Privilege Leave"].includes(leaveType) && leaveDetails === "Abroad";
+  const showSpecifyIllness = (leaveType === "Sick Leave" && ["In Hospital", "Out Patient"].includes(leaveDetails)) || leaveType === "Special Leave Benefits for Women";
+  const showStudyLeaveOtherPurpose = leaveType === "Study Leave" && leaveDetails === "Other Purpose";
+  const leaveTypeFieldCount = 1 + [showLeaveDetails, showSpecifyOthers, showSpecifyAbroad, showSpecifyIllness, showStudyLeaveOtherPurpose].filter(Boolean).length;
 
   useEffect(() => {
     if (!db) {
@@ -442,6 +484,7 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
     setStudyLeaveOtherPurpose("");
     setInclusiveDateFrom("");
     setInclusiveDateTo("");
+    setDivision("");
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -456,6 +499,10 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
     }
     if (!office || !position.trim()) {
       setError("Complete your office and position in your Profile before creating a Leave Application.");
+      return;
+    }
+    if (!division || !selectedDivisionSignatory) {
+      setError("Select a division for the Leave Application signatory.");
       return;
     }
     if (inclusiveDateTo < inclusiveDateFrom) {
@@ -490,6 +537,9 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
         workingDays: calculatedWorkingDays,
         inclusiveDateFrom,
         inclusiveDateTo,
+        division,
+        signatoryName: selectedDivisionSignatory.name,
+        signatoryPosition: selectedDivisionSignatory.position,
         status: "Pending",
         createdAt: serverTimestamp(),
       };
@@ -509,6 +559,10 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
 
   async function changeStatus(record: LeaveApplicationRecord, status: LeaveStatus) {
     if (!db) { setError("Firebase is not configured."); return; }
+    if (record.status !== "Pending") {
+      setError("Approved or Disapproved Leave Applications cannot be changed.");
+      return;
+    }
     setUpdatingId(record.id);
     setError("");
     setMessage("");
@@ -534,6 +588,11 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
 
   async function deleteRecord(record: LeaveApplicationRecord) {
     if (!db) return;
+    if (record.status !== "Pending") {
+      setError("Approved or Disapproved Leave Applications cannot be deleted.");
+      setPendingDelete(null);
+      return;
+    }
     setDeletingId(record.id);
     setError("");
     try {
@@ -587,15 +646,20 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
     {view === "new" ? <>
       <div className="section-heading leave-application-heading"><div><p className="eyebrow">New record</p><h2>Create Leave Application</h2><p className="muted">Enter the details for the Civil Service Commission Leave Application form.</p></div><button type="button" className="ghost-button" onClick={() => { setView("list"); setError(""); }}>Cancel</button></div>
       <form className="leave-application-form" onSubmit={save}>
-        <label className="leave-application-wide-field">Date of Filing<input type="date" value={filedDate} onChange={(event) => setFiledDate(event.target.value)} required /></label>
+        <label>Date of Filing<input type="date" value={filedDate} onChange={(event) => setFiledDate(event.target.value)} required /></label>
         <label>Monthly Salary<div className="leave-application-currency-field"><span aria-hidden="true">₱</span><input type="number" inputMode="decimal" min="0" step="0.01" value={salary} onChange={(event) => setSalary(event.target.value)} onBlur={() => { if (salary !== "") setSalary(decimalSalary(salary)); }} aria-label="Monthly salary amount in Philippine pesos" placeholder="0.00" required /></div></label>
-        <label>Type of Leave<select value={leaveType} onChange={(event) => { const selected = event.target.value as LeaveType | ""; setLeaveType(selected); setLeaveDetails(""); setSpecifyAbroad(""); setSpecifyIllness(""); setStudyLeaveOtherPurpose(""); }} required><option value="" disabled>Select type of leave</option>{leaveTypes.map((option) => <option key={option}>{option}</option>)}</select></label>
-        {(["Vacation Leave", "Special Privilege Leave"].includes(leaveType) || leaveType === "Sick Leave" || leaveType === "Study Leave") && <label className="leave-application-wide-field">Details of Leave<select value={leaveDetails} onChange={(event) => { const selected = event.target.value; setLeaveDetails(selected); if (selected !== "Abroad") setSpecifyAbroad(""); if (selected !== "Other Purpose") setStudyLeaveOtherPurpose(""); }} required><option value="" disabled>Select details of leave</option>{(leaveType === "Sick Leave" ? sickLeaveDetails : leaveType === "Study Leave" ? studyLeaveDetails : travelLeaveDetails).map((option) => <option key={option}>{option}</option>)}</select></label>}
-        {leaveType === "Others" && <label className="leave-application-wide-field">Specify Others<textarea rows={3} maxLength={100} value={leaveDetails} onChange={(event) => setLeaveDetails(event.target.value)} placeholder="Specify the other type of leave" required /></label>}
-        {(["Vacation Leave", "Special Privilege Leave"].includes(leaveType) && leaveDetails === "Abroad") && <label className="leave-application-wide-field">Specify Abroad<input value={specifyAbroad} onChange={(event) => setSpecifyAbroad(event.target.value)} maxLength={120} required /></label>}
-        {((leaveType === "Sick Leave" && (leaveDetails === "In Hospital" || leaveDetails === "Out Patient")) || leaveType === "Special Leave Benefits for Women") && <label className="leave-application-wide-field">Specify Illness<input value={specifyIllness} onChange={(event) => setSpecifyIllness(event.target.value)} maxLength={120} required /></label>}
-        {leaveType === "Study Leave" && leaveDetails === "Other Purpose" && <label>Other Purpose<select value={studyLeaveOtherPurpose} onChange={(event) => setStudyLeaveOtherPurpose(event.target.value)} required><option value="" disabled>Select other purpose</option>{studyLeaveOtherPurposes.map((option) => <option key={option}>{option}</option>)}</select></label>}
-        <fieldset className="leave-application-date-range"><legend>Inclusive Dates</legend><label>From<input aria-label="Inclusive start date" type="date" value={inclusiveDateFrom} onChange={(event) => setInclusiveDateFrom(event.target.value)} required /></label><span aria-hidden="true">to</span><label>To<input aria-label="Inclusive end date" type="date" min={inclusiveDateFrom} value={inclusiveDateTo} onChange={(event) => setInclusiveDateTo(event.target.value)} required /></label></fieldset>
+        <div className={`leave-application-leave-type-row leave-application-wide-field leave-application-leave-type-row-${leaveTypeFieldCount}`}>
+          <label>Type of Leave<select value={leaveType} onChange={(event) => { const selected = event.target.value as LeaveType | ""; setLeaveType(selected); setLeaveDetails(""); setSpecifyAbroad(""); setSpecifyIllness(""); setStudyLeaveOtherPurpose(""); }} required><option value="" disabled>Select type of leave</option>{leaveTypes.map((option) => <option key={option}>{option}</option>)}</select></label>
+          {showLeaveDetails && <label>Details of Leave<select value={leaveDetails} onChange={(event) => { const selected = event.target.value; setLeaveDetails(selected); if (selected !== "Abroad") setSpecifyAbroad(""); if (selected !== "Other Purpose") setStudyLeaveOtherPurpose(""); }} required><option value="" disabled>Select details of leave</option>{(leaveType === "Sick Leave" ? sickLeaveDetails : leaveType === "Study Leave" ? studyLeaveDetails : travelLeaveDetails).map((option) => <option key={option}>{option}</option>)}</select></label>}
+          {showSpecifyOthers && <label>Specify Others<textarea rows={3} maxLength={100} value={leaveDetails} onChange={(event) => setLeaveDetails(event.target.value)} placeholder="Specify the other type of leave" required /></label>}
+          {showSpecifyAbroad && <label>Specify Abroad<input value={specifyAbroad} onChange={(event) => setSpecifyAbroad(event.target.value)} maxLength={120} required /></label>}
+          {showSpecifyIllness && <label>Specify Illness<input value={specifyIllness} onChange={(event) => setSpecifyIllness(event.target.value)} maxLength={120} required /></label>}
+          {showStudyLeaveOtherPurpose && <label>Other Purpose<select value={studyLeaveOtherPurpose} onChange={(event) => setStudyLeaveOtherPurpose(event.target.value)} required><option value="" disabled>Select other purpose</option>{studyLeaveOtherPurposes.map((option) => <option key={option}>{option}</option>)}</select></label>}
+        </div>
+        <div className="leave-application-date-division-row leave-application-wide-field">
+          <fieldset className="leave-application-date-range"><legend>Inclusive Dates</legend><label>From<input aria-label="Inclusive start date" type="date" value={inclusiveDateFrom} onChange={(event) => setInclusiveDateFrom(event.target.value)} required /></label><span aria-hidden="true">to</span><label>To<input aria-label="Inclusive end date" type="date" min={inclusiveDateFrom} value={inclusiveDateTo} onChange={(event) => setInclusiveDateTo(event.target.value)} required /></label></fieldset>
+          <label>Division<select value={division} onChange={(event) => setDivision(event.target.value as TevDivision | "")} required><option value="" disabled>Select a division</option>{tevDivisions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+        </div>
         <div className="leave-application-form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
       </form>
     </> : <>
@@ -605,26 +669,29 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
         <div className="leave-application-record-head"><span>Date Filed</span><span>Name</span><span>Type of Leave</span><span>Inclusive Dates</span><span>Status</span><span aria-hidden="true" /></div>
         {visibleRecords.map((record) => <article className="leave-application-record" key={record.id}>
           <span className="leave-application-record-date">{formatDate(record.filedDate)}</span><strong className="leave-application-record-name">{fullName(record)}</strong><span className="leave-application-record-type">{leaveTypeLabel(record)}</span><span className="leave-application-record-dates">{formatDate(record.inclusiveDateFrom)}{record.inclusiveDateTo !== record.inclusiveDateFrom && ` – ${formatDate(record.inclusiveDateTo)}`}</span>
-          <label className={`leave-application-status leave-application-status-${record.status.toLowerCase()}`}><span className="sr-only">Status for {fullName(record)}</span><select aria-label={`Status for ${fullName(record)}`} value={record.status} disabled={updatingId === record.id || deletingId !== null} onChange={(event) => void changeStatus(record, event.target.value as LeaveStatus)}>{leaveStatuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === record.id && <small>Saving...</small>}</label>
-          <div className="leave-application-actions"><button type="button" className="row-action" disabled={deletingId !== null || previewLoadingId !== null} onClick={() => void openPreview(record)}>{previewLoadingId === record.id ? "Preparing..." : "View"}</button>{record.status !== "Approved" && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</div>
+          <label className={`leave-application-status leave-application-status-${record.status.toLowerCase()}`}><select aria-label={`Status for ${fullName(record)}`} value={record.status} disabled={record.status !== "Pending" || updatingId === record.id || deletingId !== null} onChange={(event) => void changeStatus(record, event.target.value as LeaveStatus)}>{leaveStatuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === record.id && <small>Saving...</small>}</label>
+          <div className="leave-application-actions"><button type="button" className="row-action" disabled={deletingId !== null || previewLoadingId !== null} onClick={() => void openPreview(record)}>{previewLoadingId === record.id ? "Preparing..." : "View"}</button>{record.status === "Pending" && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</div>
         </article>)}
       </div>}
     </>}
     </section>
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Leave Application Deletion?" description="Are you sure you want to delete this Leave Application? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
-    {previewRecord && previewUrl && <div className="preview-backdrop travel-order-preview-backdrop leave-application-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closePreview(); }}>
+    {previewRecord && previewUrl && <div className="preview-backdrop leave-application-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closePreview(); }}>
       <div className="preview-toolbar leave-application-preview-toolbar">
-        <span>Leave Application preview · 1 page</span>
+        <span>Leave Application preview · 2 pages</span>
         <button type="button" className="ghost-button" onClick={closePreview}>Close</button>
         <a className="pdf-button" href={previewUrl} download={`leave-application-${previewRecord.filedDate}.pdf`}>Download PDF</a>
         <button type="button" className="pdf-button" onClick={printPreview} disabled={previewRendering || Boolean(previewRenderError)}>Print</button>
         {previewRenderError && <small className="download-error" role="alert">{previewRenderError}</small>}
       </div>
-      <div className="travel-order-preview-pages" role="dialog" aria-modal="true" aria-label={`Leave Application for ${fullName(previewRecord)}`}>
-        <div className="travel-order-paper leave-application-paper">
+      <div className="leave-application-preview-pages" role="dialog" aria-modal="true" aria-label={`Leave Application for ${fullName(previewRecord)}`}>
+        <div className="leave-application-paper">
           {previewRendering && <span className="leave-application-preview-loading">Preparing preview...</span>}
           {previewRenderError && <span className="leave-application-preview-render-error" role="alert">{previewRenderError}</span>}
           <canvas ref={previewCanvasRef} className="leave-application-preview-canvas" aria-label={`Leave Application form for ${fullName(previewRecord)}`} />
+        </div>
+        <div className="leave-application-paper leave-application-paper-second-page">
+          <img src={asset("/2nd-page-leave-application.jpg")} alt="Leave Application instructions and requirements" />
         </div>
       </div>
     </div>}

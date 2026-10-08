@@ -33,6 +33,27 @@ service cloud.firestore {
       return isVerifiedUser()
         && (request.auth.token.email == "gerlieantipaso27@gmail.com" || isSuperAdmin());
     }
+    function isValidPermitDecisionUpdate() {
+      let decisionKey = request.resource.data.get("lastDecisionKey", "");
+      let safeDecisionKey = decisionKey is string ? decisionKey : "";
+      let oldStatuses = resource.data.get("personStatuses", {});
+      let newStatuses = request.resource.data.get("personStatuses", {});
+      let oldDecision = oldStatuses is map ? oldStatuses.get(safeDecisionKey, {}) : {};
+      let newDecision = newStatuses is map ? newStatuses.get(safeDecisionKey, {}) : {};
+      return isPermitAdmin()
+        && decisionKey is string
+        && decisionKey.size() > 0
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["personStatuses", "lastDecisionKey"])
+        && oldStatuses is map
+        && newStatuses is map
+        && oldDecision is map
+        && newDecision is map
+        && newStatuses.diff(oldStatuses).affectedKeys().hasOnly([decisionKey])
+        && newStatuses.diff(oldStatuses).affectedKeys().hasAny([decisionKey])
+        && oldDecision.get("status", "Pending") == "Pending"
+        && newDecision.get("status", "") in ["Approved", "Disapproved"]
+        && newDecision.diff(oldDecision).affectedKeys().hasOnly(["status", "decidedAt", "decidedBy", "signerName", "approvedPermitNo"]);
+    }
     function matchesAccountRole() {
       return !request.resource.data.keys().hasAny(["accountRole"])
         || request.resource.data.accountRole == (request.auth.token.email == "rjamescute2@gmail.com"
@@ -176,13 +197,15 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.diff(resource.data).affectedKeys().hasAny(["activities", "status"])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["activities", "status"])
-        && (resource.data.status != "Approved" || request.resource.data.status == resource.data.status)
+        && resource.data.status == "Pending"
         && (!request.resource.data.keys().hasAny(["status"])
-          || request.resource.data.status in ["Pending", "Approved"])
+          || request.resource.data.status in ["Pending", "Approved", "Disapproved"])
         && request.resource.data.activities is list
         && request.resource.data.activities.size() > 0
         && request.resource.data.activities.size() <= 100;
-      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow delete: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.status == "Pending";
     }
     match /calendarActivityApprovalNotifications/{notificationId} {
       function calendarPath(calendarId) {
@@ -346,15 +369,19 @@ service cloud.firestore {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isPermitAdmin());
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
-        && !request.resource.data.keys().hasAny(["personStatuses"]);
+        && !request.resource.data.keys().hasAny(["personStatuses", "lastDecisionKey"]);
       allow update: if isVerifiedUser() && (
         (resource.data.ownerId == request.auth.uid
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["personStatuses"]))
-        || (isPermitAdmin()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["personStatuses"])
-          && request.resource.data.personStatuses is map)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["personStatuses"])
+          && request.resource.data.get("lastDecisionKey", null) == resource.data.get("lastDecisionKey", null)
+          && (!resource.data.keys().hasAny(["personStatuses"])
+            || (resource.data.personStatuses is map && resource.data.personStatuses.keys().size() == 0)))
+        || isValidPermitDecisionUpdate()
       );
-      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow delete: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && (!resource.data.keys().hasAny(["personStatuses"])
+          || (resource.data.personStatuses is map && resource.data.personStatuses.keys().size() == 0));
     }
     match /permitCounters/{counterId} {
       allow read, write: if isVerifiedUser();
@@ -555,8 +582,8 @@ service cloud.firestore {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.keys().hasAll(["ownerId", "filedDate", "name", "firstName", "middleName", "lastName", "office", "position", "salary", "leaveType", "leaveDetails", "specifyAbroad", "specifyIllness", "studyLeaveOtherPurpose", "workingDays", "inclusiveDateFrom", "inclusiveDateTo", "status", "createdAt"])
-        && request.resource.data.keys().hasOnly(["ownerId", "filedDate", "name", "firstName", "middleName", "lastName", "office", "position", "salary", "leaveType", "leaveDetails", "specifyAbroad", "specifyIllness", "studyLeaveOtherPurpose", "workingDays", "inclusiveDateFrom", "inclusiveDateTo", "status", "createdAt"])
+        && request.resource.data.keys().hasAll(["ownerId", "filedDate", "name", "firstName", "middleName", "lastName", "office", "position", "salary", "leaveType", "leaveDetails", "specifyAbroad", "specifyIllness", "studyLeaveOtherPurpose", "workingDays", "inclusiveDateFrom", "inclusiveDateTo", "division", "signatoryName", "signatoryPosition", "status", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "filedDate", "name", "firstName", "middleName", "lastName", "office", "position", "salary", "leaveType", "leaveDetails", "specifyAbroad", "specifyIllness", "studyLeaveOtherPurpose", "workingDays", "inclusiveDateFrom", "inclusiveDateTo", "division", "signatoryName", "signatoryPosition", "status", "createdAt"])
         && request.resource.data.filedDate is string
         && request.resource.data.filedDate.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
         && request.resource.data.name is string
@@ -618,13 +645,21 @@ service cloud.firestore {
         && request.resource.data.inclusiveDateTo is string
         && request.resource.data.inclusiveDateTo.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
         && request.resource.data.inclusiveDateTo >= request.resource.data.inclusiveDateFrom
+        && request.resource.data.division in ["Administrative Division", "Agribusiness and Marketing Assistance Division", "Field Operations Division", "Finance Division", "Integrated Laboratories Division", "Planning, Monitoring and Evaluation Division", "Regional Agricultural Engineering Division", "Regulatory Division", "Research Division"]
+        && request.resource.data.signatoryName is string
+        && request.resource.data.signatoryName.size() > 0
+        && request.resource.data.signatoryName.size() <= 120
+        && request.resource.data.signatoryPosition in ["Chief", "OIC"]
         && request.resource.data.status == "Pending"
         && request.resource.data.createdAt is timestamp;
       allow update: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
+        && resource.data.status == "Pending"
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
         && request.resource.data.status in ["Pending", "Approved", "Disapproved"];
-      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow delete: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.status == "Pending";
     }
     match /approvedLeaveCalendar/{leaveApplicationId} {
       function matchesApprovedApplication(data) {
@@ -684,10 +719,10 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerId == resource.data.ownerId
         && ownerUnitCanBeUpdated()
-        && resource.data.status != "Approved";
+        && resource.data.status == "Pending";
       allow delete: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
-        && resource.data.status != "Approved";
+        && resource.data.status == "Pending";
     }
     match /travelOrderNumbers/{numberId} {
       allow get: if isVerifiedUser();
@@ -751,9 +786,16 @@ service cloud.firestore {
       function isOwnMonthlyRecordId() {
         return recordId.matches("^" + request.auth.uid + "_[0-9]{4}-(0[1-9]|1[0-2])$");
       }
+      function hasValidEvidenceOptions(recordData) {
+        return !recordData.keys().hasAny(["evidenceOfTravelOptions"])
+          || (recordData.evidenceOfTravelOptions is list
+            && recordData.evidenceOfTravelOptions.size() <= 8
+            && recordData.evidenceOfTravelOptions.hasOnly(["Approved Itinerary of Travel", "Approved Travel Orders", "Boarding Pass", "Boat Ticket", "Bus Ticket", "Certificate of Appearance", "COENRR", "Plane Ticket"]));
+      }
       function isValidMyTevRecord(recordData) {
         return recordData.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
-          && recordData.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
+          && recordData.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "divisionName", "itineraries", "createdAt"])
+          && hasValidEvidenceOptions(recordData)
           && recordData.ownerId == request.auth.uid
           && recordData.profile is map
           && recordData.profile.keys().hasOnly(["name", "address", "taxIdentificationNo", "position", "unit"])
@@ -794,7 +836,8 @@ service cloud.firestore {
       allow create: if isVerifiedUser()
         && recordId == request.auth.uid + "_" + request.resource.data.month
         && request.resource.data.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
-        && request.resource.data.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "divisionName", "itineraries", "createdAt"])
+        && hasValidEvidenceOptions(request.resource.data)
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.profile is map
         && request.resource.data.profile.keys().hasOnly(["name", "address", "taxIdentificationNo", "position", "unit"])
@@ -837,8 +880,8 @@ service cloud.firestore {
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
         && reportId == request.auth.uid + "_" + request.resource.data.month + (request.resource.data.cycle == 1 ? "_first" : "_second")
-        && request.resource.data.keys().hasAll(["ownerId", "month", "cycle", "startDay", "endDay", "activities", "unit", "preparedName", "preparedPosition", "createdAt"])
-        && request.resource.data.keys().hasOnly(["ownerId", "month", "cycle", "startDay", "endDay", "activities", "unit", "preparedName", "preparedPosition", "createdAt"])
+        && request.resource.data.keys().hasAll(["ownerId", "month", "cycle", "startDay", "endDay", "activities", "unit", "preparedName", "preparedPosition", "signatoryName", "signatoryPosition", "signatoryDivision", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "month", "cycle", "startDay", "endDay", "activities", "unit", "preparedName", "preparedPosition", "signatoryName", "signatoryPosition", "signatoryDivision", "createdAt"])
         && request.resource.data.month is string
         && request.resource.data.month.size() == 7
         && ((request.resource.data.cycle == 1
@@ -858,6 +901,11 @@ service cloud.firestore {
         && request.resource.data.preparedPosition is string
         && request.resource.data.preparedPosition.size() > 0
         && request.resource.data.preparedPosition.size() <= 120
+        && request.resource.data.signatoryName is string
+        && request.resource.data.signatoryName.size() > 0
+        && request.resource.data.signatoryName.size() <= 120
+        && request.resource.data.signatoryPosition in ["Chief", "OIC"]
+        && request.resource.data.signatoryDivision in ["Administrative Division", "Agribusiness and Marketing Assistance Division", "Field Operations Division", "Finance Division", "Integrated Laboratories Division", "Planning, Monitoring and Evaluation Division", "Regional Agricultural Engineering Division", "Regulatory Division", "Research Division"]
         && request.resource.data.createdAt is timestamp;
       allow update: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid

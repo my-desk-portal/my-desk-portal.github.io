@@ -1,6 +1,16 @@
 .travel-order-form-section,.travel-order-list-section{max-width:1100px}
 .travel-order-form{align-items:start}
 .travel-order-form>.travel-order-office-field,.travel-order-form>.travel-order-date-range{grid-column:1/-1;max-width:1100px;width:100%}
+.travel-order-allowances{display:grid;gap:14px;grid-template-columns:repeat(3,minmax(0,1fr));min-width:0}
+.travel-order-allowances>label{min-width:0}
+.travel-order-trip-details{display:grid;gap:14px;grid-template-columns:repeat(3,minmax(0,1fr));min-width:0}
+.travel-order-trip-details>label{min-width:0}
+.travel-order-trip-details input,.travel-order-trip-details textarea{height:76px;min-height:76px;width:100%}
+.travel-order-transportation-field{border:0;margin:0;min-width:0;padding:0}
+.travel-order-transportation-field>legend{color:#4e5b55;font-size:12px;font-weight:600;letter-spacing:.02em;margin-bottom:8px;padding:0}
+.travel-order-transportation-options{align-items:center;display:flex;flex-wrap:wrap;gap:6px clamp(12px,2vw,22px);max-width:100%;min-width:0}
+.travel-order-transportation-option{align-items:center;display:flex;flex:0 0 auto;gap:7px;min-height:32px;min-width:max-content;white-space:nowrap}
+.travel-order-transportation-option>input[type=checkbox]{accent-color:var(--accent);flex:0 0 16px;height:16px;margin:0;padding:0;width:16px}
 .travel-order-date-range>div{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);width:100%}
 .travel-order-date-range>div>input{min-width:0;width:100%}
 .travel-order-people{display:grid;gap:12px}
@@ -13,8 +23,11 @@
 .travel-order-currency-field>span{align-items:center;background:#f7faf6;border:1px solid var(--line);border-right:0;color:var(--muted);display:flex;font-size:14px;padding:0 14px}
 .travel-order-currency-field>input{flex:1;font-size:14px;min-width:0}
 .travel-order-person .remove-participant{align-self:end;grid-column:auto;justify-self:end}
-.travel-order-list-head,.travel-order-list-row{grid-template-columns:1.15fr 1.7fr 1.7fr 1.2fr 1.1fr}
+.travel-order-list-head,.travel-order-list-row{grid-template-columns:minmax(0,1.15fr) minmax(0,1.5fr) minmax(0,1.5fr) minmax(160px,1.1fr) minmax(205px,1.35fr)}
 .travel-order-list-row{align-items:center}
+.travel-order-list-row>strong{font-weight:400}
+.travel-order-list-row>.travel-order-status{min-width:0;width:100%}
+.travel-order-list-row>.travel-order-row-actions{flex-wrap:wrap;min-width:0;white-space:normal}
 .travel-order-list-people{overflow-wrap:anywhere}
 .travel-order-pagination{align-items:center;display:flex;gap:12px;justify-content:space-between;margin:12px 8px}
 .travel-order-pagination>span,.travel-order-pagination-controls>span{color:var(--muted);font-size:12px}
@@ -75,7 +88,12 @@
 .travel-order-certification th:nth-child(3){width:36%}
 .travel-order-certification th:nth-child(4){width:24%}
 .sr-only{clip:rect(0,0,0,0);clip-path:inset(50%);height:1px;overflow:hidden;position:absolute;white-space:nowrap;width:1px}
+@media(max-width:900px){
+  .travel-order-trip-details{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 @media(max-width:720px){
+  .travel-order-allowances{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .travel-order-trip-details{grid-template-columns:1fr}
   .travel-order-person{grid-template-columns:1fr;padding:14px}
   .travel-order-person .remove-participant{grid-column:auto}
   .travel-order-list-head{display:none}
@@ -87,6 +105,9 @@
   .travel-order-preview-backdrop{padding:12px}
 }
 @media(max-width:480px){
+  .travel-order-allowances{grid-template-columns:1fr}
+  .travel-order-transportation-options{column-gap:14px;row-gap:4px}
+  .travel-order-transportation-option{min-height:36px}
   .travel-order-preview-backdrop{padding:8px}
   .travel-order-preview-pages{gap:14px}
   .travel-order-paper{width:min(94vw,210mm)}

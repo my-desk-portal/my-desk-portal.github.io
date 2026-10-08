@@ -102,6 +102,7 @@ export type MyTevRecord = {
   officialStation: TevOfficialStation;
   travelReferences: TevTravelReference[];
   evidenceOfTravel: string;
+  evidenceOfTravelOptions?: string[];
   divisionName: TevDivision;
   itineraries: TevItinerary[];
 };

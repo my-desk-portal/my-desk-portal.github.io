@@ -140,7 +140,8 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
 
   async function changeStatus(permit: AdminPermit, personIndex: number, status: PermitStatus) {
     if (!db || !isPermitAdmin(user.email)) return;
-    if (personStatus(permit, personIndex) === "Approved") return;
+    if (status === "Pending") return;
+    if (personStatus(permit, personIndex) !== "Pending") return;
     const permitNo = permitNumber(permit, personIndex);
     const statusKey = decisionKey(permit, personIndex);
     const key = `${permit.id}:${statusKey}`;
@@ -171,8 +172,8 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
         const latestDate = typeof data.date === "string" ? data.date : permit.date;
         const latestYear = permitNumberYear(latestPermitNo, latestDate);
         const currentDecision = (data.personStatuses as Record<string, PersonDecision> | undefined)?.[statusKey] ?? {};
-        if (normalizeWorkflowStatus(currentDecision.status) === "Approved") {
-          throw new Error("Approved Permit Slips cannot be changed.");
+        if (normalizeWorkflowStatus(currentDecision.status) !== "Pending") {
+          throw new Error("Approved or Disapproved Permit Slips cannot be changed.");
         }
         let approvedPermitNo = currentDecision.approvedPermitNo;
 
@@ -200,7 +201,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
           signerName: "GERLIE B. ANTIPASO",
         };
         if (approvedPermitNo) nextDecision.approvedPermitNo = approvedPermitNo;
-        transaction.update(permitRef, { [`personStatuses.${statusKey}`]: nextDecision });
+        transaction.update(permitRef, { [`personStatuses.${statusKey}`]: nextDecision, lastDecisionKey: statusKey });
 
         if (status === "Approved") {
           const names = Array.isArray(data.names) ? data.names as string[] : [];
@@ -244,7 +245,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
       const key = `${permit.id}:${decisionKey(permit, index)}`;
       const originalNumber = displayPermitNumber(permitNo);
       const displayedNumber = status === "Approved" ? (approvedPermitNo ?? approvedPermitNumbers[originalNumber] ?? originalNumber) || "—" : "Pending";
-      return <tr id={`permit-status-${encodeURIComponent(key)}`} className={key === focusNotificationKey ? "permit-admin-notification-target" : undefined} key={key}><td data-label="PS No.">{displayedNumber}</td><td data-label="Date">{displayDate(permit.date)}</td><td data-label="Name">{name}</td><td data-label="Unit">{unit || "—"}</td><td data-label="Purpose">{permit.purpose || "—"}</td><td data-label="Status"><select className={`permit-admin-status permit-admin-status-${status.toLowerCase()}`} value={status} disabled={savingKey === key || status === "Approved"} title={status === "Approved" ? "Approved Permit Slips cannot be changed." : undefined} aria-label={`Status for ${name}, ${displayPermitNumber(permitNo)}${status === "Approved" ? ", locked after approval" : ""}`} onChange={(event) => void changeStatus(permit, index, event.target.value as PermitStatus)}><option>Pending</option><option>Approved</option><option>Disapproved</option></select>{savingKey === key && <small className="permit-admin-saving">Saving…</small>}</td></tr>;
+      return <tr id={`permit-status-${encodeURIComponent(key)}`} className={key === focusNotificationKey ? "permit-admin-notification-target" : undefined} key={key}><td data-label="PS No.">{displayedNumber}</td><td data-label="Date">{displayDate(permit.date)}</td><td data-label="Name">{name}</td><td data-label="Unit">{unit || "—"}</td><td data-label="Purpose">{permit.purpose || "—"}</td><td data-label="Status"><select className={`permit-admin-status permit-admin-status-${status.toLowerCase()}`} value={status} disabled={savingKey === key || status !== "Pending"} title={status !== "Pending" ? `${status} Permit Slips cannot be changed.` : undefined} aria-label={`Status for ${name}, ${displayPermitNumber(permitNo)}${status !== "Pending" ? `, locked after ${status.toLowerCase()}` : ""}`} onChange={(event) => void changeStatus(permit, index, event.target.value as PermitStatus)}><option>Pending</option><option>Approved</option><option>Disapproved</option></select>{savingKey === key && <small className="permit-admin-saving">Saving…</small>}</td></tr>;
     })}</tbody></table></div>}
   </section>;
 }

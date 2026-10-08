@@ -102,7 +102,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
   const [officialStation, setOfficialStation] = useState<TevOfficialStation>(() => initialRecord?.officialStation ?? tevOfficialStations[0]);
   const [references, setReferences] = useState<TevTravelReference[]>(() => initialRecord ? initialRecord.travelReferences.map((reference) => ({ ...reference, toDateRecordsUnit: reference.toDateRecordsUnit ?? "" })) : [blankTevTravelReference()]);
   const [selectedEvidence, setSelectedEvidence] = useState<string[]>(() => initialRecord
-    ? tevEvidenceOptions.filter((option) => option.pattern.test(initialRecord.evidenceOfTravel ?? "")).map((option) => option.label)
+    ? tevEvidenceOptions.filter((option) => initialRecord.evidenceOfTravelOptions?.includes(option.label) || option.pattern.test(initialRecord.evidenceOfTravel ?? "")).map((option) => option.label)
     : []);
   const evidenceOfTravel = selectedEvidence.join(", ");
   const [divisionName, setDivisionName] = useState<TevDivision>(() => initialRecord?.divisionName ?? tevDivisions[0]);
@@ -252,6 +252,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
       officialStation,
       travelReferences: references.map((reference) => ({ ...reference, travelOrderNo: reference.travelOrderNo.trim() })),
       evidenceOfTravel: evidenceOfTravel.trim(),
+      evidenceOfTravelOptions: tevEvidenceOptions.filter((option) => selectedEvidence.includes(option.label)).map((option) => option.label),
       divisionName,
       itineraries: result.itineraries,
     };

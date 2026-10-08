@@ -8,11 +8,19 @@
 .leave-application-form{align-items:start;display:grid;gap:18px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .leave-application-form>label,.leave-application-date-range{min-width:0}
 .leave-application-form input,.leave-application-form select,.leave-application-form textarea{font-size:14px;min-width:0}
+.leave-application-leave-type-row{display:grid;gap:14px;min-width:0}
+.leave-application-leave-type-row-1{grid-template-columns:minmax(0,1fr)}
+.leave-application-leave-type-row-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.leave-application-leave-type-row-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.leave-application-leave-type-row>label{min-width:0}
+.leave-application-leave-type-row select,.leave-application-leave-type-row textarea{height:48px;min-height:48px}
+.leave-application-date-division-row{align-items:end;display:grid;gap:18px;grid-template-columns:minmax(0,2fr) minmax(240px,1fr);min-width:0}
+.leave-application-date-division-row>label{min-width:0}
 .leave-application-currency-field{align-items:stretch;display:flex;min-width:0}
 .leave-application-currency-field>span{align-items:center;background:#f7faf6;border:1px solid var(--line);border-right:0;color:var(--muted);display:flex;font-size:14px;padding:0 14px}
 .leave-application-currency-field>input{flex:1;min-width:0}
 .leave-application-wide-field,.leave-application-form-actions{grid-column:1/-1}
-.leave-application-date-range{align-items:end;border:0;display:grid;gap:10px;grid-column:1/-1;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);margin:0;padding:0}
+.leave-application-date-range{align-items:end;border:0;display:grid;gap:10px;grid-column:auto;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);margin:0;min-width:0;padding:0}
 .leave-application-date-range legend{color:#4e5b55;font-size:12px;font-weight:600;grid-column:1/-1;letter-spacing:.02em;margin-bottom:8px;padding:0}
 .leave-application-date-range label{min-width:0}
 .leave-application-date-range>span{color:var(--muted);padding-bottom:13px}
@@ -23,7 +31,7 @@
 .leave-application-record-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;padding:14px 8px;text-transform:uppercase}
 .leave-application-record{border-top:1px solid var(--line);font-size:12px;padding:14px 8px}
 .leave-application-record>span,.leave-application-record>strong{min-width:0;overflow-wrap:anywhere}
-.leave-application-record>strong{font-size:12px}
+.leave-application-record>strong{font-size:12px;font-weight:400}
 .leave-application-status{align-items:start;display:grid;gap:4px;min-width:0}
 .leave-application-status select{background:#fff;border:1px solid var(--line);font-size:11px;font-weight:700;min-width:0;padding:7px 8px;width:100%}
 .leave-application-status-pending select{background:#fff5e8;color:#8e5712}
@@ -32,7 +40,11 @@
 .leave-application-status small{color:var(--muted);font-size:10px}
 .leave-application-actions{align-items:center;display:flex;gap:12px;justify-content:flex-end;min-width:0}
 .leave-application-actions .row-action{white-space:nowrap}
-.leave-application-paper{position:relative}
+.leave-application-preview-backdrop{align-content:start;display:grid;grid-template-columns:minmax(0,1fr);justify-items:center}
+.leave-application-preview-backdrop>.preview-toolbar{width:100%}
+.leave-application-preview-pages{display:grid;gap:24px;justify-items:center;margin:0 auto;width:100%}
+.leave-application-paper{aspect-ratio:210/297;background:#fff;box-shadow:0 18px 50px #0004;container-type:inline-size;overflow:hidden;position:relative;width:min(90vw,210mm)}
+.leave-application-paper-second-page>img{display:block;height:100%;object-fit:fill;width:100%}
 .leave-application-preview-toolbar a.pdf-button{text-decoration:none}
 .leave-application-preview-canvas{display:block;height:100%;width:100%}
 .leave-application-preview-loading,.leave-application-preview-render-error{align-items:center;background:#fff;display:flex;font-size:14px;inset:0;justify-content:center;padding:24px;position:absolute;text-align:center;z-index:1}
@@ -42,6 +54,9 @@
   .leave-application-record-head,.leave-application-record{grid-template-columns:1fr 1.2fr 1.2fr 1.2fr 132px 112px;gap:10px}
 }
 @media(max-width:760px){
+  .leave-application-leave-type-row-1{grid-template-columns:minmax(0,1fr)}
+  .leave-application-leave-type-row-2,.leave-application-leave-type-row-3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .leave-application-date-division-row{grid-template-columns:minmax(0,1fr)}
   .leave-application-record-head{display:none}
   .leave-application-record{align-items:start;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr));padding:17px 0}
   .leave-application-record-date,.leave-application-record-name,.leave-application-record-type,.leave-application-record-dates,.leave-application-status,.leave-application-actions{grid-column:1/-1}
@@ -55,13 +70,27 @@
   .leave-application-heading h2{font-size:clamp(21px,6vw,26px);line-height:1.12}
   .leave-application-form{grid-template-columns:minmax(0,1fr);gap:16px}
   .leave-application-wide-field,.leave-application-form-actions{grid-column:auto}
+  .leave-application-leave-type-row,.leave-application-leave-type-row-1,.leave-application-leave-type-row-2,.leave-application-leave-type-row-3{grid-template-columns:minmax(0,1fr)}
   .leave-application-date-range{gap:7px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
   .leave-application-date-range input{padding:12px 8px}
   .leave-application-form-actions{flex-direction:column-reverse}
   .leave-application-form-actions button{width:100%}
 }
+@media(max-width:720px){
+  .leave-application-preview-backdrop{padding:12px}
+  .leave-application-preview-pages{gap:14px}
+}
+@media(max-width:480px){
+  .leave-application-preview-backdrop{padding:8px}
+  .leave-application-paper{width:min(94vw,210mm)}
+}
 @media print{
   .leave-application-preview-backdrop,.leave-application-preview-backdrop *{visibility:visible!important}
-  .leave-application-preview-canvas{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .leave-application-preview-backdrop{background:#fff;padding:0;position:static}
+  .leave-application-preview-pages{display:block;width:auto}
+  .leave-application-paper{aspect-ratio:auto;break-after:page;box-shadow:none;height:297mm;margin:0 auto;page-break-after:always;width:210mm}
+  .leave-application-paper:last-child{break-after:auto;page-break-after:auto}
+  .leave-application-preview-backdrop>.preview-toolbar{display:none}
+  .leave-application-preview-canvas,.leave-application-paper-second-page>img{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .leave-application-preview-loading,.leave-application-preview-render-error{display:none!important}
 }

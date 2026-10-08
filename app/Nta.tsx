@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { collection, doc, getDocs, query, serverTimestamp, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { divisionSignatory, tevDivisions } from "@/lib/mytev";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
 import { getDocumentNotificationReferences, makeDocumentNotification } from "@/lib/document-notifications";
@@ -57,9 +58,28 @@ const ntaSignatories = [
 ] as const;
 const legacySignatoryName = "MELODY M. GUIMARY";
 const legacySignatoryDesignation = "Chief, Field Operations Division";
+const ntaSignatoryOptions = [
+  ...tevDivisions.map((division) => {
+    const signatory = divisionSignatory(division);
+    return {
+      value: `division:${division}`,
+      label: division,
+      name: signatory.name,
+      position: `${signatory.position}, ${division}`,
+    };
+  }),
+  ...ntaSignatories
+    .filter((signatory) => signatory.designation !== legacySignatoryDesignation)
+    .map((signatory) => ({
+      value: `role:${signatory.designation}`,
+      label: signatory.designation,
+      name: signatory.name,
+      position: signatory.designation,
+    })),
+].sort((first, second) => first.label.localeCompare(second.label));
 const formatDate = (date: string) => date ? new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "Asia/Manila" }).format(new Date(`${date}T12:00:00+08:00`)) : "";
 const formatDateRange = (from: string, to: string) => from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`;
-const initialBatch = (): NtaBatch => ({ number: "1", dateFrom: "", dateTo: "", timeFrom: "", timeTo: "", venueType: "physical", venue: "", link: "", attendees: [{ name: "", position: "", office: "", userId: "", manual: false }] });
+const initialBatch = (): NtaBatch => ({ number: "1", dateFrom: "", dateTo: "", timeFrom: "08:00", timeTo: "17:00", venueType: "physical", venue: "", link: "", attendees: [{ name: "", position: "", office: "", userId: "", manual: false }] });
 
 function NtaForm({ user, unit, onSaved, onCancel }: { user: User; unit: string | null; onSaved: (record: NtaRecord) => void; onCancel: () => void }) {
   const [mode, setMode] = useState<NtaMode>("individual");
@@ -70,8 +90,8 @@ function NtaForm({ user, unit, onSaved, onCancel }: { user: User; unit: string |
   const [subject, setSubject] = useState("");
   const [activityTitle, setActivityTitle] = useState("");
   const [organizer, setOrganizer] = useState("");
-  const [signatoryDesignation, setSignatoryDesignation] = useState("");
-  const selectedSignatory = ntaSignatories.find((signatory) => signatory.designation === signatoryDesignation);
+  const [signatorySelection, setSignatorySelection] = useState("");
+  const selectedSignatory = ntaSignatoryOptions.find((option) => option.value === signatorySelection);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [venueType, setVenueType] = useState<"physical" | "virtual">("physical");
@@ -122,7 +142,7 @@ function NtaForm({ user, unit, onSaved, onCancel }: { user: User; unit: string |
       schedulesByRecipient.set(attendee.userId, [...(schedulesByRecipient.get(attendee.userId) ?? []), { dateFrom: batch.dateFrom, dateTo: batch.dateTo, venue: batch.venue.trim() }]);
     }));
     const recipientIds = [...schedulesByRecipient.keys()].filter((id) => id !== user.uid);
-    const common = { mode, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.designation, recipientIds, ownerId: user.uid, ownerUnit: unit, createdAt: serverTimestamp() };
+    const common = { mode, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.position, recipientIds, ownerId: user.uid, ownerUnit: unit, createdAt: serverTimestamp() };
     try {
       const data = mode === "individual"
         ? { ...common, to: to.trim(), toUserId: manualRecipient ? "" : toUserId, positionDesignation: positionDesignation.trim(), dateFrom, dateTo, venueType, venue: venue.trim(), link: venueType === "virtual" ? link.trim() : "" }
@@ -174,7 +194,7 @@ function NtaForm({ user, unit, onSaved, onCancel }: { user: User; unit: string |
           {batches.length > 1 && <button type="button" className="remove-participant nta-remove-batch" aria-label={`Delete group ${batch.number}`} onClick={() => setBatches((current) => current.filter((_, index) => index !== batchIndex))}>Delete</button>}
         </fieldset>)}<button type="button" className="text-button plain-action add-item-text-button" onClick={() => setBatches((current) => [...current, { ...initialBatch(), number: String(current.length + 1) }])}>+ Add group</button></div>
       </>}
-      <label className="wide-field">Signatory<select value={signatoryDesignation} onChange={(event) => setSignatoryDesignation(event.target.value)} required><option value="" disabled>Select a signatory</option>{ntaSignatories.map((signatory) => <option key={signatory.designation} value={signatory.designation}>{signatory.designation === legacySignatoryDesignation ? "FOD Chief" : signatory.designation}</option>)}</select></label>
+      <label className="wide-field">Signatory<select value={signatorySelection} onChange={(event) => setSignatorySelection(event.target.value)} required><option value="" disabled>Select a signatory</option>{ntaSignatoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
       <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
@@ -320,6 +340,15 @@ function buildRosterPages(batches: NtaBatch[], firstPageRows: number, pageSettin
   }, []));
 }
 
+function NtaSignatoryPosition({ designation }: { designation: string }) {
+  const separator = designation.indexOf(", ");
+  if (separator < 0) return <i>{designation}</i>;
+
+  const position = designation.slice(0, separator + 1);
+  const division = designation.slice(separator + 2);
+  return division.endsWith("Division") ? <><i>{position}</i> {division}</> : <i>{designation}</i>;
+}
+
 function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, firstPageRows = 0, individualClosingUnits = [], individualSignatoryPulledBack = false, individualClosingCompacted = false }: { record: NtaRecord; page: "individual" | "individual-continuation" | "batch-overview" | "batch-attendees" | "batch-copy"; rosterSections?: NtaRosterSection[]; showFixedCopy?: boolean; firstPageRows?: number; individualClosingUnits?: NtaIndividualClosingUnit[]; individualSignatoryPulledBack?: boolean; individualClosingCompacted?: boolean }) {
   const batches = record.batches ?? [];
   const individual = page === "individual";
@@ -349,7 +378,7 @@ function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, fir
     </> : <>
       <div className="nta-batch-tables">{rosterSections.map((section) => <NtaBatchParticipants batch={{ ...section.batch, attendees: section.attendees }} startIndex={section.startIndex} showCaption={record.mode === "batch" || !section.continued} multiplePersonnel={record.mode === "multiple"} key={`${section.batchIndex}-${section.startIndex}`} />)}</div>{showFixedCopy && <NtaFixedCopy />}
     </>}
-    {(showFixedCopy && (page === "batch-overview" || page === "batch-attendees" || page === "batch-copy")) && <footer className="nta-signatory"><strong>{signatoryName}</strong><span>{signatoryDesignation === legacySignatoryDesignation ? <><i>Chief</i>, Field Operations Division</> : <i>{signatoryDesignation}</i>}</span></footer>}
+    {(showFixedCopy && (page === "batch-overview" || page === "batch-attendees" || page === "batch-copy")) && <footer className="nta-signatory"><strong>{signatoryName}</strong><span><NtaSignatoryPosition designation={signatoryDesignation} /></span></footer>}
   </div></article>;
 }
 
@@ -357,7 +386,7 @@ function NtaIndividualClosing({ units, signatoryName, signatoryDesignation, sign
   if (units.length === 0) return null;
   return <div className={`nta-individual-closing${continuation ? " nta-individual-closing-continuation" : ""}${compacted ? " nta-individual-closing-compact" : ""}${signatoryPulledBack ? " nta-individual-closing-pulled" : ""}`}>
     {units.map((unit) => {
-      if (unit === "signatory") return <footer className="nta-signatory nta-individual-closing-unit" data-nta-individual-closing-unit key={unit}><strong>{signatoryName}</strong><span>{signatoryDesignation === legacySignatoryDesignation ? <><i>Chief</i>, Field Operations Division</> : <i>{signatoryDesignation}</i>}</span></footer>;
+      if (unit === "signatory") return <footer className="nta-signatory nta-individual-closing-unit" data-nta-individual-closing-unit key={unit}><strong>{signatoryName}</strong><span><NtaSignatoryPosition designation={signatoryDesignation} /></span></footer>;
       const copy = {
         feedback: "As a representative, you are expected to actively participate and note key discussions and agreements. A brief report of feedback shall be submitted within ____ days after the activity.",
         expenses: "Travel and other incidental expenses, if any, shall be subject to existing accounting and auditing rules and regulations.",

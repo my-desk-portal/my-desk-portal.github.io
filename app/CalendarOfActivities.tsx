@@ -43,7 +43,7 @@ export type CalendarOfActivitiesApprovalNotification = {
 };
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM" | "Field Operations Division";
-type CalendarOfActivitiesStatus = "Pending" | "Approved";
+type CalendarOfActivitiesStatus = "Pending" | "Approved" | "Disapproved";
 type ResponsiblePerson = { userId: string; name: string };
 type ActivityDraft = CalendarOfActivitiesReminder & { responsiblePeople: ResponsiblePerson[]; nextResponsibleId: string };
 type CalendarOfActivitiesRow = CalendarOfActivitiesReminder & { responsiblePeople: ResponsiblePerson[] };
@@ -62,7 +62,7 @@ type Profile = { name: string; position: string; unit: Unit };
 type Account = { id: string; name: string };
 
 const unitLabel = (unit: Unit) => unit === "Field Operations Division" ? unit : `FOD-${unit}`;
-const calendarOfActivitiesStatus = (plan: CalendarOfActivities): CalendarOfActivitiesStatus => plan.status === "Approved" ? "Approved" : "Pending";
+const calendarOfActivitiesStatus = (plan: CalendarOfActivities): CalendarOfActivitiesStatus => plan.status === "Approved" || plan.status === "Disapproved" ? plan.status : "Pending";
 const unitDescription: Record<Unit, string> = {
   AMIA: "FOD - Adaptation Initiative and Mitigation in Agriculture",
   AGRISTAT: "FOD - Agricultural Statistics",
@@ -427,8 +427,8 @@ function CalendarOfActivitiesList({ plans, currentUserId, onNew, onEdit, onView,
           <strong>{formatMonth(plan.month)}</strong>
           <span className="calendar-of-activities-list-unit">{unitLabel(plan.unit)}</span>
           <span className="calendar-of-activities-list-count">{plan.activities.length}</span>
-          {adminRecordsOnly ? <span className="travel-order-status calendar-of-activities-list-status"><span className="sr-only">Status</span><strong className="calendar-of-activities-status-badge is-approved">Approved</strong></span> : <label className={`travel-order-status travel-order-status-${status.toLowerCase()} calendar-of-activities-list-status`}><span className="sr-only">Status</span><select aria-label={`Status for ${unitLabel(plan.unit)}, ${formatMonth(plan.month)}`} value={status} disabled={status === "Approved" || updatingStatusId !== null || deletingId !== null} onChange={(event) => onStatusChange(plan, event.target.value as CalendarOfActivitiesStatus)}><option value="Pending">Pending</option><option value="Approved">Approved</option></select></label>}
-          <span className="travel-order-row-actions calendar-of-activities-row-actions">{adminRecordsOnly ? <button type="button" className="row-action" onClick={() => onView(plan)}>View</button> : <>{status !== "Approved" && <button type="button" className="row-action" disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onEdit(plan)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onView(plan)}>View</button>{plan.ownerId === currentUserId && <button type="button" className="delete-button" hidden={status === "Approved"} disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onDelete(plan)}>{deletingId === plan.id ? "Deleting…" : "Delete"}</button>}</>}</span>
+          {adminRecordsOnly ? <span className="travel-order-status calendar-of-activities-list-status"><strong className="calendar-of-activities-status-badge is-approved">Approved</strong></span> : <label className={`travel-order-status travel-order-status-${status.toLowerCase()} calendar-of-activities-list-status`}><select aria-label={`Status for ${unitLabel(plan.unit)}, ${formatMonth(plan.month)}`} value={status} disabled={status !== "Pending" || updatingStatusId !== null || deletingId !== null} onChange={(event) => onStatusChange(plan, event.target.value as CalendarOfActivitiesStatus)}><option value="Pending">Pending</option><option value="Approved">Approved</option><option value="Disapproved">Disapproved</option></select></label>}
+          <span className="travel-order-row-actions calendar-of-activities-row-actions">{adminRecordsOnly ? <button type="button" className="row-action" onClick={() => onView(plan)}>View</button> : <>{status === "Pending" && <button type="button" className="row-action" disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onEdit(plan)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onView(plan)}>View</button>{plan.ownerId === currentUserId && status === "Pending" && <button type="button" className="delete-button" disabled={updatingStatusId !== null || deletingId !== null} onClick={() => onDelete(plan)}>{deletingId === plan.id ? "Deleting…" : "Delete"}</button>}</>}</span>
         </div>;
       })}
     </div>}
@@ -491,8 +491,8 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
 
   async function updateCalendarOfActivitiesStatus(plan: CalendarOfActivities, status: CalendarOfActivitiesStatus) {
     const currentStatus = calendarOfActivitiesStatus(plan);
-    if (currentStatus === "Approved") {
-      if (status !== currentStatus) setError("Approved Calendars of Activities cannot change status.");
+    if (currentStatus !== "Pending") {
+      if (status !== currentStatus) setError("Approved or disapproved Calendars of Activities cannot change status.");
       return;
     }
     if (!db || updatingStatusId || currentStatus === status) return;
@@ -527,6 +527,11 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
   async function deleteCalendarOfActivities(plan: CalendarOfActivities) {
     const firestore = db;
     if (!firestore) return;
+    if (calendarOfActivitiesStatus(plan) !== "Pending") {
+      setError("Approved or disapproved Calendars of Activities cannot be deleted.");
+      setPendingDelete(null);
+      return;
+    }
     if (plan.ownerId !== user.uid) {
       setError("Only the original preparer can delete this Calendar of Activities.");
       setPendingDelete(null);

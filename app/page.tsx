@@ -45,7 +45,7 @@ import type { AdminPermit } from "./PermitSlipAdmin";
 import { normalizeWorkflowStatus } from "./workflow-status";
 import "./special-order.css";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
-import { formatTaxIdentificationNo } from "@/lib/mytev";
+import { divisionSignatory, formatTaxIdentificationNo, tevDivisions } from "@/lib/mytev";
 import { getDocumentNotificationReferences, makeDocumentNotification, type DocumentNotification } from "@/lib/document-notifications";
 import { documentRemindersCollection, type DocumentReminder } from "@/lib/document-reminders";
 import { loadPdfTools } from "@/lib/pdf-tools";
@@ -82,7 +82,25 @@ const specialOrderSignatories = [
   { name: "REBECCA R. ATEGA", designation: "RTD for Operations" },
   { name: "MELODY M. GUIMARY", designation: "Chief, Field Operations Division" },
 ] as const;
-const specialOrderSignatoryLabel = (designation: string) => designation === "Chief, Field Operations Division" ? "FOD Chief" : designation;
+const specialOrderSignatoryOptions = [
+  ...tevDivisions.map((division) => {
+    const signatory = divisionSignatory(division);
+    return {
+      value: `division:${division}`,
+      label: division,
+      name: signatory.name,
+      position: `${signatory.position}, ${division}`,
+    };
+  }),
+  ...specialOrderSignatories
+    .filter((signatory) => signatory.designation !== "Chief, Field Operations Division")
+    .map((signatory) => ({
+      value: `role:${signatory.designation}`,
+      label: signatory.designation,
+      name: signatory.name,
+      position: signatory.designation,
+    })),
+].sort((first, second) => first.label.localeCompare(second.label));
 
 const units: Unit[] = ["AMIA", "AGRISTAT", "DRRM"];
 const amiaDocumentTrackingLinks = [
@@ -360,7 +378,7 @@ function Login({ onError }: { onError: (message: string) => void }) {
   }
 
   return <main className="auth-shell">
-    <section className="auth-intro"><img className="auth-intro-image" src={publicAsset("/my-desk.png")} alt="My Desk portal for managing documents" draggable={false} onDragStart={(event) => event.preventDefault()} /></section>
+    <section className="auth-intro"><video className="auth-intro-image" src={publicAsset("/left.mp4")} aria-label="My Desk portal for managing documents" role="img" autoPlay loop muted playsInline controls={false} disablePictureInPicture disableRemotePlayback onContextMenu={(event) => event.preventDefault()} /></section>
     <section className="auth-panel"><div className={`auth-form-wrap${registering ? " auth-register-wrap" : ""}`}><div className="mobile-brand"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span>My Desk</span></div><p className="eyebrow">{forgotPasswordOpen ? "Password reset" : registering ? "New account" : "Welcome back"}</p><h2>{forgotPasswordOpen ? "Reset your password" : registering ? "Create your account" : <>Sign in to <img className="auth-title-logo" src="/my%20desk%20logo.png" alt="My Desk" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /></>}</h2>{(forgotPasswordOpen || registering) && <p className="muted">{forgotPasswordOpen ? "Enter your account email and we will send a password reset link." : "Create your account and verify your email to get started."}</p>}
       {authMessage && <div className={`auth-message auth-message-${authMessage.kind}`} role={authMessage.kind === "error" ? "alert" : "status"}>{authMessage.text}</div>}
       {forgotPasswordOpen ? <form className="auth-reset-form" onSubmit={sendLoginReset}>
@@ -465,8 +483,11 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
   return <section className="content-section form-section permit-slip-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Enter permit details</h2><p className="muted">The PS No. is assigned when the Permit Slip is approved.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form permit-slip-create-form" onSubmit={save}><label className="permit-date-field">Date<input className="permit-date-input" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><div className="permit-person-fields wide-field">{people.map((person, index) => <div className={`permit-person-entry${people.length > 1 ? " permit-person-entry-multiple" : ""}`} key={index}><label>Personnel<select aria-label={`Personnel ${index + 1}`} value={person.userId} onChange={(event) => selectPerson(index, event.target.value)} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((candidate) => candidate.userId === person.userId || !selectedPermitPersonnelIds.has(candidate.userId)).map((candidate) => <option key={candidate.userId} value={candidate.userId}>{candidate.name}</option>)}</select></label>{people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => removePerson(index)}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setPeople((current) => [...current, { name: "", userId: "" }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field permit-purpose-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} placeholder="Why is this permit being requested?" rows={1} required /></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
-function hasApprovedPermitStatus(permit: Permit) {
-  return permit.names.some((_, index) => normalizeWorkflowStatus(permit.personStatuses?.[permitDecisionKey(permit, index)]?.status) === "Approved");
+function hasFinalPermitStatus(permit: Permit) {
+  return permit.names.some((_, index) => {
+    const status = normalizeWorkflowStatus(permit.personStatuses?.[permitDecisionKey(permit, index)]?.status);
+    return status === "Approved" || status === "Disapproved";
+  });
 }
 
 function PermitList({ permits, approvedPermitNumbers, deletingId, onNew, onPrint, onDelete }: { permits: Permit[]; approvedPermitNumbers: Record<string, string>; deletingId: string | null; onNew: () => void; onPrint: (permit: Permit) => void; onDelete: (permit: Permit) => void }) {
@@ -477,7 +498,7 @@ function PermitList({ permits, approvedPermitNumbers, deletingId, onNew, onPrint
     if (normalizeWorkflowStatus(decision?.status) !== "Approved") return "Pending";
     const key = displayPermitNumber(originalNumber);
     return (decision?.approvedPermitNo ?? approvedPermitNumbers[key] ?? key) || "—";
-  }).join(", ")}</strong><span>{formatDate(permit.date)}</span><span><span className="permit-person-name-list">{permit.names.map((name, index) => <span key={`${permit.id}-name-${index}`}>{name}</span>)}</span></span><span><span className="permit-person-unit-list">{permit.names.map((_, index) => <b className="unit-tag" key={`${permit.id}-unit-${index}`}>{permit.personUnits?.[index] ?? permit.unit}</b>)}</span></span><span className="permit-row-actions"><button type="button" className="row-action" onClick={() => onPrint(permit)}>View</button>{!hasApprovedPermitStatus(permit) && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(permit)}>{deletingId === permit.id ? "Deleting..." : "Delete"}</button>}</span></div>)}</div>}</section>;
+  }).join(", ")}</strong><span>{formatDate(permit.date)}</span><span><span className="permit-person-name-list">{permit.names.map((name, index) => <span key={`${permit.id}-name-${index}`}>{name}</span>)}</span></span><span><span className="permit-person-unit-list">{permit.names.map((_, index) => <b className="unit-tag" key={`${permit.id}-unit-${index}`}>{permit.personUnits?.[index] ?? permit.unit}</b>)}</span></span><span className="permit-row-actions"><button type="button" className="row-action" onClick={() => onPrint(permit)}>View</button>{!hasFinalPermitStatus(permit) && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(permit)}>{deletingId === permit.id ? "Deleting..." : "Delete"}</button>}</span></div>)}</div>}</section>;
 }
 
 function chunkNames(names: string[], size: number) {
@@ -920,11 +941,11 @@ function SpecialOrderForm({ user, ownerUnit, onSaved, onCancel, onError }: { use
   const [organizer, setOrganizer] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [timeFrom, setTimeFrom] = useState("");
-  const [timeTo, setTimeTo] = useState("");
+  const [timeFrom, setTimeFrom] = useState("08:00");
+  const [timeTo, setTimeTo] = useState("17:00");
   const [venue, setVenue] = useState("");
-  const [signatoryDesignation, setSignatoryDesignation] = useState("");
-  const selectedSignatory = specialOrderSignatories.find((signatory) => signatory.designation === signatoryDesignation);
+  const [signatorySelection, setSignatorySelection] = useState("");
+  const selectedSignatory = specialOrderSignatoryOptions.find((option) => option.value === signatorySelection);
   const [participants, setParticipants] = useState([{ userId: "", manual: false, name: "", position: "", office: "" }]);
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
   const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -976,7 +997,7 @@ function SpecialOrderForm({ user, ownerUnit, onSaved, onCancel, onError }: { use
     if (!selectedSignatory) { onError("Select a signatory."); return; }
     setBusy(true); onError("");
     try {
-      const signatory = { signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.designation };
+      const signatory = { signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.position };
       const firestore = db;
       const orderRef = doc(collection(firestore, "specialOrders"));
       const record = { subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venue: venue.trim(), participants: participantList, participantPositions, participantOffices, participantUserIds, participantIds, recipientIds: participantIds.filter((id) => id !== user.uid), ...signatory, ownerId: user.uid, ownerUnit, createdAt: serverTimestamp() };
@@ -992,7 +1013,7 @@ function SpecialOrderForm({ user, ownerUnit, onSaved, onCancel, onError }: { use
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated personnel.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); updateParticipant(index, { userId: selectedId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.unit ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => { const enabled = event.target.checked; updateParticipant(index, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", office: "" }); }} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { userId: "", manual: false, name: "", position: "", office: "" }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field">Signatory<select value={signatoryDesignation} onChange={(event) => setSignatoryDesignation(event.target.value)} required><option value="" disabled>Select a signatory</option>{specialOrderSignatories.map((signatory) => <option key={signatory.designation} value={signatory.designation}>{specialOrderSignatoryLabel(signatory.designation)}</option>)}</select></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
+  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated personnel.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); updateParticipant(index, { userId: selectedId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.unit ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => { const enabled = event.target.checked; updateParticipant(index, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", office: "" }); }} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { userId: "", manual: false, name: "", position: "", office: "" }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field">Signatory<select value={signatorySelection} onChange={(event) => setSignatorySelection(event.target.value)} required><option value="" disabled>Select a signatory</option>{specialOrderSignatoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
 function SpecialOrderList({ orders, ownerId, deletingId, copyingId, onNew, onEdit, onPrint, onCopy, onDelete }: { orders: SpecialOrder[]; ownerId: string; deletingId: string | null; copyingId: string | null; onNew: () => void; onEdit: (order: SpecialOrder) => void; onPrint: (order: SpecialOrder) => void; onCopy: (order: SpecialOrder) => void; onDelete: (order: SpecialOrder) => void }) {
@@ -1096,6 +1117,15 @@ function SpecialOrderParticipantEditor({ order, userId, onCancel, onSaved }: { o
   return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">Edit record</p><h2>Edit designated personnel</h2><p className="muted">Update or remove personnel names, positions, and offices for {order.subject}.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>{error && <p className="error-message">{error}</p>}<form className="permit-form" onSubmit={save}><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedPerson = personnel.find((person) => person.userId === event.target.value); updateParticipant(index, { userId: event.target.value, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.unit ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => updateParticipant(index, { manual: event.target.checked, userId: "", ...(!event.target.checked ? { name: "", position: "", office: "" } : {}) })} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant remove-action" aria-label={`Remove personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { name: "", position: "", office: "", userId: "", manual: false }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload the page to try again.</span>}</div><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button></div></form></section>;
 }
 
+function SpecialOrderSignatoryPosition({ designation }: { designation: string }) {
+  const separator = designation.indexOf(", ");
+  if (separator < 0) return <em>{designation}</em>;
+
+  const position = designation.slice(0, separator + 1);
+  const division = designation.slice(separator + 2);
+  return division.endsWith("Division") ? <><em>{position}</em> {division}</> : <em>{designation}</em>;
+}
+
 function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose: () => void }) {
   const pagesRef = useRef<HTMLDivElement>(null);
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
@@ -1156,7 +1186,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     <ul className="special-order-obligation-list special-order-closing-unit" data-special-order-closing-unit key="report"><li>Submit a brief written report and/or feedback within ____ days after the activity.</li></ul>,
     <p className="special-order-expenses special-order-closing-unit" data-special-order-closing-unit key="expenses">Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.</p>,
     <p className="special-order-done special-order-closing-unit" data-special-order-closing-unit key="done">Done this ____ day of ____________, {new Date().getFullYear()}</p>,
-    <footer className="special-order-signatory special-order-closing-unit" data-special-order-closing-unit key="signatory"><strong>{order.signatoryName || specialOrderSignatories[0].name}</strong><span>{order.signatoryDesignation || specialOrderSignatories[0].designation}</span></footer>,
+    <footer className="special-order-signatory special-order-closing-unit" data-special-order-closing-unit key="signatory"><strong>{order.signatoryName || specialOrderSignatories[0].name}</strong><span><SpecialOrderSignatoryPosition designation={order.signatoryDesignation || specialOrderSignatories[0].designation} /></span></footer>,
   ];
   const closingContinuationPages: (typeof closingUnits)[] = [];
   const remainingClosingUnits = closingUnits.slice(closingUnitsOnLastAttendeePage);
@@ -1885,6 +1915,11 @@ export default function Home() {
 
   async function deletePermit(permit: Permit) {
     if (!db || !user) return;
+    if (hasFinalPermitStatus(permit)) {
+      setError("Approved or Disapproved Permit Slips cannot be deleted.");
+      setPendingPermitDelete(null);
+      return;
+    }
     const ownerId = user.uid;
     setDeletingPermitId(permit.id);
     setError("");
