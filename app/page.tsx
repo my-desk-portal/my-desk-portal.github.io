@@ -77,7 +77,7 @@ type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; participantPositions?: string[]; participantOffices?: string[]; participantUserIds?: string[]; participantIds?: string[]; recipientIds?: string[]; signatoryName?: string; signatoryDesignation?: string; ownerId: string; ownerUnit?: string; createdAt?: unknown };
 
 const specialOrderSignatories = [
-  { name: "ENGR. RICARDO P. OÑATE JR.", designation: "Regional Executive Director" },
+  { name: "ENGR. RICARDO M. OÑATE JR.", designation: "Regional Executive Director" },
   { name: "REBECCA R. ATEGA", designation: "RTD for Operations" },
 ] as const;
 
