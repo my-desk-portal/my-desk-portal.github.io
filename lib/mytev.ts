@@ -4,6 +4,7 @@ export const tevPurpose = "Please see attached Travel Orders";
 export const tevOrsOffice = "Department of Agriculture - Regional Field Office XIII";
 export const tevOrsOfficeAddress = "Capitol Site, Butuan City, Agusan del Norte";
 export const tevCtcDirector = "Engr. Ricardo M. Oñate Jr.";
+export const tevCtcDirectorOffice = "Department of Agriculture - RFO XIII";
 export const maxItineraryRows = 13;
 export const maxCenrrRows = 28;
 export const maxOrsStatusRows = 27;
@@ -68,6 +69,7 @@ export type TevProfile = {
 
 export type TevTravelReference = {
   travelOrderNo: string;
+  toDateRecordsUnit: string;
   dateFrom: string;
   dateTo: string;
 };
@@ -120,7 +122,7 @@ const signatoryByDivision: Record<TevDivision, { name: string; position: "Chief"
 };
 
 export function blankTevTravelReference(): TevTravelReference {
-  return { travelOrderNo: "", dateFrom: "", dateTo: "" };
+  return { travelOrderNo: "", toDateRecordsUnit: "", dateFrom: "", dateTo: "" };
 }
 
 export function blankTevItineraryRow(): TevItineraryRow {
@@ -330,9 +332,39 @@ export function formatTevTravelDateRanges(references: TevTravelReference[]) {
   return `${joinTevList(labels)}${year}`;
 }
 
+export function formatTevRecordsUnitDates(references: TevTravelReference[]) {
+  const months = ["Jan.", "Feb.", "Mar.", "Apr.", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."];
+  const dates = references.flatMap((reference) => {
+    const value = reference.toDateRecordsUnit ?? "";
+    if (!value) return [];
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isNaN(date.getTime()) ? [] : [date];
+  });
+  if (!dates.length) return "";
+
+  const years = new Set(dates.map((date) => date.getUTCFullYear()));
+  const groups = new Map<string, { year: number; month: number; days: number[] }>();
+  dates.forEach((date) => {
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth();
+    const key = `${year}-${month}`;
+    const group = groups.get(key) ?? { year, month, days: [] };
+    const day = date.getUTCDate();
+    if (!group.days.includes(day)) group.days.push(day);
+    groups.set(key, group);
+  });
+
+  const labels = [...groups.values()].map(({ year, month, days }) => {
+    const yearLabel = years.size > 1 ? `, ${year}` : "";
+    return `${months[month]} ${days.sort((first, second) => first - second).join(", ")}${yearLabel}`;
+  });
+  const finalYear = years.size === 1 ? `, ${dates[0].getUTCFullYear()}` : "";
+  return `${labels.join(", ")}${finalYear}`;
+}
+
 export function formatTevTravelReferences(references: TevTravelReference[]) {
   const orderNumbers = formatTevTravelOrderNumbers(references);
-  const dateRanges = formatTevTravelDateRanges(references);
-  if (!orderNumbers) return dateRanges;
-  return dateRanges ? `${orderNumbers}, dated ${dateRanges}` : orderNumbers;
+  const recordsUnitDates = formatTevRecordsUnitDates(references);
+  if (!orderNumbers) return recordsUnitDates;
+  return recordsUnitDates ? `${orderNumbers}, dated ${recordsUnitDates}` : orderNumbers;
 }

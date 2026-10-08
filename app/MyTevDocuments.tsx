@@ -14,6 +14,7 @@ import {
   maxItineraryRows,
   maxOrsStatusRows,
   tevCtcDirector,
+  tevCtcDirectorOffice,
   tevDvAccountingSignatory,
   tevDvApprovingSignatory,
   tevEntityName,
@@ -352,7 +353,7 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
       <span className="mytev-ctc-appendix">Appendix 47</span>
       <h1>CERTIFICATION OF TRAVEL COMPLETED</h1>
       <div className="mytev-ctc-entity"><b>Entity Name:</b><span>{tevEntityName}</span><b>Fund Cluster:</b><span>{tevFundCluster}</span></div>
-      <div className="mytev-ctc-station"><div><b style={fitTextStyle(tevCtcDirector, 48)}>{tevCtcDirector.toLocaleUpperCase("en-PH")}</b><em>Director-In-Charge</em></div><div><b style={fitTextStyle(record.divisionName, 54)}>{record.divisionName.toLocaleUpperCase("en-PH")}</b><span>Station</span></div></div>
+      <div className="mytev-ctc-station"><div><b style={fitTextStyle(tevCtcDirector, 48)}>{tevCtcDirector.toLocaleUpperCase("en-PH")}</b><em>Director-In-Charge</em></div><div><b style={{ ...fitTextStyle(tevCtcDirectorOffice, 32), whiteSpace: "nowrap", overflowWrap: "normal" }}>{tevCtcDirectorOffice.toLocaleUpperCase("en-PH")}</b><span>Station</span></div></div>
       <p className="mytev-ctc-statement" style={fitTextStyle(references, 220)}><b>I HEREBY CERTIFY THAT</b> I have completed the travel as authorized in Travel Order/Itinerary of Travel Nos. <strong>{references}</strong>, under the conditions indicated below:</p>
       <div className="mytev-ctc-conditions"><p><i className="is-checked" />Strictly in accordance with the approved itinerary.</p><p><i />Cut short as explained below. Excess payment in the amount of ₱ __________ was refunded under O. R. No. __________ dated __________.</p><p><i />Extended as explained below, additional itinerary was submitted.</p><p><i />Other deviation as explained below.</p></div>
       <div className="mytev-ctc-explanation"><b>Explanation or Justification:</b><span /><span /></div>

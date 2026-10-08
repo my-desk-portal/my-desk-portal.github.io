@@ -99,7 +99,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
   const [step, setStep] = useState<"details" | "itineraries">("details");
   const [month, setMonth] = useState(() => initialRecord?.month ?? localMonthValue());
   const [officialStation, setOfficialStation] = useState<TevOfficialStation>(() => initialRecord?.officialStation ?? tevOfficialStations[0]);
-  const [references, setReferences] = useState<TevTravelReference[]>(() => initialRecord ? initialRecord.travelReferences.map((reference) => ({ ...reference })) : [blankTevTravelReference()]);
+  const [references, setReferences] = useState<TevTravelReference[]>(() => initialRecord ? initialRecord.travelReferences.map((reference) => ({ ...reference, toDateRecordsUnit: reference.toDateRecordsUnit ?? "" })) : [blankTevTravelReference()]);
   const [selectedEvidence, setSelectedEvidence] = useState<string[]>(() => initialRecord
     ? tevEvidenceOptions.filter((option) => option.pattern.test(initialRecord.evidenceOfTravel ?? "")).map((option) => option.label)
     : []);
@@ -299,6 +299,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
       <section className="mytev-form-group"><div className="mytev-form-group-heading"><div><h3>Travel Order references</h3><p>Enter the travel order number and approved date range for each trip.</p></div><button type="button" className="ghost-button mytev-add-reference" disabled={references.length >= maxTravelReferences} onClick={() => setReferences((current) => [...current, blankTevTravelReference()])}>Add reference</button></div>
         <div className="mytev-reference-list">{references.map((reference, index) => <fieldset className="mytev-reference-row" key={`travel-reference-${index}`}><legend>Travel reference {index + 1}</legend>
           <label>Travel No.<input value={reference.travelOrderNo} onChange={(event) => updateReference(index, { travelOrderNo: event.target.value })} maxLength={40} required /></label>
+          <label>TO Date (Records Unit)<input type="date" value={reference.toDateRecordsUnit} onChange={(event) => updateReference(index, { toDateRecordsUnit: event.target.value })} /></label>
           <label>Date From<input type="date" min={monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={reference.dateFrom} onChange={(event) => {
             const value = isDateWithinMonth(event.target.value, month) ? event.target.value : "";
             const dateTo = reference.dateTo && isDateWithinMonth(reference.dateTo, month) && reference.dateTo >= value ? reference.dateTo : value;

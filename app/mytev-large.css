@@ -28,7 +28,7 @@
 .mytev-profile-summary,.mytev-trip-fields{display:grid;gap:14px;grid-template-columns:repeat(3,minmax(0,1fr))}
 .mytev-form input[readonly]{background:#f5f7f5;color:#55615b}
 .mytev-reference-list{display:grid;gap:12px}
-.mytev-reference-row{align-items:end;border:1px solid var(--line);display:grid;gap:14px;grid-template-columns:minmax(180px,1.2fr) minmax(160px,1fr) minmax(160px,1fr) auto;margin:0;min-width:0;padding:16px}
+.mytev-reference-row{align-items:end;border:1px solid var(--line);display:grid;gap:14px;grid-template-columns:minmax(150px,1.1fr) repeat(3,minmax(135px,1fr)) auto;margin:0;min-width:0;padding:16px}
 .mytev-reference-row legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.06em;padding:0 7px;text-transform:uppercase}
 .mytev-remove-reference{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:12px;min-height:42px;padding:8px 12px}
 .mytev-remove-reference:hover{background:#fff0eb;border-color:#e5b2a2;color:#9e3824}
