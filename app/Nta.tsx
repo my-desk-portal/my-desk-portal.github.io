@@ -279,7 +279,19 @@ function NtaEditor({ record, userId, onCancel, onSaved, onRemove }: { record: Nt
 }
 
 function NtaList({ records, ownerId, deletingId, copyingId, onNew, onEdit, onPreview, onCopy, onDelete }: { records: NtaRecord[]; ownerId: string; deletingId: string | null; copyingId: string | null; onNew: () => void; onEdit: (record: NtaRecord) => void; onPreview: (record: NtaRecord) => void; onCopy: (record: NtaRecord) => void; onDelete: (record: NtaRecord) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Notices to Attend</h2><p className="muted">{records.length} {records.length === 1 ? "notice" : "notices"} available to your unit.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No notices to attend yet</h3><p>Create an individual or group notice.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Notice To Attend</button></div> : <div className="permit-table"><div className="table-head nta-list-head"><span>Type</span><span>Subject</span><span>Activity</span><span>Schedule</span><span></span></div>{records.map((record) => { const batchCount = record.batches?.length ?? 0; const isOwner = record.ownerId === ownerId; return <div className="table-row nta-list-row" key={record.id}><strong>{record.mode === "individual" ? "Individual" : "Group"}</strong><span>{record.subject}</span><span>{record.activityTitle}</span><span>{record.mode === "individual" ? formatDate(record.dateFrom ?? "") : `${batchCount} ${batchCount === 1 ? "Group" : "Groups"}`}</span><span className="nta-list-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPreview(record)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(record)}>{copyingId === record.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</span></div>; })}</div>}</section>;
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Notices to Attend</h2><p className="muted">{records.length} {records.length === 1 ? "notice" : "notices"} available to your unit.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No notices to attend yet</h3><p>Create an individual or group notice.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Notice To Attend</button></div> : <div className="permit-table"><div className="table-head nta-list-head"><span>Type</span><span>Subject</span><span>Activity</span><span>Schedule</span><span></span></div>{records.map((record) => {
+    const isOwner = record.ownerId === ownerId;
+    const schedules = record.mode === "individual"
+      ? [formatDateRange(record.dateFrom ?? "", record.dateTo ?? "")]
+      : (record.batches ?? []).map((batch) => {
+        const date = formatDateRange(batch.dateFrom, batch.dateTo);
+        const start = formatTime(batch.timeFrom);
+        const end = formatTime(batch.timeTo);
+        const time = start || end ? `${start}${start && end ? " – " : ""}${end}` : "";
+        return [date, time].filter(Boolean).join(" · ");
+      }).filter(Boolean);
+    return <div className="table-row nta-list-row" key={record.id}><strong>{record.mode === "individual" ? "Individual" : "Group"}</strong><span>{record.subject}</span><span>{record.activityTitle}</span><span className="nta-list-schedules">{schedules.length ? schedules.map((schedule, index) => <span key={`${record.id}-schedule-${index}`}>{schedule}</span>) : <span>—</span>}</span><span className="nta-list-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPreview(record)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(record)}>{copyingId === record.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</span></div>;
+  })}</div>}</section>;
 }
 
 type NtaRosterSection = { batch: NtaBatch; batchIndex: number; attendees: NtaAttendee[]; startIndex: number; continued: boolean };
@@ -402,8 +414,8 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
     if (!pagesRef.current) return;
     const pageLimit = (page: HTMLElement) => {
       const rect = page.getBoundingClientRect();
-      // Keep a little extra clearance above the letterhead footer so closing copy is not clipped.
-      return rect.bottom - rect.width * .141;
+      // Reserve the NTA's 0.2in bottom margin when fitting page content.
+      return rect.bottom - rect.width * .0242;
     };
     if (record.mode === "individual") {
       const firstPageContent = pagesRef.current.querySelector<HTMLElement>(".nta-document-content.individual");

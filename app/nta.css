@@ -2,8 +2,8 @@
 @media(max-width:720px){.nta-batch-fieldset{grid-template-columns:1fr;padding:16px}.nta-attendee-input{grid-template-columns:1fr}.nta-list-head{display:none}.nta-list-row{grid-template-columns:1fr 1fr}.nta-list-row strong,.nta-list-row span:nth-of-type(2){grid-column:1/-1}.nta-preview-backdrop{padding:12px}}
 .nta-batch-attendees{inset:3% 12% 10%}.nta-batch-attendees .nta-letterhead{clip-path:inset(12% 0 0)}
 .nta-batch-caption{font-weight:700;line-height:1.2;margin:0 0 .5cqi;overflow-wrap:anywhere}
-/* 12.1cqi is approximately 96px (one inch) on a full-size A4 page and scales down with mobile previews. */
-.nta-document-content{bottom:12.1cqi}.nta-batch-attendees{bottom:12.1cqi}
+/* 2.42cqi is 0.2in on an A4 page and scales down with mobile previews. */
+.nta-document-content{bottom:2.42cqi}.nta-batch-attendees{bottom:2.42cqi}
 .nta-roster-copy-page .nta-signatory{margin-top:10cqi}.nta-batch-copy .nta-fixed-copy{margin-top:0}
 .nta-document-content.batch-overview,.nta-document-content.batch-attendees,.nta-document-content.batch-copy{overflow:hidden}
 .nta-document-content.individual-continuation{top:18%}
@@ -13,6 +13,7 @@
 .nta-individual-closing .nta-signatory{margin-top:10cqi}
 .nta-individual-closing-pulled .nta-signatory{margin-top:5.04cqi}
 @media print{
+  .nta-document-content,.nta-batch-attendees{bottom:.2in!important}
   .nta-preview-pages{display:block;width:auto}
   .nta-document-page{aspect-ratio:auto;break-after:page;box-shadow:none;height:297mm;margin:0 auto;page-break-after:always;width:210mm}
   .nta-document-page:last-child{break-after:auto;page-break-after:auto}
@@ -27,6 +28,7 @@
 @media(max-width:720px){.nta-attendee-input{grid-template-columns:1fr}}
 .nta-list-head,.nta-list-row{grid-template-columns:.75fr 1.6fr 1.5fr 1fr 150px}
 .nta-list-actions{align-items:center;display:flex;gap:10px;justify-content:flex-end}
+.nta-list-schedules{display:grid;gap:4px;line-height:1.35;min-width:0}
 @media(max-width:720px){.nta-list-row>.nta-list-actions{grid-column:1/-1;justify-content:flex-start}}
 
 .nta-individual-closing-compact:not(.nta-individual-closing-continuation){margin-top:1.25cqi}

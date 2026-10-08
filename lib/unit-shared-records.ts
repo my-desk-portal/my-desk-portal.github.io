@@ -11,7 +11,12 @@ export async function loadUnitSharedRecords<T extends UnitOwnedRecord>(firestore
     for (let offset = 0; offset < recordsToTag.length; offset += 450) {
       const batch = writeBatch(firestore);
       recordsToTag.slice(offset, offset + 450).forEach((item) => batch.update(item.ref, { ownerUnit: unit }));
-      await batch.commit();
+      try {
+        await batch.commit();
+      } catch (error) {
+        // Legacy records stay readable even when their ownerUnit backfill is rejected.
+        if ((error as { code?: string }).code !== "permission-denied") throw error;
+      }
     }
   }
 

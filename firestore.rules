@@ -21,7 +21,10 @@ service cloud.firestore {
           && request.resource.data.ownerUnit == resource.data.ownerUnit)
         || (!resource.data.keys().hasAny(["ownerUnit"])
           && (!request.resource.data.keys().hasAny(["ownerUnit"])
-            || request.resource.data.ownerUnit == signedInUnit()));
+            || request.resource.data.ownerUnit == signedInUnit()))
+        || (resource.data.get("ownerUnit", null) == null
+          && request.resource.data.keys().hasAny(["ownerUnit"])
+          && request.resource.data.ownerUnit == signedInUnit());
     }
     function isSuperAdmin() {
       return isVerifiedUser() && request.auth.token.email == "rjamescute2@gmail.com";
