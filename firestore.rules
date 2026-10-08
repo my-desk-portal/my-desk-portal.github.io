@@ -4,6 +4,18 @@ service cloud.firestore {
     function isVerifiedUser() {
       return request.auth != null && request.auth.token.email_verified == true;
     }
+    function signedInUnit() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userPath) ? get(userPath).data.unit : null;
+    }
+    function ownerUnitCanBeUpdated() {
+      return (resource.data.keys().hasAny(["ownerUnit"])
+          && request.resource.data.keys().hasAny(["ownerUnit"])
+          && request.resource.data.ownerUnit == resource.data.ownerUnit)
+        || (!resource.data.keys().hasAny(["ownerUnit"])
+          && (!request.resource.data.keys().hasAny(["ownerUnit"])
+            || request.resource.data.ownerUnit == signedInUnit()));
+    }
     function isSuperAdmin() {
       return isVerifiedUser() && request.auth.token.email == "rjamescute2@gmail.com";
     }
@@ -332,9 +344,14 @@ service cloud.firestore {
         && !existsAfter(/databases/$(database)/documents/permits/$(resource.data.permitId)));
     }
     match /specialOrders/{orderId} {
-      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
-      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
+        || (resource.data.ownerUnit is string && resource.data.ownerUnit == signedInUnit()));
+      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerUnit == signedInUnit();
+      allow update: if isVerifiedUser() && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && ownerUnitCanBeUpdated();
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /certificatesOfAppearance/{certificateId} {
       allow read, update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
@@ -625,10 +642,15 @@ service cloud.firestore {
           || !(getAfter(/databases/$(database)/documents/leaveApplications/$(resource.data.leaveApplicationId)).data.status in ["Approved", "Pending"]));
     }
     match /travelOrders/{travelOrderId} {
-      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || resource.data.status in ["Approved", "Pending", "Processing"]);
-      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
+        || (resource.data.ownerUnit is string && resource.data.ownerUnit == signedInUnit())
+        || resource.data.status in ["Approved", "Pending", "Processing"]);
+      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerUnit == signedInUnit();
       allow update: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && ownerUnitCanBeUpdated()
         && (resource.data.status != "Approved" || request.resource.data.status == resource.data.status);
       allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
@@ -649,9 +671,14 @@ service cloud.firestore {
         && !existsAfter(/databases/$(database)/documents/travelOrders/$(resource.data.travelOrderId));
     }
     match /ntaRecords/{ntaId} {
-      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
-      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
+        || (resource.data.ownerUnit is string && resource.data.ownerUnit == signedInUnit()));
+      allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerUnit == signedInUnit();
+      allow update: if isVerifiedUser() && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && ownerUnitCanBeUpdated();
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /myNotes/{noteId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
