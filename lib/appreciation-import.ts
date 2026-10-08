@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import { isWithinImportTemplateDateRange, isWithinImportTemplateTimeRange } from "@/lib/import-template-rules";
 
 export type ImportedAppreciationSpeaker = {
   name: string;
@@ -146,6 +147,12 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
     const distributionPlace = rawDistributionPlace || eventDestination;
     if (!speakerName || !speakerGender || !speakerPosition || !speakerOffice || !eventTitle || !eventDestination || !eventDateFrom || !eventDateTo || !eventTimeFrom || !eventTimeTo) {
       throw new Error(`Row ${rowNumber}: complete the Unit, speaker details, event, date, time, and destination fields.`);
+    }
+    if (!isWithinImportTemplateDateRange(eventDateFrom) || !isWithinImportTemplateDateRange(eventDateTo)) {
+      throw new Error(`Row ${rowNumber}: Date From and Date To must be between January 1, 2026 and December 31, 2027.`);
+    }
+    if (!isWithinImportTemplateTimeRange(eventTimeFrom) || !isWithinImportTemplateTimeRange(eventTimeTo)) {
+      throw new Error(`Row ${rowNumber}: Time Start and Time End must be between 5:00 AM and 8:00 PM.`);
     }
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
     if (speakerName.length > 180 || speakerPosition.length > 180 || speakerOffice.length > 240 || eventTitle.length > 240 || eventDestination.length > 240 || distributionPlace.length > 240) {

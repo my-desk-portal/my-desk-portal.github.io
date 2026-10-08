@@ -22,15 +22,15 @@ export const tevOfficialStations = [
 ] as const;
 
 export const tevDivisions = [
-  "Field Operations Division",
-  "Planning, Monitoring and Evaluation Division",
   "Administrative Division",
-  "Finance Division",
   "Agribusiness and Marketing Assistance Division",
-  "Regional Agricultural Engineering Division",
-  "Research Division",
-  "Regulatory Division",
+  "Field Operations Division",
+  "Finance Division",
   "Integrated Laboratories Division",
+  "Planning, Monitoring and Evaluation Division",
+  "Regional Agricultural Engineering Division",
+  "Regulatory Division",
+  "Research Division",
 ] as const;
 
 export const tevTransportationMeans = ["Boat", "MCH", "RP", "Plane (GS)", "Plane (Credit)", "PUB", "PUV", "Not Applicable"] as const;

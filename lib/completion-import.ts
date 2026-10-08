@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import { isWithinImportTemplateDateRange, isWithinImportTemplateTimeRange } from "@/lib/import-template-rules";
 
 export type ImportedCompletionRecord = {
   unit: "AMIA" | "DRRM";
@@ -133,6 +134,12 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
     const distributionPlace = valueFor(values, "distributionplace") || eventDestination;
     if (!eventTitle || !eventDestination || !name || !eventDateFrom || !eventDateTo || !eventTimeFrom || !eventTimeTo) {
       throw new Error(`Row ${rowNumber}: complete the Unit, event, date, time, destination, and Name fields.`);
+    }
+    if (!isWithinImportTemplateDateRange(eventDateFrom) || !isWithinImportTemplateDateRange(eventDateTo)) {
+      throw new Error(`Row ${rowNumber}: Date From and Date To must be between January 1, 2026 and December 31, 2027.`);
+    }
+    if (!isWithinImportTemplateTimeRange(eventTimeFrom) || !isWithinImportTemplateTimeRange(eventTimeTo)) {
+      throw new Error(`Row ${rowNumber}: Time Start and Time End must be between 5:00 AM and 8:00 PM.`);
     }
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
     if (!distributionPlace || distributionPlace.length > 240 || eventDestination.length > 240 || eventTitle.length > 240) {

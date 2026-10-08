@@ -45,7 +45,7 @@ const tevEvidenceOptions = [
   { label: "Boat Ticket", pattern: /\bboat tickets?\b/i },
   { label: "Bus Ticket", pattern: /\bbus tickets?\b/i },
   { label: "Certificate of Appearance", pattern: /\bcertificate of appearance\b/i },
-  { label: "Communication Letters", pattern: /\bcommunication letters?\b/i },
+  { label: "COENRR", pattern: /\b(?:COENRR|communication letters?)\b/i },
   { label: "Plane Ticket", pattern: /\bplane tickets?\b/i },
 ] as const;
 

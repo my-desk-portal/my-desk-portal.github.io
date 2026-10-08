@@ -1,5 +1,6 @@
 import { unzipSync } from "fflate";
-import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
+import { isWithinImportTemplateDateRange } from "@/lib/import-template-rules";
+import { divisionSignatory, type TevDivision } from "@/lib/mytev";
 
 export type ImportedAppearancePerson = {
   name: string;
@@ -27,6 +28,21 @@ const requiredColumns = [
   "datefrom",
   "dateto",
 ] as const;
+
+const divisionAliases: Record<string, TevDivision> = {
+  "Planning, and Monitoring and Evaluation Division": "Planning, Monitoring and Evaluation Division",
+};
+const certificateImportDivisions = new Set<TevDivision>([
+  "Administrative Division",
+  "Agribusiness and Marketing Assistance Division",
+  "Field Operations Division",
+  "Finance Division",
+  "Integrated Laboratories Division",
+  "Planning, Monitoring and Evaluation Division",
+  "Regional Agricultural Engineering Division",
+  "Regulatory Division",
+  "Research Division",
+]);
 
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -127,13 +143,17 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
     const office = valueFor(values, "office");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
-    const division = (values.get(divisionNameColumn)?.trim() ?? "") as TevDivision;
-    if (!tevDivisions.includes(division)) throw new Error(`Row ${rowNumber}: choose a valid Signatory Division from myTEV.`);
+    const rawDivision = values.get(divisionNameColumn)?.trim() ?? "";
+    const division = (divisionAliases[rawDivision] ?? rawDivision) as TevDivision;
+    if (!certificateImportDivisions.has(division)) throw new Error(`Row ${rowNumber}: choose a valid Signatory Division from the CA template.`);
     const signatory = divisionSignatory(division);
 
     if (!name) throw new Error(`Row ${rowNumber}: enter a Name for each certificate.`);
     if (!eventTitle || !destination || !eventDateFrom || !eventDateTo || !office) {
       throw new Error(`Row ${rowNumber}: complete the event details and attendee Office.`);
+    }
+    if (!isWithinImportTemplateDateRange(eventDateFrom) || !isWithinImportTemplateDateRange(eventDateTo)) {
+      throw new Error(`Row ${rowNumber}: Date From and Date To must be between January 1, 2026 and December 31, 2027.`);
     }
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
 

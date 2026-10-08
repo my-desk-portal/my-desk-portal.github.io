@@ -167,7 +167,7 @@ function TravelOrderForm({ user, onSaved, onCancel, onError }: { user: User; onS
   </section>;
 }
 
-function TravelOrderList({ orders, onNew, onPreview, onDelete, onStatusChange, updatingId, deletingId }: { orders: TravelOrder[]; onNew: () => void; onPreview: (order: TravelOrder) => void; onDelete: (order: TravelOrder) => void; onStatusChange: (order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]) => Promise<boolean>; updatingId: string | null; deletingId: string | null }) {
+function TravelOrderList({ orders, onNew, onPreview, onCopy, onDelete, onStatusChange, updatingId, deletingId, copyingId }: { orders: TravelOrder[]; onNew: () => void; onPreview: (order: TravelOrder) => void; onCopy: (order: TravelOrder) => void; onDelete: (order: TravelOrder) => void; onStatusChange: (order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]) => Promise<boolean>; updatingId: string | null; deletingId: string | null; copyingId: string | null }) {
   const [approvalOrderId, setApprovalOrderId] = useState<string | null>(null);
   const [approvalDate, setApprovalDate] = useState("");
   const [approvalNumbers, setApprovalNumbers] = useState<string[]>([]);
@@ -204,8 +204,8 @@ function TravelOrderList({ orders, onNew, onPreview, onDelete, onStatusChange, u
       {orders.map((order) => <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">
           <strong>{order.date ? formatTravelDate(order.date) : "Pending approval"}</strong><span className="travel-order-list-people">{order.people.map((person) => person.name).join(", ")}</span><span>{order.placeOfTravel}</span>
-          <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={order.status === "Approved" || updatingId === order.id || deletingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label>
-          <span className="travel-order-row-actions"><button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onPreview(order)}>View</button>{order.status !== "Approved" && <button type="button" className="delete-button" disabled={updatingId !== null || deletingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span>
+          <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people.map((person) => person.name).join(", ")}`} value={order.status} disabled={order.status === "Approved" || updatingId === order.id || deletingId !== null || copyingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label>
+          <span className="travel-order-row-actions"><button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onPreview(order)}>View</button><button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null || approvalOrderId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{order.status !== "Approved" && <button type="button" className="delete-button" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span>
         </div>
         {approvalOrderId === order.id && <form className="travel-order-approval-editor" onSubmit={(event) => confirmApproval(event, order)}>
           <div><strong>Complete approval details</strong><p>Enter the approval date and assign a unique TO No. to each person.</p></div>
@@ -318,6 +318,7 @@ export default function TravelOrderModule({ user }: { user: User }) {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TravelOrder | null>(null);
   const [error, setError] = useState("");
 
@@ -364,6 +365,54 @@ export default function TravelOrderModule({ user }: { user: User }) {
       setPendingDelete(null);
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function copyOrder(order: TravelOrder) {
+    const firestore = db;
+    if (!firestore) return;
+    setCopyingId(order.id);
+    setError("");
+    try {
+      const orderRef = doc(collection(firestore, "travelOrders"));
+      const people = order.people.map((person) => {
+        const copyPerson = { ...person };
+        delete copyPerson.toNumber;
+        return copyPerson;
+      });
+      const recipientIds = [...new Set((order.recipientIds ?? people.map((person) => person.userId ?? "")).filter((id) => Boolean(id) && id !== user.uid))];
+      const record = {
+        date: "",
+        people,
+        officeStation: order.officeStation,
+        departureDate: order.departureDate,
+        returnDate: order.returnDate,
+        placeOfTravel: order.placeOfTravel,
+        purpose: order.purpose,
+        objective: order.objective,
+        perDiemsAllowed: order.perDiemsAllowed,
+        assistantLaborersAllowed: order.assistantLaborersAllowed,
+        chargeTo: order.chargeTo,
+        transportation: order.transportation,
+        remarks: order.remarks,
+        status: "Pending" as const,
+        ownerId: user.uid,
+        recipientIds,
+        createdAt: serverTimestamp(),
+      };
+      const batch = writeBatch(firestore);
+      batch.set(orderRef, record);
+      recipientIds.forEach((recipientId) => {
+        const notification = makeDocumentNotification(firestore, { recipientId, ownerId: user.uid, documentId: orderRef.id, documentType: "Travel Order", departureDate: record.departureDate, returnDate: record.returnDate, placeOfTravel: record.placeOfTravel, purpose: record.purpose });
+        batch.set(notification.reference, notification.data);
+      });
+      await batch.commit();
+      setOrders((current) => [{ id: orderRef.id, ...record }, ...current]);
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setError(code ? `Could not copy Travel Order (${code}).` : "Could not copy Travel Order.");
+    } finally {
+      setCopyingId(null);
     }
   }
 
@@ -425,7 +474,7 @@ export default function TravelOrderModule({ user }: { user: User }) {
 
   return <>
     {error && <div className="error-message travel-order-error">{error}</div>}
-    {view === "new" ? <TravelOrderForm user={user} onSaved={(order) => { setOrders((current) => [order, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} onNew={() => { setError(""); setView("new"); }} onPreview={setPreview} onDelete={setPendingDelete} onStatusChange={changeStatus} updatingId={updatingId} deletingId={deletingId} />}
+    {view === "new" ? <TravelOrderForm user={user} onSaved={(order) => { setOrders((current) => [order, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} onNew={() => { setError(""); setView("new"); }} onPreview={setPreview} onCopy={(order) => void copyOrder(order)} onDelete={setPendingDelete} onStatusChange={changeStatus} updatingId={updatingId} deletingId={deletingId} copyingId={copyingId} />}
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Travel Order Deletion?" description="Are you sure you want to delete this Travel Order? This action cannot be undone. Its assigned TO No. values will be released." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteOrder(pendingDelete); }} />
     {preview && <TravelOrderPreview order={preview} onClose={() => setPreview(null)} />}
   </>;

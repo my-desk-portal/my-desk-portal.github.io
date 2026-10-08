@@ -1,5 +1,7 @@
 ﻿import { unzipSync } from "fflate";
 
+import { isWithinImportTemplateDateRange, isWithinImportTemplateTimeRange } from "@/lib/import-template-rules";
+
 export type ImportedParticipationRecord = {
   unit: "AMIA" | "DRRM";
   participantNames: string[];
@@ -139,6 +141,12 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
     const distributionPlace = valueFor(values, "distributionplace") || eventDestination;
     if (!eventTitle || !eventDestination || !name || !participantGender || !eventDateFrom || !eventDateTo || !eventTimeFrom || !eventTimeTo) {
       throw new Error(`Row ${rowNumber}: complete the Unit, Name, Gender, event, date, time, and destination fields.`);
+    }
+    if (!isWithinImportTemplateDateRange(eventDateFrom) || !isWithinImportTemplateDateRange(eventDateTo)) {
+      throw new Error(`Row ${rowNumber}: Date From and Date To must be between January 1, 2026 and December 31, 2027.`);
+    }
+    if (!isWithinImportTemplateTimeRange(eventTimeFrom) || !isWithinImportTemplateTimeRange(eventTimeTo)) {
+      throw new Error(`Row ${rowNumber}: Time Start and Time End must be between 5:00 AM and 8:00 PM.`);
     }
     if (name.length > 180) throw new Error(`Row ${rowNumber}: Name must be 180 characters or fewer.`);
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
