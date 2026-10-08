@@ -1,4 +1,4 @@
-.special-order-list-head,.special-order-list-row{grid-template-columns:1.35fr 1.1fr 1.5fr 1fr 150px}
+.special-order-list-head,.special-order-list-row{grid-template-columns:1.35fr 1.1fr 1.5fr 150px}
 .special-order-participants.special-order-first-participants{margin-top:0}
 .special-order-details b,.special-order-details span{font-weight:700}
 .special-order-closing .special-order-obligations{margin:2.32cqi 0}
