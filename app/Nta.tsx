@@ -51,6 +51,7 @@ const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${pat
 const ntaSignatories = [
   { name: "ENGR. RICARDO M. OÑATE JR.", designation: "Regional Executive Director" },
   { name: "REBECCA R. ATEGA", designation: "RTD for Operations" },
+  { name: "MELODY M. GUIMARY", designation: "Chief, Field Operations Division" },
 ] as const;
 const legacySignatoryName = "MELODY M. GUIMARY";
 const legacySignatoryDesignation = "Chief, Field Operations Division";
@@ -171,7 +172,7 @@ function NtaForm({ user, unit, onSaved, onCancel }: { user: User; unit: string |
           {batches.length > 1 && <button type="button" className="remove-participant nta-remove-batch" aria-label={`Delete group ${batch.number}`} onClick={() => setBatches((current) => current.filter((_, index) => index !== batchIndex))}>Delete</button>}
         </fieldset>)}<button type="button" className="text-button plain-action add-item-text-button" onClick={() => setBatches((current) => [...current, { ...initialBatch(), number: String(current.length + 1) }])}>+ Add group</button></div>
       </>}
-      <label className="wide-field">Signatory<select value={signatoryDesignation} onChange={(event) => setSignatoryDesignation(event.target.value)} required><option value="" disabled>Select a signatory</option>{ntaSignatories.map((signatory) => <option key={signatory.designation} value={signatory.designation}>{signatory.designation}</option>)}</select></label>
+      <label className="wide-field">Signatory<select value={signatoryDesignation} onChange={(event) => setSignatoryDesignation(event.target.value)} required><option value="" disabled>Select a signatory</option>{ntaSignatories.map((signatory) => <option key={signatory.designation} value={signatory.designation}>{signatory.designation === legacySignatoryDesignation ? "FOD Chief" : signatory.designation}</option>)}</select></label>
       <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
