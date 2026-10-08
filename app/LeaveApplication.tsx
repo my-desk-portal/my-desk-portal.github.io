@@ -212,7 +212,7 @@ function drawFitText(page: PDFPage, font: PDFFont, value: string, x: number, y: 
 }
 
 async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
-  const { PDFDocument, StandardFonts } = await import("pdf-lib");
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const response = await fetch(asset("/a4_size_application_letter_template.pdf"), { cache: "force-cache" });
   if (!response.ok) throw new Error("The CSC leave application template could not be loaded.");
   const pdf = await PDFDocument.load(await response.arrayBuffer());
@@ -289,8 +289,8 @@ async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
   if (record.division && record.signatoryName && record.signatoryPosition) {
     const signatureCenter = 561.6;
     const signatureMaxWidth = 205;
-    page.drawRectangle({ x: 501, y: 201.5, width: 124, height: 29, color: { type: "RGB", red: 1, green: 1, blue: 1 } });
-    page.drawRectangle({ x: 443, y: 213, width: 243, height: 1.5, color: { type: "RGB", red: 1, green: 1, blue: 1 } });
+    page.drawRectangle({ x: 501, y: 201.5, width: 124, height: 29, color: rgb(1, 1, 1) });
+    page.drawRectangle({ x: 443, y: 213, width: 243, height: 1.5, color: rgb(1, 1, 1) });
 
     const name = safePdfText(record.signatoryName.toLocaleUpperCase("en-PH"));
     let nameSize = 11;
