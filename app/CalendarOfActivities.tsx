@@ -8,6 +8,7 @@ import { loadPdfTools } from "@/lib/pdf-tools";
 import { isSuperadminRole } from "@/lib/user-roles";
 import { calendarOfActivitiesApprovalNotificationsCollection, calendarOfActivitiesCollection, calendarOfActivitiesNotificationsCollection } from "@/lib/calendar-of-activities-storage";
 import DeleteConfirmation from "./DeleteConfirmation";
+import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./calendar-of-activities-large.css";
 import "./calendar-of-activities-mobile.css";
 
@@ -414,11 +415,13 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
 }
 
 function CalendarOfActivitiesList({ plans, currentUserId, onNew, onEdit, onView, onDelete, onStatusChange, deletingId, updatingStatusId, adminRecordsOnly = false }: { plans: CalendarOfActivities[]; currentUserId: string; onNew: () => void; onEdit: (plan: CalendarOfActivities) => void; onView: (plan: CalendarOfActivities) => void; onDelete: (plan: CalendarOfActivities) => void; onStatusChange: (plan: CalendarOfActivities, status: CalendarOfActivitiesStatus) => void; deletingId: string | null; updatingStatusId: string | null; adminRecordsOnly?: boolean }) {
+  const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(plans);
   return <section className="content-section calendar-of-activities-list-section">
     <div className="section-heading"><div><p className="eyebrow">{adminRecordsOnly ? "Approved records" : "Unit records"}</p><h2>{adminRecordsOnly ? "Calendar of Activities Records" : "Calendar of Activities"}</h2><p className="muted">{adminRecordsOnly ? `${plans.length} approved calendar ${plans.length === 1 ? "record" : "records"}.` : `${plans.length} calendar ${plans.length === 1 ? "record" : "records"} available to your unit.`}</p></div>{!adminRecordsOnly && <button type="button" className="primary-button" onClick={onNew}>Add</button>}</div>
     {plans.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>{adminRecordsOnly ? "No approved records yet" : "No calendars of activities yet"}</h3>{!adminRecordsOnly && <><p>Create a monthly calendar and notify responsible colleagues in your unit.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Calendar of Activities</button></>}</div> : <div className="permit-table calendar-of-activities-list">
+      <RecordPagination totalRecords={plans.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Calendar of Activities" />
       <div className="table-head calendar-of-activities-list-head"><span>Month and Year</span><span>Unit</span><span>Activities</span><span>Status</span></div>
-      {plans.map((plan) => {
+      {visibleRecords.map((plan) => {
         const status = calendarOfActivitiesStatus(plan);
         return <div className="table-row calendar-of-activities-list-row" key={plan.id}>
           <strong>{formatMonth(plan.month)}</strong>

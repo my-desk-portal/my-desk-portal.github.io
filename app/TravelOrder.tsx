@@ -177,10 +177,18 @@ function TravelOrderForm({ user, unit, initialOrder, onSaved, onCancel, onError 
 }
 
 function TravelOrderList({ orders, ownerId, onNew, onEdit, onPreview, onCopy, onDelete, onStatusChange, updatingId, deletingId, copyingId }: { orders: TravelOrder[]; ownerId: string; onNew: () => void; onEdit: (order: TravelOrder) => void; onPreview: (order: TravelOrder) => void; onCopy: (order: TravelOrder) => void; onDelete: (order: TravelOrder) => void; onStatusChange: (order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]) => Promise<boolean>; updatingId: string | null; deletingId: string | null; copyingId: string | null }) {
+  const pageSize = 5;
+  const [currentPage, setCurrentPage] = useState(0);
   const [approvalOrderId, setApprovalOrderId] = useState<string | null>(null);
   const [approvalDate, setApprovalDate] = useState("");
   const [approvalNumbers, setApprovalNumbers] = useState<string[]>([]);
   const [approvalError, setApprovalError] = useState("");
+  const pageCount = Math.max(1, Math.ceil(orders.length / pageSize));
+  const visibleOrders = orders.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, pageCount - 1));
+  }, [pageCount]);
 
   function updateApprovalNumber(index: number, value: string) {
     setApprovalNumbers((current) => current.map((number, itemIndex) => itemIndex === index ? value : number));
@@ -209,8 +217,9 @@ function TravelOrderList({ orders, ownerId, onNew, onEdit, onPreview, onCopy, on
   return <section className="content-section travel-order-list-section">
     <div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Travel Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "Travel Order" : "Travel Orders"} available to your unit.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>
     {orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Travel Orders yet</h3><p>Create a Travel Order for one or more personnel.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Travel Order</button></div> : <div className="permit-table">
+      {orders.length > pageSize && <nav className="travel-order-pagination" aria-label="Travel Order pages"><span>Showing {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, orders.length)} of {orders.length}</span><div className="travel-order-pagination-controls"><button type="button" className="ghost-button" onClick={() => setCurrentPage((page) => page - 1)} disabled={currentPage === 0}>Previous</button><span aria-live="polite">Page {currentPage + 1} of {pageCount}</span><button type="button" className="ghost-button" onClick={() => setCurrentPage((page) => page + 1)} disabled={currentPage === pageCount - 1}>Next</button></div></nav>}
       <div className="table-head travel-order-list-head"><span>Date</span><span>Personnel</span><span>Place of Travel</span><span>Status</span></div>
-      {orders.map((order) => {
+      {visibleOrders.map((order) => {
         const isOwner = order.ownerId === ownerId;
         return <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">

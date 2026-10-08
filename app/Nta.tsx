@@ -9,6 +9,7 @@ import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/li
 import { getDocumentNotificationReferences, makeDocumentNotification } from "@/lib/document-notifications";
 import { loadUnitSharedRecords } from "@/lib/unit-shared-records";
 import DeleteConfirmation from "./DeleteConfirmation";
+import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./nta.css";
 
 type NtaMode = "individual" | "batch" | "multiple";
@@ -281,7 +282,8 @@ function NtaEditor({ record, userId, onCancel, onSaved, onRemove }: { record: Nt
 }
 
 function NtaList({ records, ownerId, deletingId, copyingId, onNew, onEdit, onPreview, onCopy, onDelete }: { records: NtaRecord[]; ownerId: string; deletingId: string | null; copyingId: string | null; onNew: () => void; onEdit: (record: NtaRecord) => void; onPreview: (record: NtaRecord) => void; onCopy: (record: NtaRecord) => void; onDelete: (record: NtaRecord) => void }) {
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Notices to Attend</h2><p className="muted">{records.length} {records.length === 1 ? "notice" : "notices"} available to your unit.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No notices to attend yet</h3><p>Create an individual, group, or multiple personnel notice.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Notice To Attend</button></div> : <div className="permit-table"><div className="table-head nta-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span></span></div>{records.map((record) => {
+  const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Notices to Attend</h2><p className="muted">{records.length} {records.length === 1 ? "notice" : "notices"} available to your unit.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No notices to attend yet</h3><p>Create an individual, group, or multiple personnel notice.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Notice To Attend</button></div> : <div className="permit-table"><RecordPagination totalRecords={records.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Notice to Attend" /><div className="table-head nta-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span></span></div>{visibleRecords.map((record) => {
     const isOwner = record.ownerId === ownerId;
     const schedules = record.mode === "individual"
       ? [formatDateRange(record.dateFrom ?? "", record.dateTo ?? "")]

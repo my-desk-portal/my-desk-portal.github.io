@@ -33,6 +33,7 @@ import {
 } from "@/lib/mytev";
 import DeleteConfirmation from "./DeleteConfirmation";
 import MyTevDocuments from "./MyTevDocuments";
+import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./mytev-large.css";
 import "./mytev-mobile.css";
 
@@ -355,11 +356,13 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
 }
 
 function MyTevList({ records, loading, deletingId, rates, rateError, onNew, onEdit, onView, onDelete }: { records: MyTevRecord[]; loading: boolean; deletingId: string | null; rates: TevRegionRate[] | null; rateError: string; onNew: () => void; onEdit: (record: MyTevRecord) => void; onView: (record: MyTevRecord) => void; onDelete: (record: MyTevRecord) => void }) {
+  const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
   return <section className="content-section mytev-list-section">
     <div className="section-heading"><div><p className="eyebrow">myDocs · Travel expenses</p><h2>myTEV</h2><p className="muted">Create and retrieve travel expense forms as one coordinated A4 document set.</p></div><button type="button" className="primary-button" onClick={onNew}>Add</button></div>
     {loading ? <p className="muted mytev-loading">Loading myTEV records...</p> : records.length === 0 ? <div className="empty-state mytev-empty"><span className="empty-number">00</span><h3>No myTEV records yet</h3><p>Create a travel expense voucher and its itinerary pages.</p><button type="button" className="text-button plain-action document-create-action" onClick={onNew}>Create a myTEV record</button></div> : <div className="permit-table mytev-table">
+      <RecordPagination totalRecords={records.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="myTEV record" />
       <div className="mytev-table-head"><span>Travel month</span><span>Total amount</span><span aria-hidden="true" /></div>
-      {records.map((record) => <div className="mytev-table-row" key={record.id}>
+      {visibleRecords.map((record) => <div className="mytev-table-row" key={record.id}>
         <strong>{monthLabel(record.month)}</strong><strong>{rates ? `₱${formatTevAmount(totalsForRecord(record.itineraries, rates).grandTotal)}` : rateError ? "Rates unavailable" : "Loading rates..."}</strong>
         <span className="mytev-row-actions"><button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button><button type="button" className="row-action" onClick={() => onView(record)}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></span>
       </div>)}

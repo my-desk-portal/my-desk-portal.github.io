@@ -5,6 +5,7 @@ import type { User } from "firebase/auth";
 import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { loadPdfTools } from "@/lib/pdf-tools";
+import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./myar.css";
 
 type Unit = "AMIA" | "AGRISTAT" | "DRRM";
@@ -165,6 +166,7 @@ function AccomplishmentReportPreview({ report, onClose }: { report: Report; onCl
 export default function AccomplishmentReportModule({ user }: { user: User }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
+  const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(reports);
   const [showForm, setShowForm] = useState(false);
   const [month, setMonth] = useState(currentMonth);
   const [cycle, setCycle] = useState<1 | 2>(1);
@@ -374,7 +376,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
     {!showForm && <section className="content-section ar-records-section">
       <div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Saved Reports</h2><p className="muted">{reports.length} {reports.length === 1 ? "report" : "reports"} saved to your account.</p></div><button type="button" className="primary-button ar-add-report-button document-create-action" onClick={startNewReport}>Add</button></div>
       {message && <p className={`auth-message auth-message-${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
-      {loading ? <p className="muted">Loading reports...</p> : reports.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No accomplishment reports yet</h3><p>Saved reports will appear here.</p></div> : <div className="permit-table ar-saved-table"><div className="table-head"><span>Month</span><span>Half-month Cycle</span><span aria-hidden="true" /></div>{reports.map((report) => <div className="table-row" key={report.id}><strong>{reportMonth(report.month)}</strong><span>{report.startDay}-{report.endDay}</span><div className="ar-record-actions">{isReportEditingLocked(report, today) ? <span className="row-action ar-record-closed" title={`Editing closed on ${reportEditDeadlineLabel(report)}.`}>Closed</span> : <button type="button" className="row-action" onClick={() => editActivities(report)}>Edit</button>}<button type="button" className="row-action" onClick={() => setSelectedReport(report)}>View</button></div></div>)}</div>}
+      {loading ? <p className="muted">Loading reports...</p> : reports.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No accomplishment reports yet</h3><p>Saved reports will appear here.</p></div> : <div className="permit-table ar-saved-table"><RecordPagination totalRecords={reports.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Saved Report" /><div className="table-head"><span>Month</span><span>Half-month Cycle</span><span aria-hidden="true" /></div>{visibleRecords.map((report) => <div className="table-row" key={report.id}><strong>{reportMonth(report.month)}</strong><span>{report.startDay}-{report.endDay}</span><div className="ar-record-actions">{isReportEditingLocked(report, today) ? <span className="row-action ar-record-closed" title={`Editing closed on ${reportEditDeadlineLabel(report)}.`}>Closed</span> : <button type="button" className="row-action" onClick={() => editActivities(report)}>Edit</button>}<button type="button" className="row-action" onClick={() => setSelectedReport(report)}>View</button></div></div>)}</div>}
     </section>}
 
     {previewReport && <AccomplishmentReportPreview report={previewReport} onClose={() => setSelectedReport(null)} />}

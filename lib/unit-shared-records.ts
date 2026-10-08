@@ -20,9 +20,14 @@ export async function loadUnitSharedRecords<T extends UnitOwnedRecord>(firestore
     }
   }
 
-  const sharedSnapshot = unit
-    ? await getDocs(query(records, where("ownerUnit", "==", unit)))
-    : null;
+  let sharedSnapshot = null;
+  if (unit) {
+    try {
+      sharedSnapshot = await getDocs(query(records, where("ownerUnit", "==", unit)));
+    } catch (error) {
+      if ((error as { code?: string }).code !== "permission-denied") throw error;
+    }
+  }
   const byId = new Map<string, T>();
   ownSnapshot.docs.forEach((item) => byId.set(item.id, { id: item.id, ...item.data(), ...(unit && typeof item.data().ownerUnit !== "string" ? { ownerUnit: unit } : {}) } as T));
   sharedSnapshot?.docs.forEach((item) => byId.set(item.id, { id: item.id, ...item.data() } as T));

@@ -7,6 +7,7 @@ import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, wh
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import DeleteConfirmation from "./DeleteConfirmation";
+import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./leave-application.css";
 
 type Office = "FOD-AGRISTAT" | "FOD-AMIA" | "FOD-DRRM";
@@ -287,6 +288,7 @@ async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
 
 export default function LeaveApplicationModule({ user }: { user: User }) {
   const [records, setRecords] = useState<LeaveApplicationRecord[]>([]);
+  const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
   const [view, setView] = useState<"list" | "new">("list");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -599,8 +601,9 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
     </> : <>
       <div className="section-heading leave-application-heading"><div><p className="eyebrow">Generated reports</p><h2>Leave Applications</h2><p className="muted">{records.length} {records.length === 1 ? "application" : "applications"} registered to your account.</p></div><button type="button" className="primary-button" onClick={() => { resetForm(); setError(""); setMessage(""); setView("new"); }}>Add</button></div>
       {loading ? <p className="muted">Loading Leave Applications...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Leave Applications yet</h3><p>Create a Leave Application to view or download the completed CSC form.</p><button type="button" className="text-button plain-action document-create-action" onClick={() => { resetForm(); setError(""); setMessage(""); setView("new"); }}>Add a Leave Application</button></div> : <div className="leave-application-records">
+        <RecordPagination totalRecords={records.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Leave Application" />
         <div className="leave-application-record-head"><span>Date Filed</span><span>Name</span><span>Type of Leave</span><span>Inclusive Dates</span><span>Status</span><span aria-hidden="true" /></div>
-        {records.map((record) => <article className="leave-application-record" key={record.id}>
+        {visibleRecords.map((record) => <article className="leave-application-record" key={record.id}>
           <span className="leave-application-record-date">{formatDate(record.filedDate)}</span><strong className="leave-application-record-name">{fullName(record)}</strong><span className="leave-application-record-type">{leaveTypeLabel(record)}</span><span className="leave-application-record-dates">{formatDate(record.inclusiveDateFrom)}{record.inclusiveDateTo !== record.inclusiveDateFrom && ` – ${formatDate(record.inclusiveDateTo)}`}</span>
           <label className={`leave-application-status leave-application-status-${record.status.toLowerCase()}`}><span className="sr-only">Status for {fullName(record)}</span><select aria-label={`Status for ${fullName(record)}`} value={record.status} disabled={updatingId === record.id || deletingId !== null} onChange={(event) => void changeStatus(record, event.target.value as LeaveStatus)}>{leaveStatuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === record.id && <small>Saving...</small>}</label>
           <div className="leave-application-actions"><button type="button" className="row-action" disabled={deletingId !== null || previewLoadingId !== null} onClick={() => void openPreview(record)}>{previewLoadingId === record.id ? "Preparing..." : "View"}</button>{record.status !== "Approved" && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</div>
