@@ -38,6 +38,8 @@ jobs:
           NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
           NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
           NEXT_PUBLIC_GIPHY_API_KEY: ${{ secrets.NEXT_PUBLIC_GIPHY_API_KEY }}
+          NEXT_PUBLIC_UPLOADTHING_URL: https://ps-taguibo-uploadthing.ps-taguibo-uploadthing-worker.workers.dev/api/uploadthing
+          NEXT_PUBLIC_UPLOADTHING_APP_ID: foggfl98lt
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
