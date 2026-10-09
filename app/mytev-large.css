@@ -435,7 +435,7 @@
 .mytev-ctc-evidence{display:grid;gap:1mm;grid-template-columns:minmax(0,1fr);margin-top:3mm}
 .mytev-ctc-evidence span{border-bottom:var(--mytev-medium-line);font-style:italic;min-height:6mm;overflow-wrap:anywhere}
 .mytev-ctc-submitted{margin:9mm 0 0 50%;text-align:left}
-.mytev-ctc-employee{display:grid;gap:1mm;margin:19mm 0 11mm auto;text-align:center;width:25%}
+.mytev-ctc-employee{display:grid;gap:1mm;margin:19mm 8.3cqi 11mm auto;text-align:center;width:25%}
 .mytev-ctc-employee strong,.mytev-ctc-signatory strong{border-bottom:var(--mytev-thin-line);font-size:var(--mytev-font-12);justify-self:center;max-width:100%;text-transform:uppercase;width:max-content}
 .mytev-ctc-employee strong{justify-self:end}
 .mytev-ctc-employee span{text-align:right}
@@ -454,7 +454,7 @@
 .mytev-ctc-document-dense .mytev-ctc-explanation span{height:3.5mm}
 .mytev-ctc-document-dense .mytev-ctc-evidence{margin-top:2mm}
 .mytev-ctc-document-dense .mytev-ctc-submitted{margin-top:4mm}
-.mytev-ctc-document-dense .mytev-ctc-employee{margin:10mm 0 6mm auto}
+.mytev-ctc-document-dense .mytev-ctc-employee{margin-bottom:6mm;margin-top:10mm}
 .mytev-ctc-document-dense .mytev-ctc-knowledge{margin-bottom:8mm}
 .mytev-ctc-document-dense .mytev-ctc-noted{margin:5mm 0 8mm 50%}
 @page{size:A4 portrait;margin:0}
