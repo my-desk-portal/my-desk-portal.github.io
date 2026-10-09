@@ -264,8 +264,11 @@ export function totalsForRecord(itineraries: TevItinerary[], rates: TevRegionRat
 
 export function cenrrRows(itineraries: TevItinerary[]) {
   return itineraries.flatMap((itinerary) => itinerary.rows
-    .filter((row) => row.meansOfTransportation === "MCH" && Boolean(row.dateFrom || row.dateTo || row.visitedPlaces || row.transportation))
-    .map((row) => ({ ...row, amount: transportationForRow(row) })));
+    .map((row) => ({ ...row, amount: transportationForRow(row) }))
+    .filter((row) => row.meansOfTransportation === "MCH"
+      && Boolean(row.dateFrom || row.dateTo || row.visitedPlaces || row.amount)
+      && row.amount >= 1
+      && row.amount <= 300));
 }
 
 export function formatTevDate(value: string, options: Intl.DateTimeFormatOptions = { month: "long", day: "numeric", year: "numeric" }) {
