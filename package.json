@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@uploadthing/react": "^7.3.3",
     "fflate": "^0.8.3",
     "firebase": "^12.3.0",
     "html2canvas": "^1.4.1",

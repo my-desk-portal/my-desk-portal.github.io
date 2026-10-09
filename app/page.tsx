@@ -40,6 +40,7 @@ import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import type { CalendarOfActivitiesApprovalNotification, CalendarOfActivitiesNotification } from "./CalendarOfActivities";
 import { calendarOfActivitiesApprovalNotificationsCollection, calendarOfActivitiesNotificationsCollection } from "@/lib/calendar-of-activities-storage";
 import { MessengerButton } from "./Messenger";
+import ProfilePhotoUpload from "./ProfilePhotoUpload";
 import DeleteConfirmation from "./DeleteConfirmation";
 import type { AdminPermit } from "./PermitSlipAdmin";
 import { normalizeWorkflowStatus } from "./workflow-status";
@@ -1431,6 +1432,7 @@ export default function Home() {
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [resetEmailBusy, setResetEmailBusy] = useState(false);
   const [profileFirstName, setProfileFirstName] = useState("");
+  const [profilePhotoURL, setProfilePhotoURL] = useState("");
   const [profileRevision, setProfileRevision] = useState(0);
   const [profileMiddleName, setProfileMiddleName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
@@ -1574,6 +1576,7 @@ export default function Home() {
     setProfileOpen(true);
     setProfileLoading(true);
     setProfileMessage(null);
+    setProfilePhotoURL("");
     applyProfileName(user.displayName ?? "");
     setProfileGender("");
     setProfilePosition("");
@@ -1585,6 +1588,7 @@ export default function Home() {
       const profileSnapshot = await getDoc(doc(db, "users", user.uid));
       if (profileSnapshot.exists()) {
         const profile = profileSnapshot.data();
+        if (typeof profile.photoURL === "string") setProfilePhotoURL(profile.photoURL);
         if (typeof profile.firstName === "string" && typeof profile.lastName === "string") {
           setProfileFirstName(profile.firstName);
           setProfileMiddleName(typeof profile.middleName === "string" ? profile.middleName : "");
@@ -2104,6 +2108,7 @@ export default function Home() {
 {canAccessAmiaDocumentTracking && <><button type="button" className="mobile-nav-link" aria-expanded={mobileAmiaDocumentOpen} aria-controls="mobile-amia-document-menu" onClick={() => setMobileAmiaDocumentOpen((open) => !open)}><span>AMIA Document Tracking</span><span className={mobileAmiaDocumentOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
 {mobileAmiaDocumentOpen && <div className="mobile-nav-submenu mobile-amia-document-submenu" id="mobile-amia-document-menu">{amiaDocumentTrackingLinks.map((link) => <a className="mobile-nav-submenu-link" href={link.href} key={link.label} target="_blank" rel="noopener noreferrer" onClick={closeMobileNavigation}>{link.label}</a>)}</div>}</>}
 </div><button type="button" className="mobile-sign-out" onClick={() => { closeMobileNavigation(); if (auth) void signOut(auth); }}>Sign Out</button></nav></>}{profileOpen && <div className="profile-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeProfile(); }} onKeyDown={(event) => { if (event.key === "Escape") closeProfile(); }}><section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title"><header className="profile-dialog-header"><div><p className="eyebrow">Account</p><h2 id="profile-title">Profile</h2></div><button type="button" className="ghost-button" onClick={closeProfile}>Close</button></header><form className="profile-form" onSubmit={saveChanges} aria-busy={profileLoading || profileSaving}>
+  <ProfilePhotoUpload user={user} photoURL={profilePhotoURL} disabled={profileLoading || profileSaving} onUploaded={setProfilePhotoURL} />
   <label>First Name<input autoComplete="given-name" maxLength={60} value={profileFirstName} onChange={(event) => setProfileFirstName(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
   <label>Middle Name<input autoComplete="additional-name" maxLength={60} value={profileMiddleName} onChange={(event) => setProfileMiddleName(event.target.value)} disabled={profileLoading || profileSaving} /></label>
   <label>Last Name<input autoComplete="family-name" maxLength={60} value={profileLastName} onChange={(event) => setProfileLastName(event.target.value)} required disabled={profileLoading || profileSaving} /></label>

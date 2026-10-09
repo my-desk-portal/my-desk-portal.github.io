@@ -3,5 +3,8 @@ node_modules/
 out/
 .env
 .env.local
+.secret.local
+.dev.vars
+.wrangler/
 .vercel/
 *.log

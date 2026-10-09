@@ -1,0 +1,9 @@
+.profile-photo-field{align-items:center;border-bottom:1px solid var(--line);display:flex;gap:18px;grid-column:1/-1;padding:0 0 18px}
+.profile-photo-preview{background:var(--mint);border-radius:50%;flex:0 0 auto;height:76px;object-fit:cover;width:76px}
+.profile-photo-placeholder{align-items:center;color:var(--ink);display:flex;font-size:28px;font-weight:600;justify-content:center}
+.profile-photo-controls{align-items:start;display:flex;flex-direction:column;gap:7px}
+.profile-photo-controls strong{font-size:13px}
+.profile-photo-controls small{color:var(--muted);font-size:12px}
+.profile-photo-select{display:inline-flex;position:relative;width:max-content}
+.profile-photo-select input{cursor:pointer;height:100%;inset:0;opacity:0;position:absolute;width:100%}
+.profile-photo-controls .auth-message{font-size:12px;margin:0}
