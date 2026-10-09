@@ -1,4 +1,4 @@
-import { createRouteHandler, createUploadthing, UploadThingError } from "uploadthing/server";
+import { createRouteHandler, createUploadthing, UploadThingError, UTApi } from "uploadthing/server";
 
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -44,6 +44,30 @@ function createProfilePhotoRouter(firebaseApiKey) {
   };
 }
 
+async function deletePreviousPhoto(request, env) {
+  const [, idToken] = (request.headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i) ?? [];
+  if (!idToken || !env.FIREBASE_API_KEY) return new Response("Unauthorized", { status: 401 });
+
+  const lookup = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken }) },
+  );
+  const user = lookup.ok ? (await lookup.json()).users?.[0] : null;
+  if (!user?.localId || user.disabled) return new Response("Unauthorized", { status: 401 });
+
+  const { previousUrl } = await request.json().catch(() => ({}));
+  let key = "";
+  try {
+    const parsed = new URL(previousUrl);
+    const match = parsed.pathname.match(/^\/f\/([\w.-]+)$/);
+    if (match && /(^|\.)(ufs\.sh|utfs\.io)$/.test(parsed.hostname)) key = match[1];
+  } catch {}
+  if (!key) return new Response("Invalid photo URL", { status: 400 });
+
+  await new UTApi({ token: env.UPLOADTHING_TOKEN }).deleteFiles(key);
+  return new Response(null, { status: 204 });
+}
+
 function addCors(response, request) {
   const headers = new Headers(response.headers);
   const origin = request.headers.get("origin");
@@ -65,12 +89,22 @@ function addCors(response, request) {
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
-    if (url.pathname !== "/api/uploadthing") {
+    const isDelete = url.pathname === "/api/delete-photo";
+    if (url.pathname !== "/api/uploadthing" && !isDelete) {
       return new Response("Not found", { status: 404 });
     }
 
     if (request.method === "OPTIONS") {
       return addCors(new Response(null, { status: 204 }), request);
+    }
+    if (isDelete) {
+      if (request.method !== "POST") return addCors(new Response("Method not allowed", { status: 405 }), request);
+      try {
+        return addCors(await deletePreviousPhoto(request, env), request);
+      } catch (error) {
+        console.error(error);
+        return addCors(new Response("Could not delete the photo", { status: 500 }), request);
+      }
     }
     if (request.method !== "GET" && request.method !== "POST") {
       return addCors(new Response("Method not allowed", { status: 405 }), request);

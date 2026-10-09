@@ -63,6 +63,18 @@ export default function ProfilePhotoUpload({
       if (!db) throw new Error("Your profile could not be updated. Sign in again and retry.");
       await updateDoc(doc(db, "users", user.uid), { photoURL: uploadedURL });
       onUploaded(uploadedURL);
+      if (photoURL && photoURL !== uploadedURL) {
+        // Best effort: a failed cleanup must not undo the saved profile photo.
+        void (async () => {
+          try {
+            await fetch(uploadThingUrl.replace(/\/api\/uploadthing$/, "/api/delete-photo"), {
+              method: "POST",
+              headers: { Authorization: `Bearer ${await user.getIdToken()}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ previousUrl: photoURL }),
+            });
+          } catch {}
+        })();
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not upload the profile photo. Try again.");
     }
