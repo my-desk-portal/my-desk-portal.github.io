@@ -13,6 +13,7 @@ import {
   maxCenrrRows,
   maxItineraryRows,
   maxOrsStatusRows,
+  tevDivisionLabel,
   tevCtcDirector,
   tevCtcDirectorOffice,
   tevDvAccountingSignatory,
@@ -197,7 +198,7 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount, is
       <div className="mytev-itinerary-footer">
         <section className="mytev-itinerary-certified">
           <div className="mytev-itinerary-certification-text"><span>I certify that:</span><span>(1) I have reviewed the foregoing itinerary;</span><span>(2) the travel is necessary to the service;</span><span>(3) the period covered is reasonable; and</span><span>(4) the expenses claimed are proper.</span></div>
-          <div className="mytev-itinerary-certified-signature"><strong>{signatory.name}</strong><small><i>{signatory.position}</i>, {record.divisionName}</small></div>
+          <div className="mytev-itinerary-certified-signature"><strong>{signatory.name}</strong><small><i>{signatory.position}</i>, {tevDivisionLabel(record.divisionName)}</small></div>
         </section>
         <div className="mytev-itinerary-approvals">
           <section className="mytev-itinerary-prepared"><b>Prepared:</b><div><strong>{profile.name}</strong><small>{profile.position}</small></div></section>
@@ -231,7 +232,7 @@ function MyTevOrsPage({ record, rates }: { record: MyTevRecord; rates: TevRegion
       </div>
       <div className="mytev-ors-total-row"><table className="mytev-ors-total"><colgroup><col /><col /><col /><col /><col /></colgroup><tbody><tr><td colSpan={4}><strong>Total</strong></td><td><strong>{formatTevAmount(totals.grandTotal)}</strong></td></tr></tbody></table></div>
       <div className="mytev-ors-certifications">
-        <div className="mytev-ors-certified"><b>A</b><p><strong>Certified:</strong> Charges to appropriation/allotment are necessary, lawful and under my direct supervision; and supporting documents valid, proper and legal.</p><div className="mytev-ors-signature"><span><b>Signature</b><em>:</em><i /></span><span><b>Printed Name</b><em>:</em><strong>{signatory.name.toLocaleUpperCase("en-PH")}</strong></span><span><b>Position</b><em>:</em><i>{signatory.position === "Chief" ? <em>Chief</em> : signatory.position}, {record.divisionName}</i></span><span><b>Date</b><em>:</em><i /></span></div></div>
+        <div className="mytev-ors-certified"><b>A</b><p><strong>Certified:</strong> Charges to appropriation/allotment are necessary, lawful and under my direct supervision; and supporting documents valid, proper and legal.</p><div className="mytev-ors-signature"><span><b>Signature</b><em>:</em><i /></span><span><b>Printed Name</b><em>:</em><strong>{signatory.name.toLocaleUpperCase("en-PH")}</strong></span><span><b>Position</b><em>:</em><i>{signatory.position === "Chief" ? <em>Chief</em> : signatory.position}, {tevDivisionLabel(record.divisionName)}</i></span><span><b>Date</b><em>:</em><i /></span></div></div>
         <div className="mytev-ors-certified"><b>B</b><p><strong>Certified:</strong> Allotment available and obligated for the purpose/adjustment necessary as indicated above.</p><div className="mytev-ors-signature"><span><b>Signature</b><em>:</em><i /></span><span><b>Printed Name</b><em>:</em><strong>{tevOrsBudgetSignatory.name.toLocaleUpperCase("en-PH")}</strong></span><span><b>Position</b><em>:</em><i><em>{budgetTitle}</em>, {budgetSection}</i></span><span><b>Date</b><em>:</em><i /></span></div></div>
       </div>
       <div className="mytev-ors-status">
@@ -260,7 +261,7 @@ function MyTevDisbursementPage({ record, rates }: { record: MyTevRecord; rates: 
       <table className="mytev-dv-particulars"><thead><tr><th>Particulars</th><th>Responsibility Center</th><th>MFO/PAP</th><th>Amount</th></tr></thead><tbody><tr><td style={fitTextStyle(`${travelDates} ${orderNumbers}`, 190, "--mytev-font-12")}><b>FOR PAYMENT:</b><br /><br />For reimbursement of travel expenses incurred during official travel from <strong>{travelDates}</strong> per Travel Order Nos. <strong>{orderNumbers}</strong>, with supporting documents hereto attached in the amount of ...</td><td /><td /><td>{formatTevAmount(totals.grandTotal)}</td></tr></tbody><tfoot><tr className="mytev-dv-total"><th colSpan={3}>Amount Due</th><th>{formatTevAmount(totals.grandTotal)}</th></tr></tfoot></table>
       <div className="mytev-dv-certified">
         <div className="mytev-dv-certified-heading"><b>A.</b><strong>Certified: Expenses/Cash Advance necessary, lawful and incurred under my direct supervision.</strong></div>
-        <div className="mytev-dv-certified-signatory"><strong>{signatory.name}</strong><span><i>{signatory.position}</i>, {record.divisionName}</span></div>
+        <div className="mytev-dv-certified-signatory"><strong>{signatory.name}</strong><span><i>{signatory.position}</i>, {tevDivisionLabel(record.divisionName)}</span></div>
       </div>
       <div className="mytev-dv-accounting">
         <div className="mytev-dv-accounting-heading"><b>B.</b><strong>Accounting Entry:</strong></div>
@@ -318,7 +319,7 @@ function MyTevCenrrPage({ record, page, pageNumber, pageCount, grandTotal }: { r
       <div className="mytev-cenrr-fields">
         <div><b>Name of Employee:</b><span style={fitTextStyle(profile.name, 48)}>{profile.name}</span><b>Employee No.:</b><span style={fitTextStyle(profile.taxIdentificationNo, 22)}>{profile.taxIdentificationNo}</span></div>
         <div><b>Office:</b><span style={fitTextStyle(tevOrsOffice, 60)}>{tevOrsOffice}</span></div>
-        <div><b>Division:</b><span style={fitTextStyle(record.divisionName, 55)}>{record.divisionName}</span></div>
+        <div><b>Division:</b><span style={fitTextStyle(tevDivisionLabel(record.divisionName), 55)}>{tevDivisionLabel(record.divisionName)}</span></div>
       </div>
       <div className="mytev-cenrr-divider" />
       <table className="mytev-cenrr-table"><thead><tr><th>DATE</th><th>PARTICULARS</th><th>MEANS OF<br />TRANSPORTATION</th><th>AMOUNT</th></tr></thead><tbody>
@@ -362,7 +363,7 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
       <div className="mytev-ctc-employee"><strong style={fitTextStyle(profile.name, 36)}>{profile.name.toLocaleUpperCase("en-PH")}</strong><span>Name of Employee</span></div>
       <p className="mytev-ctc-knowledge">On evidence and information of which I have the knowledge, the travel was actually undertaken.</p>
       <p className="mytev-ctc-noted">Noted:</p>
-      <div className="mytev-ctc-signatory"><strong style={fitTextStyle(signatory.name, 36)}>{signatory.name.toLocaleUpperCase("en-PH")}</strong><span style={{ ...fitTextStyle(`${signatory.position}, ${record.divisionName}`, 42), whiteSpace: "nowrap" }}><em>{signatory.position}</em>, {record.divisionName}</span></div>
+      <div className="mytev-ctc-signatory"><strong style={fitTextStyle(signatory.name, 36)}>{signatory.name.toLocaleUpperCase("en-PH")}</strong><span><em>{signatory.position}</em>, {tevDivisionLabel(record.divisionName)}</span></div>
     </div>
   </article></div>;
 }

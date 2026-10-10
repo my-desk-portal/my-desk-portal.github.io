@@ -119,7 +119,7 @@ const signatoryByDivision: Record<TevDivision, { name: string; position: "Chief"
   "Regional Agricultural Engineering Division": { name: "Engr. Rene Q. Morales", position: "Chief" },
   "Research Division": { name: "Edelmira R. Luminarias", position: "Chief" },
   "Regulatory Division": { name: "Johnny M. Concon", position: "Chief" },
-  "Integrated Laboratories Division": { name: "Esther Lyn P. Felicilda", position: "Chief" },
+  "Integrated Laboratories Division": { name: "Esther B. Cardeño, DVM", position: "Chief" },
 };
 
 export function blankTevTravelReference(): TevTravelReference {
@@ -161,6 +161,15 @@ export function divisionForUnit(_unit: string) {
 
 export function divisionSignatory(division: TevDivision) {
   return signatoryByDivision[division];
+}
+
+export function tevDivisionLabel(division: TevDivision) {
+  switch (division) {
+    case "Planning, Monitoring and Evaluation Division": return "PMED";
+    case "Agribusiness and Marketing Assistance Division": return "AMAD";
+    case "Regional Agricultural Engineering Division": return "RAED";
+    default: return division;
+  }
 }
 
 export function chargedToForUnit(unit: string) {

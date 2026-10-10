@@ -443,7 +443,7 @@
 .mytev-ctc-signatory em{font-style:italic}
 .mytev-ctc-knowledge{margin:0 0 17mm}
 .mytev-ctc-noted{margin:0 0 18mm 50%;text-align:left}
-.mytev-ctc-signatory{display:grid;gap:1mm;margin-left:auto;text-align:right;width:30%}
+.mytev-ctc-signatory{display:grid;gap:1mm;margin-left:auto;text-align:right;width:100%}
 .mytev-ctc-signatory strong{justify-self:end}
 .mytev-ctc-document-dense>h1{margin:3mm 0 4mm}
 .mytev-ctc-document-dense .mytev-ctc-entity{margin-bottom:5mm}
