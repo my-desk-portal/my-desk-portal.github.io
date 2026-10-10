@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { loadPdfTools } from "@/lib/pdf-tools";
@@ -96,7 +96,7 @@ function initialItinerary() {
   return blankTevItinerary(documentId());
 }
 
-function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onCancel, onSaved }: { profile: TevProfile; ownerId: string; initialRecord?: MyTevRecord; existingMonths: string[]; rates: TevRegionRate[]; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
+function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }: { profile: TevProfile; ownerId: string; initialRecord?: MyTevRecord; rates: TevRegionRate[]; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
   const [step, setStep] = useState<"details" | "itineraries">("details");
   const [month, setMonth] = useState(() => initialRecord?.month ?? localMonthValue());
   const [officialStation, setOfficialStation] = useState<TevOfficialStation>(() => initialRecord?.officialStation ?? tevOfficialStations[0]);
@@ -179,10 +179,6 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
       setMessage("Choose a valid Month and Year.");
       return;
     }
-    if (existingMonths.includes(month)) {
-      setMessage(`A myTEV record already exists for ${monthLabel(month)}. Only one record is allowed per month and year.`);
-      return;
-    }
     if (!references.length || references.some((reference) => !reference.travelOrderNo.trim() || !reference.dateFrom || !reference.dateTo)) {
       setMessage("Enter a Travel Order No. and date range for each travel reference.");
       return;
@@ -239,10 +235,6 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
     event.preventDefault();
     setMessage("");
     if (!db) { setMessage("myTEV storage is unavailable."); return; }
-    if (existingMonths.includes(month)) {
-      setMessage(`A myTEV record already exists for ${monthLabel(month)}. Only one record is allowed per month and year.`);
-      return;
-    }
     const result = normalizedItineraries();
     if (result.error || !result.itineraries?.length) { setMessage(result.error ?? "Add at least one itinerary."); return; }
     const recordData = {
@@ -263,22 +255,10 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
         await updateDoc(doc(firestore, "myTevRecords", initialRecord.id), recordData);
         onSaved({ ...initialRecord, ...recordData });
       } else {
-        const ownerRecords = await getDocs(query(collection(firestore, "myTevRecords"), where("ownerId", "==", ownerId)));
-        if (ownerRecords.docs.some((item) => item.data().month === month)) throw new Error("MYTEV_MONTH_EXISTS");
-        const recordId = `${ownerId}_${month}`;
-        const reference = doc(firestore, "myTevRecords", recordId);
-        await runTransaction(firestore, async (transaction) => {
-          const existing = await transaction.get(reference);
-          if (existing.exists()) throw new Error("MYTEV_MONTH_EXISTS");
-          transaction.set(reference, { ...recordData, createdAt: serverTimestamp() });
-        });
-        onSaved({ ...recordData, id: recordId, createdAt: undefined });
+        const reference = await addDoc(collection(firestore, "myTevRecords"), { ...recordData, createdAt: serverTimestamp() });
+        onSaved({ ...recordData, id: reference.id, createdAt: undefined });
       }
     } catch (cause) {
-      if (cause instanceof Error && cause.message === "MYTEV_MONTH_EXISTS") {
-        setMessage(`A myTEV record already exists for ${monthLabel(month)}. Only one record is allowed per month and year.`);
-        return;
-      }
       const code = (cause as { code?: string }).code;
       setMessage(code ? `Could not save myTEV (${code}).` : "Could not save myTEV. Try again.");
     } finally {
@@ -304,7 +284,7 @@ function MyTevForm({ profile, ownerId, initialRecord, existingMonths, rates, onC
           <label>TO Date (Records Unit)<input type="date" value={reference.toDateRecordsUnit} onChange={(event) => updateReference(index, { toDateRecordsUnit: event.target.value })} /></label>
           <label>Date From<input type="date" min={monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={reference.dateFrom} onChange={(event) => {
             const value = isDateWithinMonth(event.target.value, month) ? event.target.value : "";
-            const dateTo = reference.dateTo && isDateWithinMonth(reference.dateTo, month) && reference.dateTo >= value ? reference.dateTo : value;
+            const dateTo = isDateWithinMonth(reference.dateTo, month) && (!value || reference.dateTo >= value) ? reference.dateTo : "";
             updateReference(index, { dateFrom: value, dateTo });
           }} required /></label>
           <label>Date To<input type="date" min={reference.dateFrom || monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={reference.dateTo} onChange={(event) => {
@@ -541,7 +521,7 @@ export default function MyTevModule({ user }: { user: User }) {
   return <div className="mytev-module">
     {loadError && <p className="error-message mytev-error" role="alert">{loadError}</p>}
     {regionRateError && <p className="error-message mytev-error" role="alert">{regionRateError}</p>}
-    {(view === "new" || view === "edit") && formProfile ? regionRates ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} existingMonths={records.filter((record) => record.id !== editingRecord?.id).map((record) => record.month)} rates={regionRates} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <section className="content-section mytev-form-section"><p className="muted">{regionRateError || "Loading regional per diem rates..."}</p><button type="button" className="ghost-button" onClick={() => { setEditingRecord(null); setView("list"); }}>Back</button></section> : <>
+    {(view === "new" || view === "edit") && formProfile ? regionRates ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} rates={regionRates} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <section className="content-section mytev-form-section"><p className="muted">{regionRateError || "Loading regional per diem rates..."}</p><button type="button" className="ghost-button" onClick={() => { setEditingRecord(null); setView("list"); }}>Back</button></section> : <>
       {!profileComplete && !loading && <div className="mytev-profile-warning" role="status"><strong>Complete your Profile before creating myTEV records.</strong><span>Address, Tax Identification No., position, and name are used to prepare these forms.</span></div>}
       <MyTevList records={records} loading={loading} deletingId={deletingId} rates={regionRates} rateError={regionRateError} onNew={() => { setLoadError(""); setEditingRecord(null); setView("new"); }} onEdit={(record) => { setLoadError(""); setEditingRecord(record); setView("edit"); }} onView={(record) => { if (!regionRates) { setRegionRateError(regionRateError || "Regional rates are still loading. Wait a moment, then open the record again."); return; } setPreview(record); setPreviewError(""); }} onDelete={setPendingDelete} />
     </>}
