@@ -8,8 +8,8 @@ const db = getFirestore(app, "ps-taguibo");
 const reminders = db.collection("documentReminders");
 const hour = 60 * 60 * 1000;
 const day = 24 * hour;
-const permitWarningAfter = 8 * hour;
-const permitDeletionAfter = permitWarningAfter + 30 * 60 * 1000;
+const permitDeletionAfter = 6 * hour;
+const permitWarningAfter = permitDeletionAfter - 30 * 60 * 1000;
 
 function manilaParts(date) {
   const parts = new Intl.DateTimeFormat("en-US", {

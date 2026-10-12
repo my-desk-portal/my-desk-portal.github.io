@@ -1,6 +1,7 @@
 import { collection, doc, getDocs, query, serverTimestamp, where, type Firestore } from "firebase/firestore";
 
-export type DocumentNotificationType = "Special Order" | "Notice to Attend" | "Permit Slip" | "Travel Order" | "Leave Application" | "Travel Expense Voucher";
+export type DocumentNotificationType = "Special Order" | "Notice to Attend" | "Permit Slip" | "Travel Order" | "Leave Application" | "Travel Expense Voucher" | "Certificate Approval" | "Certificate Decision";
+export type CertificateCollectionName = "certificatesOfAppearance" | "completionCertificates" | "appreciationCertificates" | "participationCertificates";
 export type DocumentNotificationSchedule = { dateFrom: string; dateTo: string; venue: string };
 
 export type DocumentNotification = {
@@ -10,6 +11,10 @@ export type DocumentNotification = {
   documentId: string;
   documentType: DocumentNotificationType;
   activityTitle?: string;
+  certificateType?: string;
+  certificateCollection?: CertificateCollectionName;
+  decisionStatus?: "Approved" | "Disapproved";
+  destination?: string;
   dateFrom?: string;
   dateTo?: string;
   venue?: string;

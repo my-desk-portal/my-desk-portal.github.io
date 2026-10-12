@@ -1,19 +1,106 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isVerifiedUser() {
+    function isEmailVerified() {
       return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function currentUserPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+    function isSuperAdmin() {
+      let userPath = currentUserPath();
+      return isEmailVerified() && (request.auth.token.email == "rjamescute2@gmail.com"
+        || (exists(userPath)
+          && get(userPath).data.get("accountRole", "") == "superadmin"
+          && get(userPath).data.get("accountStatus", "Approved") == "Approved"));
+    }
+    function isVerifiedUser() {
+      let userPath = currentUserPath();
+      return isEmailVerified() && (isSuperAdmin()
+        || (exists(userPath) && get(userPath).data.get("accountStatus", "Approved") == "Approved"));
+    }
+    function profileOffice(profile) {
+      let version = profile.get("profileFieldsVersion", 0);
+      let office = profile.get("office", "");
+      let legacyProjectProgram = profile.get("projectProgram", "");
+      let legacyUnit = profile.get("unit", "");
+      return version >= 2 && office is string && office.size() > 0 ? office
+        : legacyProjectProgram is string && legacyProjectProgram.size() > 0 ? legacyProjectProgram
+        : legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit
+        : office;
+    }
+    function profileAssignment(profile) {
+      let version = profile.get("profileFieldsVersion", 0);
+      let assignment = profile.get("assignment", "");
+      let projectProgram = profile.get("projectProgram", "");
+      let legacyUnit = profile.get("unit", "");
+      let legacyOffice = profile.get("office", "");
+      return version >= 3 ? assignment
+        : version == 2 && projectProgram is string && projectProgram.size() > 0 ? projectProgram
+        : version == 2 && legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit
+        : legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit
+        : legacyOffice is string && legacyOffice.size() > 0 ? legacyOffice
+        : projectProgram;
+    }
+    function signedInOffice() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userPath) ? profileOffice(get(userPath).data) : null;
     }
     function signedInUnit() {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
-      return exists(userPath) ? get(userPath).data.unit : null;
+      return exists(userPath) ? profileAssignment(get(userPath).data) : null;
+    }
+    function isIldAssignment(assignment) {
+      return assignment in ["AGRISTAT", "AMIA", "DRRM"];
+    }
+    function personnelScopeOffice(profile) {
+      let office = profileOffice(profile);
+      let assignment = profileAssignment(profile);
+      return (office == "Field Operations Division (ILD)"
+        || (office == "Field Operations Division" && isIldAssignment(assignment))
+        || office in ["AGRISTAT", "AMIA", "DRRM", "FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"])
+        ? "Field Operations Division (ILD)"
+        : office;
+    }
+    function personnelScopeAssignment(profile) {
+      let office = profileOffice(profile);
+      let assignment = profileAssignment(profile);
+      return office == "AGRISTAT" || office == "FOD-AGRISTAT" ? "AGRISTAT"
+        : office == "AMIA" || office == "FOD-AMIA" ? "AMIA"
+        : office == "DRRM" || office == "FOD-DRRM" ? "DRRM"
+        : assignment;
+    }
+    function samePersonnelScope(firstProfile, secondProfile) {
+      let firstOffice = personnelScopeOffice(firstProfile);
+      let secondOffice = personnelScopeOffice(secondProfile);
+      let firstAssignment = personnelScopeAssignment(firstProfile);
+      let secondAssignment = personnelScopeAssignment(secondProfile);
+      return firstOffice == secondOffice
+        && ((firstOffice == "Field Operations Division (ILD)"
+            && isIldAssignment(firstAssignment)
+            && isIldAssignment(secondAssignment))
+          || (firstOffice != "Field Operations Division (ILD)"
+            && firstAssignment is string && firstAssignment.size() > 0
+            && firstAssignment == secondAssignment));
+    }
+    function calendarRecipientInOwnerScope(calendarId, recipientId) {
+      let calendarRef = /databases/$(database)/documents/calendarOfActivities/$(calendarId);
+      let ownerId = getAfter(calendarRef).data.ownerId;
+      let ownerPath = /databases/$(database)/documents/users/$(ownerId);
+      let recipientPath = /databases/$(database)/documents/users/$(recipientId);
+      return existsAfter(calendarRef)
+        && exists(ownerPath)
+        && exists(recipientPath)
+        && samePersonnelScope(get(ownerPath).data, get(recipientPath).data);
     }
     function isCalendarOwnerOrSameUnit(calendarId) {
       let calendarRef = /databases/$(database)/documents/calendarOfActivities/$(calendarId);
       return isVerifiedUser()
         && exists(calendarRef)
         && (get(calendarRef).data.ownerId == request.auth.uid
-          || get(calendarRef).data.unit == signedInUnit());
+          || (exists(/databases/$(database)/documents/users/$(get(calendarRef).data.ownerId))
+            && samePersonnelScope(get(currentUserPath()).data,
+              get(/databases/$(database)/documents/users/$(get(calendarRef).data.ownerId)).data)));
     }
     function ownerUnitCanBeUpdated() {
       return (resource.data.keys().hasAny(["ownerUnit"])
@@ -26,12 +113,77 @@ service cloud.firestore {
           && request.resource.data.keys().hasAny(["ownerUnit"])
           && request.resource.data.ownerUnit == signedInUnit());
     }
-    function isSuperAdmin() {
-      return isVerifiedUser() && request.auth.token.email == "rjamescute2@gmail.com";
-    }
     function isPermitAdmin() {
+      let userPath = currentUserPath();
+      return isVerifiedUser() && (isSuperAdmin()
+        || (exists(userPath)
+          && get(userPath).data.get("accountRole", request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "regular") == "admin"));
+    }
+    function isChiefCertificateAdmin() {
+      let userPath = currentUserPath();
+      return isVerifiedUser() && exists(userPath)
+        && get(userPath).data.get("accountRole", request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "regular") == "admin"
+        && get(userPath).data.get("designation", "") == "Chief";
+    }
+    function canReviewUnitCertificate(data) {
+      let office = signedInOffice();
+      let assignment = signedInUnit();
+      return isSuperAdmin() || (isChiefCertificateAdmin()
+        && (data.get("unit", "") == office
+          || data.get("unit", "") == assignment));
+    }
+    function appearanceDivisionForOffice(office) {
+      return office in ["AMIA", "FOD-AMIA"] ? "Agribusiness and Marketing Assistance Division"
+        : office in ["AGRISTAT", "FOD-AGRISTAT"] ? "Planning, Monitoring and Evaluation Division"
+        : office in ["DRRM", "FOD-DRRM"] ? "Disaster Risk Reduction and Management Division"
+        : office;
+    }
+    function appearanceDivisionForProfile(profile) {
+      let office = profileOffice(profile);
+      let assignment = profileAssignment(profile);
+      return office == "Regional Field Office"
+        ? assignment
+        : office == "Field Operations Division (ILD)"
+          || (office == "Field Operations Division" && assignment in ["AGRISTAT", "AMIA", "DRRM"])
+          ? appearanceDivisionForOffice(assignment)
+          : appearanceDivisionForOffice(office);
+    }
+    function isAppearanceChiefAdminRecipient(userId, division) {
+      let profilePath = /databases/$(database)/documents/users/$(userId);
+      return exists(profilePath)
+        && get(profilePath).data.get("accountRole", "") == "admin"
+        && get(profilePath).data.get("accountStatus", "") == "Approved"
+        && get(profilePath).data.get("designation", "") == "Chief"
+        && appearanceDivisionForProfile(get(profilePath).data) == division;
+    }
+    function canReviewAppearanceCertificate(data) {
+      return isSuperAdmin() || (isChiefCertificateAdmin()
+        && data.get("division", "") == appearanceDivisionForProfile(get(currentUserPath()).data));
+    }
+    function canReadAppearanceCertificate(data) {
+      return isSuperAdmin() || (isChiefCertificateAdmin()
+        && data.get("division", "") == appearanceDivisionForProfile(get(currentUserPath()).data));
+    }
+    function validCertificateDecisionUpdate() {
+      let profile = get(currentUserPath()).data;
+      let oldStatus = resource.data.get("status", "Pending");
+      let newStatus = request.resource.data.get("status", "");
+      let signatureAsset = request.resource.data.get("signatureAsset", "");
       return isVerifiedUser()
-        && (request.auth.token.email == "gerlieantipaso27@gmail.com" || isSuperAdmin());
+        && (isSuperAdmin() || isChiefCertificateAdmin())
+        && oldStatus != "Approved"
+        && newStatus in ["Approved", "Disapproved"]
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "decidedAt", "decidedBy", "signerName", "signerDesignation", "signerOffice", "signatureAsset"])
+        && request.resource.data.diff(resource.data).affectedKeys().hasAny(["status"])
+        && request.resource.data.decidedAt is timestamp
+        && request.resource.data.decidedBy == request.auth.uid
+        && request.resource.data.signerName == profile.get("name", "")
+        && request.resource.data.signerDesignation == profile.get("designation", "")
+        && request.resource.data.signerOffice == profileOffice(profile)
+        && (signatureAsset == "" || (newStatus == "Approved"
+          && signatureAsset == "field_operations_division_chief_signature.png"
+          && request.resource.data.signerOffice == "Field Operations Division"
+          && request.resource.data.signerDesignation == "Chief"));
     }
     function isValidPermitDecisionUpdate() {
       let decisionKey = request.resource.data.get("lastDecisionKey", "");
@@ -52,13 +204,36 @@ service cloud.firestore {
         && newStatuses.diff(oldStatuses).affectedKeys().hasAny([decisionKey])
         && oldDecision.get("status", "Pending") == "Pending"
         && newDecision.get("status", "") in ["Approved", "Disapproved"]
+        && newDecision.get("signerName", "") == get(currentUserPath()).data.get("name", "")
         && newDecision.diff(oldDecision).affectedKeys().hasOnly(["status", "decidedAt", "decidedBy", "signerName", "approvedPermitNo"]);
     }
-    function matchesAccountRole() {
-      return !request.resource.data.keys().hasAny(["accountRole"])
-        || request.resource.data.accountRole == (request.auth.token.email == "rjamescute2@gmail.com"
-          ? "superadmin"
-          : request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "user");
+    function validUserProfile(data) {
+      return data.keys().hasAll(["name", "position", "office", "assignment", "profileFieldsVersion", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin"])
+        && data.keys().hasOnly(["name", "position", "office", "assignment", "profileFieldsVersion", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole", "accountStatus", "isRootSuperAdmin", "emailVerified"])
+        && data.emailVerified is bool
+        && data.isRootSuperAdmin is bool
+        && data.accountRole in ["superadmin", "admin", "regular"]
+        && data.accountStatus in ["Pending", "Approved", "Disapproved"]
+        && (!data.keys().hasAny(["gender"]) || data.gender in ["Male", "Female"])
+        && (!data.keys().hasAny(["firstName"]) || (data.firstName is string && data.firstName.size() <= 60))
+        && (!data.keys().hasAny(["middleName"]) || (data.middleName is string && data.middleName.size() <= 60))
+        && (!data.keys().hasAny(["lastName"]) || (data.lastName is string && data.lastName.size() <= 60))
+        && (!data.keys().hasAny(["photoURL"]) || (data.photoURL is string && data.photoURL.size() <= 2048))
+        && (!data.keys().hasAny(["address"]) || (data.address is string && data.address.size() > 0 && data.address.size() <= 200))
+        && (!data.keys().hasAny(["taxIdentificationNo"]) || (data.taxIdentificationNo is string && data.taxIdentificationNo.size() > 0 && data.taxIdentificationNo.size() <= 30))
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 120
+        && data.position is string
+        && data.position.size() <= 120
+        && (!data.keys().hasAny(["designation"]) || (data.designation is string && data.designation.size() <= 120))
+        && data.office is string
+        && data.office.size() > 0
+        && data.office.size() <= 120
+        && data.assignment is string
+        && data.assignment.size() > 0
+        && data.assignment.size() <= 120
+        && data.profileFieldsVersion == 3;
     }
     function isAccomplishmentReportEditable(report) {
       let manilaNow = request.time + duration.value(8, "h");
@@ -76,29 +251,73 @@ service cloud.firestore {
               || (previousMonth == report.month && manilaNow.day() < 6))));
     }
     match /users/{userId} {
-      // All verified users can read profiles to populate personnel dropdowns.
-      allow read: if isVerifiedUser();
-      // New accounts must save their profile before email verification; only the same UID can write it.
-      allow create, update: if request.auth != null
+      // Approved users can read profiles for personnel pickers. A verified pending user can read only their own profile.
+      allow read: if isVerifiedUser() || isSuperAdmin()
+        || (isEmailVerified() && request.auth.uid == userId);
+      // Registration creates a pending account before the email verification link is used.
+      allow create: if request.auth != null
         && request.auth.uid == userId
-        && request.resource.data.keys().hasAll(["name", "position", "unit"])
-        && request.resource.data.keys().hasOnly(["name", "position", "unit", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole"])
-        && matchesAccountRole()
-        && (!request.resource.data.keys().hasAny(["gender"]) || request.resource.data.gender in ["Male", "Female"])
-        && (!request.resource.data.keys().hasAny(["firstName"]) || (request.resource.data.firstName is string && request.resource.data.firstName.size() <= 60))
-        && (!request.resource.data.keys().hasAny(["middleName"]) || (request.resource.data.middleName is string && request.resource.data.middleName.size() <= 60))
-        && (!request.resource.data.keys().hasAny(["lastName"]) || (request.resource.data.lastName is string && request.resource.data.lastName.size() <= 60))
-        && (!request.resource.data.keys().hasAny(["photoURL"]) || (request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 2048))
-        && (!request.resource.data.keys().hasAny(["address"]) || (request.resource.data.address is string && request.resource.data.address.size() > 0 && request.resource.data.address.size() <= 200))
-        && (!request.resource.data.keys().hasAny(["taxIdentificationNo"]) || (request.resource.data.taxIdentificationNo is string && request.resource.data.taxIdentificationNo.size() > 0 && request.resource.data.taxIdentificationNo.size() <= 30))
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 120
-        && request.resource.data.position is string
-        && request.resource.data.position.size() <= 120
-        && (!request.resource.data.keys().hasAny(["designation"]) || (request.resource.data.designation is string && request.resource.data.designation.size() <= 120))
-        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"];
-      allow delete: if false;
+        && request.auth.token.email_verified == false
+        && validUserProfile(request.resource.data)
+        && request.resource.data.emailVerified == false
+        && request.resource.data.isRootSuperAdmin == (request.auth.token.email == "rjamescute2@gmail.com")
+        && request.resource.data.accountRole == (request.auth.token.email == "rjamescute2@gmail.com"
+          ? "superadmin"
+          : request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "regular")
+        && request.resource.data.accountStatus == (request.auth.token.email == "rjamescute2@gmail.com" ? "Approved" : "Pending");
+      // Users may edit their own profile and mark their email verified, but cannot approve themselves or change their role.
+      allow update: if (isEmailVerified()
+          && request.auth.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name", "position", "office", "assignment", "projectProgram", "profileFieldsVersion", "unit", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin"])
+          && request.resource.data.keys().hasAll(["name", "position", "office", "assignment", "profileFieldsVersion", "emailVerified"])
+          && !request.resource.data.keys().hasAny(["unit", "projectProgram"])
+          && request.resource.data.emailVerified == true
+          && (request.resource.data.get("accountRole", "") == resource.data.get("accountRole", "")
+            || (!resource.data.keys().hasAny(["accountRole"])
+              && request.resource.data.accountRole == (request.auth.token.email == "rjamescute2@gmail.com"
+                ? "superadmin"
+                : request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "regular"))
+            || (request.auth.token.email == "rjamescute2@gmail.com" && request.resource.data.accountRole == "superadmin"))
+          && (request.resource.data.get("accountStatus", "Approved") == resource.data.get("accountStatus", "Approved")
+            || (request.auth.token.email == "rjamescute2@gmail.com" && request.resource.data.accountStatus == "Approved"))
+          && (request.resource.data.get("isRootSuperAdmin", false) == resource.data.get("isRootSuperAdmin", false)
+            || (request.auth.token.email == "rjamescute2@gmail.com" && request.resource.data.isRootSuperAdmin == true))
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 120
+          && request.resource.data.position is string
+          && request.resource.data.position.size() <= 120
+          && request.resource.data.office is string
+          && request.resource.data.office.size() > 0
+          && request.resource.data.office.size() <= 120
+          && request.resource.data.assignment is string
+          && request.resource.data.assignment.size() > 0
+          && request.resource.data.assignment.size() <= 120
+          && request.resource.data.profileFieldsVersion == 3
+          && (!request.resource.data.keys().hasAny(["gender"]) || request.resource.data.gender in ["Male", "Female"])
+          && (!request.resource.data.keys().hasAny(["firstName"]) || (request.resource.data.firstName is string && request.resource.data.firstName.size() <= 60))
+          && (!request.resource.data.keys().hasAny(["middleName"]) || (request.resource.data.middleName is string && request.resource.data.middleName.size() <= 60))
+          && (!request.resource.data.keys().hasAny(["lastName"]) || (request.resource.data.lastName is string && request.resource.data.lastName.size() <= 60))
+          && (!request.resource.data.keys().hasAny(["photoURL"]) || (request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 2048))
+          && (!request.resource.data.keys().hasAny(["address"]) || (request.resource.data.address is string && request.resource.data.address.size() > 0 && request.resource.data.address.size() <= 200))
+          && (!request.resource.data.keys().hasAny(["taxIdentificationNo"]) || (request.resource.data.taxIdentificationNo is string && request.resource.data.taxIdentificationNo.size() > 0 && request.resource.data.taxIdentificationNo.size() <= 30))
+          && (!request.resource.data.keys().hasAny(["designation"]) || (request.resource.data.designation is string && request.resource.data.designation.size() <= 120)))
+        || (isSuperAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["office", "assignment", "projectProgram", "profileFieldsVersion", "unit"])
+          && request.resource.data.office == profileOffice(resource.data)
+          && request.resource.data.assignment == profileAssignment(resource.data)
+          && request.resource.data.profileFieldsVersion == 3
+          && !request.resource.data.keys().hasAny(["unit", "projectProgram"]))
+        || (isSuperAdmin()
+          && userId != request.auth.uid
+          && resource.data.get("isRootSuperAdmin", false) != true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["accountRole", "accountStatus"])
+          && request.resource.data.accountRole in ["superadmin", "admin", "regular", "user"]
+          && request.resource.data.accountStatus in ["Pending", "Approved", "Disapproved"]);
+      // Deleting a profile removes the account from the app and prevents it from passing isVerifiedUser().
+      allow delete: if isSuperAdmin()
+        && request.auth.uid != userId
+        && resource.data.get("isRootSuperAdmin", false) != true;
     }
     match /chats/{chatId} {
       allow read: if isVerifiedUser() && request.auth.uid in resource.data.members;
@@ -166,14 +385,15 @@ service cloud.firestore {
       }
     }
     match /calendarOfActivities/{calendarId} {
-      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
-        || resource.data.unit == signedInUnit()
-        || resource.data.status == "Approved");
+      allow read: if isVerifiedUser()
+        && (isCalendarOwnerOrSameUnit(calendarId)
+          || resource.data.status == "Approved");
       allow create: if isVerifiedUser()
         && request.resource.data.keys().hasAll(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
         && request.resource.data.keys().hasOnly(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
         && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"]
+        && request.resource.data.unit is string
+        && request.resource.data.unit == signedInUnit()
         && request.resource.data.month is string
         && request.resource.data.month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
         && request.resource.data.status in ["Pending", "Approved"]
@@ -227,7 +447,8 @@ service cloud.firestore {
         && getAfter(calendarPath(request.resource.data.calendarId)).data.unit == request.resource.data.unit
         && getAfter(calendarPath(request.resource.data.calendarId)).data.month == request.resource.data.month
         && getAfter(calendarPath(request.resource.data.calendarId)).data.preparedName == request.resource.data.preparedName
-        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"]
+        && request.resource.data.unit is string
+        && request.resource.data.unit.size() > 0
         && request.resource.data.month is string
         && request.resource.data.preparedName is string
         && request.resource.data.preparedName.size() > 0
@@ -259,9 +480,10 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(["recipientId", "ownerId", "calendarId", "unit", "month", "activities", "read", "createdAt"])
         && request.resource.data.recipientId is string
         && request.resource.data.recipientId != request.auth.uid
-        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "Field Operations Division"]
-        && get(/databases/$(database)/documents/users/$(request.resource.data.recipientId)).data.unit == request.resource.data.unit
+        && request.resource.data.unit is string
+        && request.resource.data.unit.size() > 0
         && request.resource.data.calendarId is string
+        && calendarRecipientInOwnerScope(request.resource.data.calendarId, request.resource.data.recipientId)
         && getAfter(calendarPath(request.resource.data.calendarId)).data.ownerId == request.resource.data.ownerId
         && getAfter(calendarPath(request.resource.data.calendarId)).data.unit == request.resource.data.unit
         && (request.resource.data.ownerId == request.auth.uid
@@ -310,6 +532,12 @@ service cloud.firestore {
       function documentPath(collectionName, documentId) {
         return /databases/$(database)/documents/$(collectionName)/$(documentId);
       }
+      function isRegularCertificateRecipient(userId) {
+        let profilePath = /databases/$(database)/documents/users/$(userId);
+        return exists(profilePath)
+          && get(profilePath).data.get("accountRole", "") in ["regular", "user"]
+          && get(profilePath).data.get("accountStatus", "Approved") == "Approved";
+      }
       allow read: if isVerifiedUser()
         && (resource.data.recipientId == request.auth.uid || resource.data.ownerId == request.auth.uid);
       allow create: if isVerifiedUser()
@@ -351,7 +579,8 @@ service cloud.firestore {
           || (request.resource.data.documentType == "Leave Application"
             && existsAfter(documentPath("leaveApplications", request.resource.data.documentId))
             && getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.ownerId == request.auth.uid
-            && get(documentPath("users", request.resource.data.recipientId)).data.accountRole == "superadmin"
+            && get(documentPath("users", request.resource.data.recipientId)).data.get("accountRole", "") in ["superadmin", "admin"]
+            && get(documentPath("users", request.resource.data.recipientId)).data.get("accountStatus", "Approved") == "Approved"
             && request.resource.data.applicantName == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.name
             && request.resource.data.leaveType == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.leaveType
             && request.resource.data.inclusiveDateFrom == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.inclusiveDateFrom
@@ -364,6 +593,33 @@ service cloud.firestore {
             && request.resource.data.travelMonth == getAfter(documentPath("myTevRecords", request.resource.data.documentId)).data.month
             && request.resource.data.totalAmount is number
             && request.resource.data.totalAmount >= 0)
+          || (request.resource.data.documentType == "Certificate Approval"
+            && get(currentUserPath()).data.get("accountRole",
+              request.auth.token.email == "rjamescute2@gmail.com" ? "superadmin"
+                : request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "regular") in ["regular", "user"]
+            && request.resource.data.keys().hasAll(["certificateType", "activityTitle", "dateFrom", "dateTo", "destination"])
+            && request.resource.data.certificateType == "Appearance"
+            && existsAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId))
+            && getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.ownerId == request.auth.uid
+            && getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.get("status", "Pending") == "Pending"
+            && request.resource.data.activityTitle == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.eventTitle
+            && request.resource.data.dateFrom == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.eventDateFrom
+            && request.resource.data.dateTo == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.eventDateTo
+            && request.resource.data.destination == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.destination
+            && isAppearanceChiefAdminRecipient(request.resource.data.recipientId, getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.division))
+          || (request.resource.data.documentType == "Certificate Decision"
+            && request.resource.data.keys().hasAll(["certificateType", "certificateCollection", "decisionStatus", "activityTitle"])
+            && request.resource.data.certificateCollection in ["certificatesOfAppearance", "completionCertificates", "appreciationCertificates", "participationCertificates"]
+            && request.resource.data.decisionStatus in ["Approved", "Disapproved"]
+            && isRegularCertificateRecipient(request.resource.data.recipientId)
+            && (isSuperAdmin() || isChiefCertificateAdmin())
+            && existsAfter(documentPath(request.resource.data.certificateCollection, request.resource.data.documentId))
+            && getAfter(documentPath(request.resource.data.certificateCollection, request.resource.data.documentId)).data.ownerId == request.resource.data.recipientId
+            && getAfter(documentPath(request.resource.data.certificateCollection, request.resource.data.documentId)).data.status == request.resource.data.decisionStatus
+            && getAfter(documentPath(request.resource.data.certificateCollection, request.resource.data.documentId)).data.decidedBy == request.auth.uid
+            && request.resource.data.certificateType == (request.resource.data.certificateCollection == "certificatesOfAppearance" ? "Appearance"
+              : request.resource.data.certificateCollection == "completionCertificates" ? "Completion"
+              : request.resource.data.certificateCollection == "appreciationCertificates" ? "Appreciation" : "Participation"))
         );
       allow update: if isVerifiedUser()
         && resource.data.recipientId == request.auth.uid
@@ -382,7 +638,7 @@ service cloud.firestore {
         && request.resource.data.readAt is timestamp;
     }
     match /permits/{permitId} {
-      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isPermitAdmin());
+      allow read: if isVerifiedUser();
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
         && !request.resource.data.keys().hasAny(["personStatuses", "lastDecisionKey"]);
@@ -406,10 +662,13 @@ service cloud.firestore {
       allow read: if isVerifiedUser();
       allow create, update: if isPermitAdmin()
         && request.resource.data.keys().hasAll(["permitId", "statusKey", "status", "permitNo", "name", "date", "purpose", "unit"])
-        && request.resource.data.keys().hasOnly(["permitId", "statusKey", "status", "permitNo", "approvedPermitNo", "name", "date", "purpose", "unit"])
+        && request.resource.data.keys().hasOnly(["permitId", "statusKey", "status", "permitNo", "approvedPermitNo", "name", "date", "purpose", "unit", "ownerId"])
         && request.resource.data.permitId is string
         && request.resource.data.statusKey is string
         && request.resource.data.status == "Approved"
+        && (!request.resource.data.keys().hasAny(["ownerId"])
+          || (request.resource.data.ownerId is string
+            && request.resource.data.ownerId == getAfter(/databases/$(database)/documents/permits/$(request.resource.data.permitId)).data.ownerId))
         && (!request.resource.data.keys().hasAny(["approvedPermitNo"])
           || (request.resource.data.approvedPermitNo is string
             && request.resource.data.approvedPermitNo.matches("^[0-9]{4}-[0-9]{4,}$")))
@@ -421,7 +680,8 @@ service cloud.firestore {
     }
     match /specialOrders/{orderId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
-        || (resource.data.ownerUnit is string && resource.data.ownerUnit == signedInUnit()));
+        || (resource.data.ownerUnit is string && resource.data.ownerUnit == signedInUnit())
+        || request.auth.uid in resource.data.get("recipientIds", []));
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerUnit == signedInUnit();
       allow update: if isVerifiedUser() && resource.data.ownerId == request.auth.uid
@@ -430,29 +690,51 @@ service cloud.firestore {
       allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /certificatesOfAppearance/{certificateId} {
-      allow read, update, delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || canReadAppearanceCertificate(resource.data));
+      allow update: if (isVerifiedUser()
+          && resource.data.ownerId == request.auth.uid
+          && resource.data.get("status", "Pending") != "Approved"
+          && request.resource.data.get("status", "Pending") == resource.data.get("status", "Pending"))
+        || (canReviewAppearanceCertificate(resource.data)
+          && validCertificateDecisionUpdate());
+      allow delete: if isVerifiedUser()
+        && resource.data.get("status", "Pending") != "Approved"
+        && (resource.data.ownerId == request.auth.uid || canReviewAppearanceCertificate(resource.data));
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.keys().hasAll(["eventTitle", "destination", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt"])
-        && request.resource.data.keys().hasOnly(["eventTitle", "destination", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasOnly(["eventTitle", "destination", "ownerOffice", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt", "recordType", "status"])
         && request.resource.data.eventTitle is string
         && request.resource.data.destination is string
         && request.resource.data.eventDateFrom is string
         && request.resource.data.eventDateTo is string
         && request.resource.data.people is list
-        && request.resource.data.people.size() > 0
-        && request.resource.data.people.size() <= 100
         && request.resource.data.signatoryName is string
         && request.resource.data.designation is string
         && request.resource.data.division is string
-        && request.resource.data.createdAt is timestamp;
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.get("recordType", "appearance") in ["appearance", "blank"]
+        && request.resource.data.get("status", "") == "Pending"
+        && request.resource.data.people.size() <= 100
+        && (request.resource.data.get("recordType", "appearance") == "blank"
+          ? request.resource.data.people.size() == 0
+            && request.resource.data.eventTitle == "Blank Certificate of Appearance"
+            && request.resource.data.keys().hasAll(["ownerOffice"])
+            && request.resource.data.ownerOffice is string
+            && request.resource.data.ownerOffice.size() > 0
+            && request.resource.data.ownerOffice == signedInOffice()
+            && request.resource.data.destination == request.resource.data.ownerOffice
+            && request.resource.data.eventDateFrom == ""
+            && request.resource.data.eventDateTo == ""
+          : request.resource.data.people.size() > 0);
     }
     match /appreciationCertificates/{certificateId} {
-      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.keys().hasAll(["unit", "speakerName", "speakerGender", "speakerPosition", "speakerOffice", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
-        && request.resource.data.keys().hasOnly(["unit", "speakerName", "speakerGender", "speakerPosition", "speakerOffice", "speakers", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasAll(["unit", "speakerName", "speakerGender", "speakerPosition", "speakerOffice", "eventTitle", "eventDateFrom", "eventDateTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasOnly(["unit", "speakerName", "speakerGender", "speakerPosition", "speakerOffice", "speakers", "eventTitle", "eventDateFrom", "eventDateTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt", "status"])
+        && request.resource.data.get("status", "") == "Pending"
         && request.resource.data.unit in ["AMIA", "DRRM"]
         && request.resource.data.speakerName is string
         && request.resource.data.speakerName.size() > 0
@@ -471,10 +753,6 @@ service cloud.firestore {
         && request.resource.data.eventDateFrom.size() > 0
         && request.resource.data.eventDateTo is string
         && request.resource.data.eventDateTo.size() > 0
-        && request.resource.data.eventTimeFrom is string
-        && request.resource.data.eventTimeFrom.size() > 0
-        && request.resource.data.eventTimeTo is string
-        && request.resource.data.eventTimeTo.size() > 0
         && request.resource.data.eventDestination is string
         && request.resource.data.eventDestination.size() > 0
         && request.resource.data.eventDestination.size() <= 240
@@ -493,8 +771,9 @@ service cloud.firestore {
             && request.resource.data.speakers[0].position == request.resource.data.speakerPosition
             && request.resource.data.speakers[0].office == request.resource.data.speakerOffice))
         && request.resource.data.createdAt is timestamp;
-      allow update: if isVerifiedUser()
+      allow update: if (isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
+        && resource.data.get("status", "Pending") != "Approved"
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["speakers", "speakerName", "speakerGender", "speakerPosition", "speakerOffice"])
         && request.resource.data.speakers is list
@@ -514,15 +793,19 @@ service cloud.firestore {
         && request.resource.data.speakers[0].name == request.resource.data.speakerName
         && request.resource.data.speakers[0].gender == request.resource.data.speakerGender
         && request.resource.data.speakers[0].position == request.resource.data.speakerPosition
-        && request.resource.data.speakers[0].office == request.resource.data.speakerOffice;
-      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+        && request.resource.data.speakers[0].office == request.resource.data.speakerOffice)
+        || (canReviewUnitCertificate(resource.data) && validCertificateDecisionUpdate());
+      allow delete: if isVerifiedUser()
+        && resource.data.get("status", "Pending") != "Approved"
+        && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));
     }
     match /completionCertificates/{certificateId} {
-      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.keys().hasAll(["unit", "participantNames", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
-        && request.resource.data.keys().hasOnly(["unit", "participantNames", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasAll(["unit", "participantNames", "eventTitle", "eventDateFrom", "eventDateTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasOnly(["unit", "participantNames", "eventTitle", "eventDateFrom", "eventDateTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt", "status"])
+        && request.resource.data.get("status", "") == "Pending"
         && request.resource.data.unit in ["AMIA", "DRRM"]
         && request.resource.data.participantNames is list
         && request.resource.data.participantNames.size() > 0
@@ -532,8 +815,6 @@ service cloud.firestore {
         && request.resource.data.eventTitle.size() <= 240
         && request.resource.data.eventDateFrom is string
         && request.resource.data.eventDateTo is string
-        && request.resource.data.eventTimeFrom is string
-        && request.resource.data.eventTimeTo is string
         && request.resource.data.eventDestination is string
         && request.resource.data.eventDestination.size() > 0
         && request.resource.data.eventDestination.size() <= 240
@@ -543,21 +824,26 @@ service cloud.firestore {
         && request.resource.data.distributionPlace.size() <= 240
         && (!request.resource.data.distributionSameAsDestination || request.resource.data.distributionPlace == request.resource.data.eventDestination)
         && request.resource.data.createdAt is timestamp;
-      allow update: if isVerifiedUser()
+      allow update: if (isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
+        && resource.data.get("status", "Pending") != "Approved"
         && request.resource.data.diff(resource.data).affectedKeys().hasAny(["participantNames"])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["participantNames"])
         && request.resource.data.participantNames is list
         && request.resource.data.participantNames.size() > 0
-        && request.resource.data.participantNames.size() <= 100;
-      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+        && request.resource.data.participantNames.size() <= 100)
+        || (canReviewUnitCertificate(resource.data) && validCertificateDecisionUpdate());
+      allow delete: if isVerifiedUser()
+        && resource.data.get("status", "Pending") != "Approved"
+        && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));
     }
     match /participationCertificates/{certificateId} {
-      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.keys().hasAll(["unit", "participantNames", "participantGenders", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
-        && request.resource.data.keys().hasOnly(["unit", "participantNames", "participantGenders", "eventTitle", "eventDateFrom", "eventDateTo", "eventTimeFrom", "eventTimeTo", "eventDestination", "distributionDate", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasAll(["unit", "participantNames", "participantGenders", "eventTitle", "eventDateFrom", "eventDateTo", "eventDestination", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt"])
+        && request.resource.data.keys().hasOnly(["unit", "participantNames", "participantGenders", "eventTitle", "eventDateFrom", "eventDateTo", "eventDestination", "distributionDate", "distributionSameAsDestination", "distributionPlace", "ownerId", "createdAt", "status"])
+        && request.resource.data.get("status", "") == "Pending"
         && request.resource.data.unit in ["AMIA", "DRRM"]
         && request.resource.data.participantNames is list
         && request.resource.data.participantNames.size() > 0
@@ -570,8 +856,6 @@ service cloud.firestore {
         && request.resource.data.eventTitle.size() <= 240
         && request.resource.data.eventDateFrom is string
         && request.resource.data.eventDateTo is string
-        && request.resource.data.eventTimeFrom is string
-        && request.resource.data.eventTimeTo is string
         && request.resource.data.eventDestination is string
         && request.resource.data.eventDestination.size() > 0
         && request.resource.data.eventDestination.size() <= 240
@@ -582,8 +866,9 @@ service cloud.firestore {
         && (!request.resource.data.keys().hasAny(["distributionDate"]) || request.resource.data.distributionDate is string)
         && (!request.resource.data.distributionSameAsDestination || request.resource.data.distributionPlace == request.resource.data.eventDestination)
         && request.resource.data.createdAt is timestamp;
-      allow update: if isVerifiedUser()
+      allow update: if (isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
+        && resource.data.get("status", "Pending") != "Approved"
         && request.resource.data.diff(resource.data).affectedKeys().hasAny(["participantNames", "participantGenders"])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["participantNames", "participantGenders"])
         && request.resource.data.participantNames is list
@@ -591,8 +876,11 @@ service cloud.firestore {
         && request.resource.data.participantNames.size() <= 100
         && request.resource.data.participantGenders is list
         && request.resource.data.participantGenders.size() == request.resource.data.participantNames.size()
-        && request.resource.data.participantGenders.hasOnly(["female", "male"]);
-      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+        && request.resource.data.participantGenders.hasOnly(["female", "male"]))
+        || (canReviewUnitCertificate(resource.data) && validCertificateDecisionUpdate());
+      allow delete: if isVerifiedUser()
+        && resource.data.get("status", "Pending") != "Approved"
+        && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));
     }
     match /leaveApplications/{leaveApplicationId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
@@ -614,7 +902,9 @@ service cloud.firestore {
         && request.resource.data.lastName.size() > 0
         && request.resource.data.lastName.size() <= 60
         && request.resource.data.name == request.resource.data.lastName + ", " + request.resource.data.firstName + (request.resource.data.middleName.size() > 0 ? " " + request.resource.data.middleName : "")
-        && request.resource.data.office in ["FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"]
+        && request.resource.data.office is string
+        && request.resource.data.office.size() > 0
+        && request.resource.data.office.size() <= 120
         && request.resource.data.position is string
         && request.resource.data.position.size() > 0
         && request.resource.data.position.size() <= 120
@@ -707,7 +997,9 @@ service cloud.firestore {
         && request.resource.data.lastName is string
         && request.resource.data.lastName.size() > 0
         && request.resource.data.lastName.size() <= 60
-        && request.resource.data.office in ["FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"]
+        && request.resource.data.office is string
+        && request.resource.data.office.size() > 0
+        && request.resource.data.office.size() <= 120
         && request.resource.data.leaveType is string
         && request.resource.data.leaveType.size() > 0
         && request.resource.data.leaveType.size() <= 100
@@ -728,6 +1020,7 @@ service cloud.firestore {
     match /travelOrders/{travelOrderId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
         || (resource.data.ownerUnit is string && resource.data.ownerUnit == signedInUnit())
+        || request.auth.uid in resource.data.get("recipientIds", [])
         || resource.data.status in ["Approved", "Pending", "Processing"]);
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerUnit == signedInUnit();
@@ -758,7 +1051,8 @@ service cloud.firestore {
     }
     match /ntaRecords/{ntaId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
-        || (resource.data.ownerUnit is string && resource.data.ownerUnit == signedInUnit()));
+        || (resource.data.ownerUnit is string && resource.data.ownerUnit == signedInUnit())
+        || request.auth.uid in resource.data.get("recipientIds", []));
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerUnit == signedInUnit();
       allow update: if isVerifiedUser() && resource.data.ownerId == request.auth.uid
@@ -843,13 +1137,13 @@ service cloud.firestore {
           && getAfter(sourcePath).data.ownerId == request.auth.uid
           && getAfter(sourcePath).data.sharedWith is list
           && recordData.ownerId in getAfter(sourcePath).data.sharedWith
-          && get(ownerPath).data.unit is string
-          && get(ownerPath).data.unit.size() > 0
+          && profileAssignment(get(ownerPath).data) is string
+          && profileAssignment(get(ownerPath).data).size() > 0
           && recordData.profile.name == get(ownerPath).data.name
           && recordData.profile.address == get(ownerPath).data.address
           && recordData.profile.taxIdentificationNo == get(ownerPath).data.taxIdentificationNo
           && recordData.profile.position == get(ownerPath).data.position
-          && recordData.profile.unit == get(ownerPath).data.unit
+          && recordData.profile.unit == profileAssignment(get(ownerPath).data)
           && recordData.month == getAfter(sourcePath).data.month
           && recordData.officialStation == getAfter(sourcePath).data.officialStation
           && recordData.travelReferences == getAfter(sourcePath).data.travelReferences

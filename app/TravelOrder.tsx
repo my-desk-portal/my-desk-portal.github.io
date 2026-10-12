@@ -6,7 +6,7 @@ import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestam
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { loadPdfTools } from "@/lib/pdf-tools";
-import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
+import { filterPersonnelForAccount, loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
 import { getDocumentNotificationReferences, makeDocumentNotification } from "@/lib/document-notifications";
 import { loadUnitSharedRecords } from "@/lib/unit-shared-records";
 import DeleteConfirmation from "./DeleteConfirmation";
@@ -58,7 +58,7 @@ function formatTravelDate(value: string) {
   return new Intl.DateTimeFormat("en-PH", { month: "long", day: "numeric", year: "numeric" }).format(new Date(`${value}T00:00:00`));
 }
 
-function TravelOrderForm({ user, unit, initialOrder, onSaved, onCancel, onError }: { user: User; unit: string | null; initialOrder?: TravelOrder; onSaved: (order: TravelOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
+function TravelOrderForm({ user, office, unit, initialOrder, onSaved, onCancel, onError }: { user: User; office: string; unit: string | null; initialOrder?: TravelOrder; onSaved: (order: TravelOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [people, setPeople] = useState<TravelOrderPerson[]>(() => initialOrder?.people.map((person) => ({ ...person })) ?? [{ name: "", position: "", salary: "" }]);
   const [officeStation, setOfficeStation] = useState<(typeof officeStations)[number]>(initialOrder?.officeStation as (typeof officeStations)[number] ?? officeStations[0]);
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
@@ -82,8 +82,7 @@ function TravelOrderForm({ user, unit, initialOrder, onSaved, onCancel, onError 
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const entries = await loadAccountPersonnel();
-        if (!entries.length) throw new Error("No registered accounts have a name.");
+        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), office, unit ?? "");
         if (!cancelled) {
           setPersonnel(entries);
           setPersonnelStatus("ready");
@@ -94,7 +93,7 @@ function TravelOrderForm({ user, unit, initialOrder, onSaved, onCancel, onError 
     }
     void loadPersonnel();
     return () => { cancelled = true; };
-  }, []);
+  }, [office, unit]);
 
   function updatePerson(index: number, update: Partial<TravelOrderPerson>) {
     setPeople((current) => current.map((person, itemIndex) => itemIndex === index ? { ...person, ...update } : person));
@@ -106,7 +105,7 @@ function TravelOrderForm({ user, unit, initialOrder, onSaved, onCancel, onError 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!db) { onError("Firebase is not configured."); return; }
-    if (!unit) { onError("Your account unit is still loading. Try saving again in a moment."); return; }
+    if (!unit) { onError("Your Assignment is still loading. Try saving again in a moment."); return; }
     if (!transportation.length) { onError("Select at least one means of transportation."); return; }
     setBusy(true);
     onError("");
@@ -227,7 +226,7 @@ function TravelOrderList({ orders, ownerId, onNew, onEdit, onPreview, onCopy, on
   }
 
   return <section className="content-section travel-order-list-section">
-    <div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Travel Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "Travel Order" : "Travel Orders"} available to your unit.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>
+    <div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Travel Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "Travel Order" : "Travel Orders"} available to your Assignment.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>
     {orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Travel Orders yet</h3><p>Create a Travel Order for one or more personnel.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Travel Order</button></div> : <div className="permit-table">
       {orders.length > pageSize && <nav className="travel-order-pagination" aria-label="Travel Order pages"><span>Showing {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, orders.length)} of {orders.length}</span><div className="travel-order-pagination-controls"><button type="button" className="ghost-button" onClick={() => setCurrentPage((page) => page - 1)} disabled={currentPage === 0}>Previous</button><span aria-live="polite">Page {currentPage + 1} of {pageCount}</span><button type="button" className="ghost-button" onClick={() => setCurrentPage((page) => page + 1)} disabled={currentPage === pageCount - 1}>Next</button></div></nav>}
       <div className="table-head travel-order-list-head"><span>Date</span><span>Personnel</span><span>Place of Travel</span><span>Status</span></div>
@@ -344,7 +343,7 @@ function TravelOrderPreview({ order, onClose }: { order: TravelOrder; onClose: (
   return <div className="preview-backdrop travel-order-preview-backdrop"><div className="preview-toolbar"><span>Travel Order preview · {order.people.length} {order.people.length === 1 ? "page" : "pages"}</span><button type="button" className="ghost-button" onClick={onClose}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>{error && <small className="download-error">{error}</small>}{printError && <small className="download-error" role="alert">{printError}</small>}</div><div ref={pagesRef} className="travel-order-preview-pages">{order.people.map((person, index) => <TravelOrderPaper key={`${order.id}-${index}`} order={order} person={person} />)}</div></div>;
 }
 
-export default function TravelOrderModule({ user, unit }: { user: User; unit: string | null }) {
+export default function TravelOrderModule({ user, office, unit }: { user: User; office: string; unit: string | null }) {
   const [orders, setOrders] = useState<TravelOrder[]>([]);
   const [view, setView] = useState<"list" | "new">("list");
   const [editingOrder, setEditingOrder] = useState<TravelOrder | null>(null);
@@ -408,7 +407,7 @@ export default function TravelOrderModule({ user, unit }: { user: User; unit: st
   async function copyOrder(order: TravelOrder) {
     const firestore = db;
     if (!firestore) return;
-    if (!unit) { setError("Your account unit is still loading. Try copying again in a moment."); return; }
+    if (!unit) { setError("Your Assignment is still loading. Try copying again in a moment."); return; }
     setCopyingId(order.id);
     setError("");
     try {
@@ -514,7 +513,7 @@ export default function TravelOrderModule({ user, unit }: { user: User; unit: st
 
   return <>
     {error && <div className="error-message travel-order-error">{error}</div>}
-    {editingOrder ? <TravelOrderForm key={editingOrder.id} user={user} unit={unit} initialOrder={editingOrder} onSaved={(updated) => { setOrders((current) => current.map((order) => order.id === updated.id ? updated : order)); setEditingOrder(null); }} onCancel={() => setEditingOrder(null)} onError={setError} /> : view === "new" ? <TravelOrderForm user={user} unit={unit} onSaved={(order) => { setOrders((current) => [order, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} ownerId={user.uid} onNew={() => { setError(""); setView("new"); }} onEdit={(order) => { setError(""); setEditingOrder(order); }} onPreview={setPreview} onCopy={(order) => void copyOrder(order)} onDelete={setPendingDelete} onStatusChange={changeStatus} updatingId={updatingId} deletingId={deletingId} copyingId={copyingId} />}
+    {editingOrder ? <TravelOrderForm key={editingOrder.id} user={user} office={office} unit={unit} initialOrder={editingOrder} onSaved={(updated) => { setOrders((current) => current.map((order) => order.id === updated.id ? updated : order)); setEditingOrder(null); }} onCancel={() => setEditingOrder(null)} onError={setError} /> : view === "new" ? <TravelOrderForm user={user} office={office} unit={unit} onSaved={(order) => { setOrders((current) => [order, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} ownerId={user.uid} onNew={() => { setError(""); setView("new"); }} onEdit={(order) => { setError(""); setEditingOrder(order); }} onPreview={setPreview} onCopy={(order) => void copyOrder(order)} onDelete={setPendingDelete} onStatusChange={changeStatus} updatingId={updatingId} deletingId={deletingId} copyingId={copyingId} />}
     <DeleteConfirmation open={Boolean(pendingDelete && pendingDelete.ownerId === user.uid)} title="Confirm Travel Order Deletion?" description="Are you sure you want to delete this Travel Order? This action cannot be undone. Its assigned TO No. values will be released." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteOrder(pendingDelete); }} />
     {preview && <TravelOrderPreview order={preview} onClose={() => setPreview(null)} />}
   </>;

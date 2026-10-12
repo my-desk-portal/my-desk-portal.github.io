@@ -19,6 +19,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -34,8 +35,9 @@ import {
   type QuerySnapshot,
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
-import { loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
-import { accountRoleForEmail } from "@/lib/user-roles";
+import { filterPersonnelForAccount, loadPersonnel as loadAccountPersonnel, type PersonnelEntry } from "@/lib/personnel";
+import { accountRoleForEmail, normalizeAccountRole, normalizeAccountStatus, SUPERADMIN_EMAIL, type AccountRole, type AccountStatus } from "@/lib/user-roles";
+import { accountOffice, accountAssignment, accountOfficeOptions, accountProfileSelection, assignmentsForOffice, migratedAccountProfileFields } from "@/lib/account-profile";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import type { CalendarOfActivitiesApprovalNotification, CalendarOfActivitiesNotification } from "./CalendarOfActivities";
 import { calendarOfActivitiesApprovalNotificationsCollection, calendarOfActivitiesNotificationsCollection } from "@/lib/calendar-of-activities-storage";
@@ -66,14 +68,16 @@ const CertificateOfAppearance = dynamic(() => import("./CertificateOfAppearance"
 const CompletionCertificate = dynamic(() => import("./CompletionCertificate"));
 const AppreciationCertificate = dynamic(() => import("./AppreciationCertificate"));
 const ParticipationCertificate = dynamic(() => import("./ParticipationCertificate"));
+const CertificateApproval = dynamic(() => import("./CertificateApproval"));
+const UserMasterList = dynamic(() => import("./UserMasterList"));
 
-function isPermitAdmin(email?: string | null) {
-  const role = accountRoleForEmail(email);
+function isPermitAdmin(email?: string | null, accountRole?: unknown) {
+  const role = normalizeAccountRole(accountRole, email);
   return role === "admin" || role === "superadmin";
 }
 
-type Unit = "AMIA" | "AGRISTAT" | "DRRM";
-type AccountUnit = Unit | "Field Operations Division";
+type Unit = string;
+type AccountAssignment = string;
 type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string; approvedPermitNo?: string };
 type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personIds?: string[]; recipientIds?: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; participantPositions?: string[]; participantOffices?: string[]; participantUserIds?: string[]; participantIds?: string[]; recipientIds?: string[]; signatoryName?: string; signatoryDesignation?: string; ownerId: string; ownerUnit?: string; createdAt?: unknown };
@@ -127,15 +131,6 @@ const amiaDocumentTrackingLinks = [
   { label: "Travel Order Maker 2026", href: "https://docs.google.com/spreadsheets/d/16xng3LBmgNAlBtB115t8ZWzPoPOxXUUQ/edit?gid=8330880" },
   { label: "Travel Orders and Post Travel Reports", href: "https://docs.google.com/spreadsheets/d/1hniVoqkTFN7WmouP2NrFzmfQ4bNWg5sK/edit?gid=1841021416" },
 ];
-const profileUnitOptions: { value: Unit; label: string }[] = [
-  { value: "AGRISTAT", label: "FOD-AGRISTAT" },
-  { value: "AMIA", label: "FOD-AMIA" },
-  { value: "DRRM", label: "FOD-DRRM" },
-];
-const accountUnitOptions: { value: AccountUnit; label: string }[] = [
-  ...profileUnitOptions,
-  { value: "Field Operations Division", label: "Field Operations Division" },
-];
 const calendarOfActivitiesUnitLabel = (unit: string) => unit === "Field Operations Division" ? unit : `FOD-${unit}`;
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 function tinCaretPosition(value: string, digitsBeforeCaret: number) {
@@ -184,13 +179,44 @@ function handleTaxIdentificationNoKeyDown(event: ReactKeyboardEvent<HTMLInputEle
 }
 
 function permitUnitForPersonnel(person?: PersonnelEntry): Unit | "" {
-  const value = person?.unit.trim().toUpperCase();
-  if (units.includes(value as Unit)) return value as Unit;
-  return value === "AGRICULTURAL STATISTICS" ? "AGRISTAT" : "";
+  const value = person?.unit.trim() ?? "";
+  if (value.toUpperCase() === "AGRICULTURAL STATISTICS") return "AGRISTAT";
+  return value;
 }
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${date}T00:00:00`));
+}
+
+async function migrateAccountProfileFieldsForSuperAdmin() {
+  if (!db) return;
+  const snapshot = await getDocs(collection(db, "users"));
+  const legacyProfiles = snapshot.docs.filter((item) => {
+    const data = item.data();
+    return data.profileFieldsVersion !== 3 || !data.office || !data.assignment
+      || Object.prototype.hasOwnProperty.call(data, "unit")
+      || Object.prototype.hasOwnProperty.call(data, "projectProgram");
+  });
+  for (let offset = 0; offset < legacyProfiles.length; offset += 450) {
+    const batch = writeBatch(db);
+    legacyProfiles.slice(offset, offset + 450).forEach((item) => {
+      batch.set(item.ref, { ...migratedAccountProfileFields(item.data()), unit: deleteField(), projectProgram: deleteField() }, { merge: true });
+    });
+    await batch.commit();
+  }
+}
+
+function formatCertificateNotificationSchedule(from?: string, to?: string) {
+  if (!from) return "Not specified";
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to || from}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "Not specified";
+  const month = (date: Date) => new Intl.DateTimeFormat("en-PH", { month: "long" }).format(date);
+  const year = (date: Date) => date.getFullYear();
+  if (start.getTime() === end.getTime()) return `${month(start)} ${start.getDate()}, ${year(start)}`;
+  if (start.getMonth() === end.getMonth() && year(start) === year(end)) return `${month(start)} ${start.getDate()}-${end.getDate()}, ${year(end)}`;
+  if (year(start) === year(end)) return `${month(start)} ${start.getDate()}-${month(end)} ${end.getDate()}, ${year(end)}`;
+  return `${month(start)} ${start.getDate()}, ${year(start)}-${month(end)} ${end.getDate()}, ${year(end)}`;
 }
 
 function formatTravelMonth(value?: string) {
@@ -259,7 +285,8 @@ function Login({ onError }: { onError: (message: string) => void }) {
   const [lastName, setLastName] = useState("");
   const [gender, setGender] = useState("");
   const [position, setPosition] = useState("");
-  const [unit, setUnit] = useState<AccountUnit | "">("");
+  const [assignment, setAssignment] = useState<AccountAssignment>("");
+  const [office, setOffice] = useState("");
   const [address, setAddress] = useState("");
   const [taxIdentificationNo, setTaxIdentificationNo] = useState("");
   const [email, setEmail] = useState("");
@@ -286,8 +313,12 @@ function Login({ onError }: { onError: (message: string) => void }) {
       setAuthMessage({ kind: "error", text: "Select your gender." });
       return;
     }
-    if (registering && !unit) {
-      setAuthMessage({ kind: "error", text: "Select your unit." });
+    if (registering && !accountOfficeOptions.includes(office as (typeof accountOfficeOptions)[number])) {
+      setAuthMessage({ kind: "error", text: "Select your Office." });
+      return;
+    }
+    if (registering && !assignmentsForOffice(office).some((option) => option === assignment)) {
+      setAuthMessage({ kind: "error", text: "Select your Assignment." });
       return;
     }
     if (registering && !address.trim()) {
@@ -308,6 +339,10 @@ function Login({ onError }: { onError: (message: string) => void }) {
     }
     if (registering && position.trim().length > 120) {
       setAuthMessage({ kind: "error", text: "Your position must be 120 characters or fewer." });
+      return;
+    }
+    if (registering && office.trim().length > 120) {
+      setAuthMessage({ kind: "error", text: "Your Office must be 120 characters or fewer." });
       return;
     }
     if (registering && password !== confirmPassword) return;
@@ -332,14 +367,19 @@ function Login({ onError }: { onError: (message: string) => void }) {
           lastName: cleanLastName,
           gender,
           position: clean(position),
-          unit: unit as AccountUnit,
+          office: clean(office),
+          assignment,
+          profileFieldsVersion: 3,
           accountRole: accountRoleForEmail(credential.user.email),
+          accountStatus: credential.user.email?.trim().toLowerCase() === SUPERADMIN_EMAIL ? "Approved" : "Pending",
+          isRootSuperAdmin: credential.user.email?.trim().toLowerCase() === SUPERADMIN_EMAIL,
+          emailVerified: false,
           address: cleanAddress,
           taxIdentificationNo: cleanTaxIdentificationNo,
         });
         await sendEmailVerification(credential.user);
         await signOut(auth);
-        setAuthMessage({ kind: "success", text: "A verification link was sent to your email. Please check your spam from myD." });
+        setAuthMessage({ kind: "success", text: "A verification link was sent to your email. After verifying, sign in so the Super Admin can approve your account." });
       } else {
         const credential = await signInWithEmailAndPassword(auth, email, password);
         await reload(credential.user);
@@ -390,11 +430,12 @@ function Login({ onError }: { onError: (message: string) => void }) {
       {forgotPasswordOpen ? <form className="auth-reset-form" onSubmit={sendLoginReset}>
         <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>
         <button className="primary-button" disabled={busy}>{busy ? "Sending..." : "Reset"}</button>
-        <button type="button" className="text-button" onClick={() => { setForgotPasswordOpen(false); setAuthMessage(null); }}>Back to Sign In</button>
+        <button type="button" className="text-button plain-action" onClick={() => { setForgotPasswordOpen(false); setAuthMessage(null); }}>Back to Sign In</button>
       </form> : <>
         <form className={registering ? "auth-registration-form" : undefined} onSubmit={submit}>
           {registering && <div className="auth-name-fields"><label>First Name<input autoComplete="given-name" maxLength={60} value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="First name" required /></label><label>Middle Name<input autoComplete="additional-name" maxLength={60} value={middleName} onChange={(event) => setMiddleName(event.target.value)} placeholder="Middle name" /></label><label>Last Name<input autoComplete="family-name" maxLength={60} value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Last name" required /></label></div>}
-          {registering && <div className="auth-gender-position-fields"><label>Gender<select value={gender} onChange={(event) => setGender(event.target.value)} required><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label><label>Position<input autoComplete="organization-title" maxLength={120} value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Your position" required /></label><label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value as AccountUnit | "")} required><option value="" disabled>Select your unit</option>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div>}
+          {registering && <div className="auth-gender-position-fields"><label>Gender<select value={gender} onChange={(event) => setGender(event.target.value)} required><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label><label>Position<input autoComplete="organization-title" maxLength={120} value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Your position" required /></label></div>}
+          {registering && <div className="auth-office-assignment-fields"><label>Office<select autoComplete="organization" value={office} onChange={(event) => { setOffice(event.target.value); setAssignment(""); }} required><option value="" disabled>Select your Office</option>{accountOfficeOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label><label>Assignment<select value={assignment} onChange={(event) => setAssignment(event.target.value)} required disabled={!office}><option value="" disabled>{office ? "Select your Assignment" : "Select an Office first"}</option>{assignmentsForOffice(office).map((option) => <option key={option} value={option}>{option}</option>)}</select></label></div>}
           {registering && <div className="auth-contact-fields"><label>Address<input autoComplete="street-address" maxLength={200} value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Your address" required /></label><label>Tax Identification No.<input type="text" inputMode="numeric" autoComplete="off" maxLength={11} value={taxIdentificationNo} onChange={(event) => updateTaxIdentificationNo(event, setTaxIdentificationNo)} onKeyDown={(event) => handleTaxIdentificationNoKeyDown(event, setTaxIdentificationNo)} required /></label><label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label></div>}
           {!registering && <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email here" required /></label>}
           {registering && <div className="auth-password-fields"><label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" required /><button type="button" className="password-toggle" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)}>{showPassword ? "Hide" : "Show"}</button></div></label><label>Confirmation Password<div className="password-field"><input type={showConfirmPassword ? "text" : "password"} autoComplete="new-password" minLength={6} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter your password" required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? "Hide" : "Show"}</button></div></label></div>}
@@ -403,14 +444,14 @@ function Login({ onError }: { onError: (message: string) => void }) {
           <button className="primary-button" disabled={busy}>{busy ? "Please wait..." : registering ? "Create account" : "Sign in"}</button>
         </form>
         <div className="auth-footer-actions">
-          {!registering && !forgotPasswordOpen && <button type="button" className="text-button auth-forgot-password" onClick={() => { setForgotPasswordOpen(true); setAuthMessage(null); }}>Forgot Password?</button>}
-          <button type="button" className="text-button" onClick={() => { setRegistering(!registering); setForgotPasswordOpen(false); setConfirmPassword(""); setShowConfirmPassword(false); setAuthMessage(null); onError(""); }}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button>
+          {!registering && !forgotPasswordOpen && <button type="button" className="text-button plain-action auth-forgot-password" onClick={() => { setForgotPasswordOpen(true); setAuthMessage(null); }}>Forgot Password?</button>}
+          <button type="button" className="text-button plain-action" onClick={() => { setRegistering(!registering); setForgotPasswordOpen(false); setConfirmPassword(""); setShowConfirmPassword(false); setAuthMessage(null); onError(""); }}>{registering ? "Already have an account? Sign in" : "Need an account? Register here"}</button>
         </div>
       </>}
     </div></section>
   </main>;
 }
-function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved: (permit: Permit) => void; onCancel: () => void; onError: (message: string) => void }) {
+function PermitForm({ user, office, assignment, onSaved, onCancel, onError }: { user: User; office: string; assignment: string; onSaved: (permit: Permit) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [people, setPeople] = useState<{ name: string; userId: string }[]>([{ name: "", userId: "" }]);
   const [purpose, setPurpose] = useState("");
@@ -422,8 +463,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const entries = await loadAccountPersonnel();
-        if (!entries.length) throw new Error("The personnel sheet has no names.");
+        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), office, assignment);
         if (!cancelled) {
           setPersonnel(entries);
           setPersonnelStatus("ready");
@@ -434,7 +474,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     }
     void loadPersonnel();
     return () => { cancelled = true; };
-  }, []);
+  }, [office, assignment]);
 
   function selectPerson(index: number, userId: string) {
     const selectedPerson = personnel.find((person) => person.userId === userId);
@@ -455,7 +495,7 @@ function PermitForm({ user, onSaved, onCancel, onError }: { user: User; onSaved:
     const selectedPeople = people.map((person) => ({ ...person, name: person.name.trim(), unit: permitUnitForPersonnel(personnel.find((candidate) => candidate.userId === person.userId)) })).filter((person) => person.name);
     if (!selectedPeople.length) { onError("Select at least one personnel name."); return; }
     const missingUnit = selectedPeople.find((person) => !person.unit);
-    if (missingUnit) { onError(`Update ${missingUnit.name}'s account unit to AMIA, AGRISTAT, or DRRM before creating this Permit Slip.`); return; }
+    if (missingUnit) { onError(`Update ${missingUnit.name}'s Office and Assignment in Profile before creating this Permit Slip.`); return; }
     const nameList = selectedPeople.map((person) => person.name);
     const personIds = selectedPeople.map((person) => person.userId);
     const personUnits = selectedPeople.map((person) => person.unit as Unit);
@@ -498,7 +538,7 @@ function hasFinalPermitStatus(permit: Permit) {
 
 function PermitList({ permits, approvedPermitNumbers, deletingId, onNew, onPrint, onDelete }: { permits: Permit[]; approvedPermitNumbers: Record<string, string>; deletingId: string | null; onNew: () => void; onPrint: (permit: Permit) => void; onDelete: (permit: Permit) => void }) {
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(permits);
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Permit Slip</button></div> : <div className="permit-table"><RecordPagination totalRecords={permits.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Permit Slip" /><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Unit</span><span aria-hidden="true" /></div>{visibleRecords.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.names.map((_, index) => {
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Permit Slips</h2><p className="muted">{permits.length} {permits.length === 1 ? "slip" : "slips"} registered to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{permits.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No permit slips yet</h3><p>Create your first record to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Permit Slip</button></div> : <div className="permit-table"><RecordPagination totalRecords={permits.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Permit Slip" /><div className="table-head"><span>Permit no.</span><span>Date</span><span>Name</span><span>Office</span><span aria-hidden="true" /></div>{visibleRecords.map((permit) => <div className="table-row" key={permit.id}><strong>{permit.names.map((_, index) => {
     const originalNumber = permit.permitNos?.[index] ?? permit.permitNo;
     const decision = permit.personStatuses?.[permitDecisionKey(permit, index)];
     if (normalizeWorkflowStatus(decision?.status) !== "Approved") return "Pending";
@@ -539,6 +579,7 @@ function timestampMillis(value: unknown) {
 
 type PermitNotification = { permit: Permit; personIndex: number; permitNo: string; name: string; date: string; status: "Approved" | "Disapproved"; decidedAt?: unknown };
 type PendingPermitNotification = { permitId: string; statusKey: string; permitNo: string; name: string; date: string; purpose: string; submittedAt: number };
+const permitNotificationVisibilityMs = 4 * 60 * 60 * 1000;
 
 function permitNotificationKey(notification: PermitNotification) {
   return `${notification.permit.id}:${notification.permitNo}:${notification.status}:${timestampMillis(notification.decidedAt)}`;
@@ -610,10 +651,9 @@ function reminderPeriod(reminder: DocumentReminder) {
   return `${monthName} ${reminder.startDay}-${reminder.endDay}, ${year}`;
 }
 
-function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendingNotifications, documentNotifications, documentReminders, calendarOfActivitiesNotifications, calendarOfActivitiesApprovalNotifications, onAdminOpen, onViewPermit, onReadDocument, onReadDocumentReminder, onOpenDocumentReminder, onReadCalendarOfActivities, onReadCalendarOfActivitiesApproval, onOpenCalendarOfActivitiesApproval }: {
+function PermitNotificationCenter({ isAdmin, userId, notifications, pendingNotifications, documentNotifications, documentReminders, calendarOfActivitiesNotifications, calendarOfActivitiesApprovalNotifications, onAdminOpen, onViewPermit, onReadDocument, onOpenCertificateApproval, onOpenCertificateDecision, onReadDocumentReminder, onOpenDocumentReminder, onReadCalendarOfActivities, onReadCalendarOfActivitiesApproval, onOpenCalendarOfActivitiesApproval }: {
   isAdmin: boolean;
   userId: string;
-  count: number;
   notifications: PermitNotification[];
   pendingNotifications: PendingPermitNotification[];
   documentNotifications: DocumentNotification[];
@@ -623,6 +663,8 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
   onAdminOpen: (notification: PendingPermitNotification) => void;
   onViewPermit: (notification: PermitNotification) => void;
   onReadDocument: (notification: DocumentNotification) => void;
+  onOpenCertificateApproval: (notification: DocumentNotification) => void;
+  onOpenCertificateDecision: (notification: DocumentNotification) => void;
   onReadDocumentReminder: (notification: DocumentReminder) => void;
   onOpenDocumentReminder: (notification: DocumentReminder) => void;
   onReadCalendarOfActivities: (notification: CalendarOfActivitiesNotification) => void;
@@ -632,6 +674,12 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
   const [open, setOpen] = useState(false);
   const [hiddenReadIds, setHiddenReadIds] = useState<string[]>([]);
   const [readNotificationState, setReadNotificationState] = useState<{ userId: string; keys: string[] } | null>(null);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 15_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     try {
@@ -646,11 +694,12 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
   const readNotificationKeys = readNotificationState?.userId === userId ? readNotificationState.keys : [];
   const readNotificationKeySet = new Set(readNotificationKeys);
   const unreadNotifications = notifications.filter((notification) => !readNotificationKeySet.has(permitNotificationKey(notification)));
+  const visiblePendingNotifications = pendingNotifications.filter((notification) => !notification.submittedAt || currentTime - notification.submittedAt < permitNotificationVisibilityMs);
   const unreadDocumentNotifications = documentNotifications.filter((notification) => !notification.read);
   const unreadDocumentReminders = documentReminders.filter((notification) => !notification.read);
   const unreadCalendarOfActivitiesNotifications = calendarOfActivitiesNotifications.filter((notification) => !notification.read);
   const unreadCalendarOfActivitiesApprovalNotifications = isAdmin ? calendarOfActivitiesApprovalNotifications.filter((notification) => !notification.readBy.includes(userId)) : [];
-  const visibleCount = (isAdmin ? count : unreadNotifications.length) + unreadDocumentNotifications.length + unreadDocumentReminders.length + unreadCalendarOfActivitiesNotifications.length + unreadCalendarOfActivitiesApprovalNotifications.length;
+  const visibleCount = (isAdmin ? visiblePendingNotifications.length : unreadNotifications.length) + unreadDocumentNotifications.length + unreadDocumentReminders.length + unreadCalendarOfActivitiesNotifications.length + unreadCalendarOfActivitiesApprovalNotifications.length;
 
   function toggleOpen() {
     // Read Calendar of Activities notifications stay visible until the dropdown is closed, then drop off on the next open.
@@ -684,7 +733,7 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
     </button>
     {open && <div className="notification-dropdown" role="dialog" aria-label="Notifications">
       <div className="notification-dropdown-heading"><strong>Notifications</strong><button type="button" onClick={() => setOpen(false)} aria-label="Close notifications">×</button></div>
-      {isAdmin ? pendingNotifications.length === 0 ? null : <><p className="notification-section-title">Filed Permit Slips</p><ul>{pendingNotifications.map((notification) => <li key={`${notification.permitId}-${notification.permitNo}`}><button type="button" className="notification-item" onClick={() => { setOpen(false); onAdminOpen(notification); }}>
+      {isAdmin ? visiblePendingNotifications.length === 0 ? null : <><p className="notification-section-title">Filed Permit Slips</p><ul>{visiblePendingNotifications.map((notification) => <li key={`${notification.permitId}-${notification.permitNo}`}><button type="button" className="notification-item" onClick={() => { setOpen(false); onAdminOpen(notification); }}>
         <span className="notification-status notification-status-pending">Awaiting review</span>
         <strong>{notification.name}</strong>
         <span className="notification-permit-number">Pending</span>
@@ -737,7 +786,23 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
         <strong>You have been added to the TEV of {formatTravelMonth(notification.travelMonth)}, with total amount &#8369;{formatTevAmount(notification.totalAmount ?? 0)}.</strong>
         <small>{notification.read ? "Read" : "New - Select to mark as read"}</small>
       </button></li>)}</ul></>}
-      {shownDocumentNotifications.some((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher") && <><p className="notification-section-title">Assigned Documents</p><ul>{shownDocumentNotifications.filter((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher").map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); }}>
+      {shownDocumentNotifications.some((notification) => notification.documentType === "Certificate Approval") && <><p className="notification-section-title">Certificate Approval</p><ul>{shownDocumentNotifications.filter((notification) => notification.documentType === "Certificate Approval").map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); setOpen(false); onOpenCertificateApproval(notification); }}>
+        <span className="notification-status notification-status-pending">Awaiting approval</span>
+        <span className="notification-detail"><span className="notification-detail-label">Type of Certificate</span><strong>{notification.certificateType || "Appearance"}</strong></span>
+        <span className="notification-detail"><span className="notification-detail-label">Title</span><strong>{notification.activityTitle || "Untitled certificate"}</strong></span>
+        <span className="notification-detail"><span className="notification-detail-label">Schedule</span><span>{formatCertificateNotificationSchedule(notification.dateFrom, notification.dateTo)}</span></span>
+        <span className="notification-detail"><span className="notification-detail-label">Destination</span><span>{notification.destination || "Not specified"}</span></span>
+        <span className="notification-view-label">Open Certificate Approval</span>
+        <small>{notification.read ? "Read" : "New · Select to review"}</small>
+      </button></li>)}</ul></>}
+      {shownDocumentNotifications.some((notification) => notification.documentType === "Certificate Decision") && <><p className="notification-section-title">Certificate Updates</p><ul>{shownDocumentNotifications.filter((notification) => notification.documentType === "Certificate Decision").map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); setOpen(false); onOpenCertificateDecision(notification); }}>
+        <span className={`notification-status notification-status-${notification.decisionStatus === "Approved" ? "approved" : "disapproved"}`}>{notification.decisionStatus}</span>
+        <strong>{notification.decisionStatus === "Approved" ? <>Your certificate is ready. <span className="notification-view-label">View here!</span></> : "Your certificate has been rejected!"}</strong>
+        {notification.certificateType && <span className="notification-detail"><span className="notification-detail-label">Type of Certificate</span><span>{notification.certificateType}</span></span>}
+        {notification.activityTitle && <span className="notification-detail"><span className="notification-detail-label">Title</span><span>{notification.activityTitle}</span></span>}
+        <small>{notification.read ? "Read" : "New · Select to view"}</small>
+      </button></li>)}</ul></>}
+      {shownDocumentNotifications.some((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher" && notification.documentType !== "Certificate Approval" && notification.documentType !== "Certificate Decision") && <><p className="notification-section-title">Assigned Documents</p><ul>{shownDocumentNotifications.filter((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher" && notification.documentType !== "Certificate Approval" && notification.documentType !== "Certificate Decision").map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); }}>
         <span className="notification-status notification-status-pending">{notification.documentType}</span>
         {notification.activityTitle && <strong>{notification.activityTitle}</strong>}
         {notification.documentType === "Special Order" && <><span className="notification-detail"><span className="notification-detail-label">Date</span><span>{notification.dateFrom === notification.dateTo ? formatDate(notification.dateFrom ?? "") : `${formatDate(notification.dateFrom ?? "")} – ${formatDate(notification.dateTo ?? "")}`}</span></span><span className="notification-detail"><span className="notification-detail-label">Venue</span><span>{notification.venue}</span></span></>}
@@ -857,8 +922,8 @@ function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers
 
     <div className="permit-approval">
       <div className="permit-approved-label">Approved:</div>
-      {decision?.status === "Approved" && <div className="permit-digital-signature"><img src={publicAsset("/gba-signature.png")} alt="Digital signature of Gerlie B. Antipaso" /><div><span>Digitally Signed By</span><strong>{decision.signerName || "GERLIE B. ANTIPASO"}</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div></div>}
-      {decision?.status === "Disapproved" && <div className="permit-disapproved-stamp"><strong>Disapproved</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div>}
+      {decision?.status === "Approved" && <div className="permit-digital-signature"><img src={publicAsset("/agristat_and_drrm_focal_persons_amia_project_leader.png")} alt="Permit Slip approval signature" /><div><span>Digitally Signed By</span><strong>{decision.signerName?.trim().toLocaleUpperCase("en") || "ADMIN"}</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div></div>}
+      {decision?.status === "Disapproved" && <div className="permit-disapproved-stamp"><strong>Disapproved</strong><span>By {decision.signerName?.trim().toLocaleUpperCase("en") || "ADMIN"}</span><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div>}
       <div className="permit-approved-name">GERLIE B. ANTIPASO</div>
       <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>
     </div>
@@ -953,7 +1018,7 @@ function PrintPreview({ permit, approvedPermitNumbers, onClose, singleSlip = fal
   </div>;
 }
 
-function SpecialOrderForm({ user, ownerUnit, onSaved, onCancel, onError }: { user: User; ownerUnit: string | null; onSaved: (order: SpecialOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
+function SpecialOrderForm({ user, ownerOffice, ownerUnit, onSaved, onCancel, onError }: { user: User; ownerOffice: string; ownerUnit: string | null; onSaved: (order: SpecialOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [subject, setSubject] = useState("");
   const [activityTitle, setActivityTitle] = useState("");
   const [organizer, setOrganizer] = useState("");
@@ -973,8 +1038,7 @@ function SpecialOrderForm({ user, ownerUnit, onSaved, onCancel, onError }: { use
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const entries = await loadAccountPersonnel();
-        if (!entries.length) throw new Error("The personnel sheet has no names.");
+        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), ownerOffice, ownerUnit ?? "");
         if (!cancelled) {
           setPersonnel(entries);
           setPersonnelStatus("ready");
@@ -985,7 +1049,7 @@ function SpecialOrderForm({ user, ownerUnit, onSaved, onCancel, onError }: { use
     }
     void loadPersonnel();
     return () => { cancelled = true; };
-  }, []);
+  }, [ownerOffice, ownerUnit]);
 
   function updateParticipant(index: number, updates: Partial<(typeof participants)[number]>) {
     setParticipants((current) => current.map((participant, participantIndex) => participantIndex === index ? { ...participant, ...updates } : participant));
@@ -996,14 +1060,14 @@ function SpecialOrderForm({ user, ownerUnit, onSaved, onCancel, onError }: { use
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!db) return;
-    if (!ownerUnit) { onError("Your account unit is still loading. Try saving again in a moment."); return; }
+    if (!ownerUnit) { onError("Your Assignment is still loading. Try saving again in a moment."); return; }
     const participantRecords = participants.map((participant) => {
       const selectedPerson = participant.manual ? undefined : personnel.find((person) => person.userId === participant.userId);
       return {
         userId: participant.manual ? "" : participant.userId,
         name: participant.manual ? participant.name.trim() : selectedPerson?.name ?? "",
         position: participant.manual ? participant.position.trim() : selectedPerson?.position ?? "",
-        office: participant.manual ? participant.office.trim() : selectedPerson?.unit ?? "",
+        office: participant.manual ? participant.office.trim() : selectedPerson?.office ?? "",
       };
     }).filter((participant) => Boolean(participant.name)).filter((participant, index, all) => !participant.userId || all.findIndex((candidate) => candidate.userId === participant.userId) === index);
     const participantIds = [...new Set(participantRecords.map((participant) => participant.userId).filter(Boolean))];
@@ -1031,17 +1095,17 @@ function SpecialOrderForm({ user, ownerUnit, onSaved, onCancel, onError }: { use
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated personnel.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); updateParticipant(index, { userId: selectedId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.unit ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => { const enabled = event.target.checked; updateParticipant(index, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", office: "" }); }} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { userId: "", manual: false, name: "", position: "", office: "" }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field">Signatory<select value={signatorySelection} onChange={(event) => setSignatorySelection(event.target.value)} required><option value="" disabled>Select a signatory</option>{specialOrderSignatoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
+  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated personnel.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div><label>Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} required /></label><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); updateParticipant(index, { userId: selectedId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.office ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => { const enabled = event.target.checked; updateParticipant(index, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", office: "" }); }} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { userId: "", manual: false, name: "", position: "", office: "" }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field">Signatory<select value={signatorySelection} onChange={(event) => setSignatorySelection(event.target.value)} required><option value="" disabled>Select a signatory</option>{specialOrderSignatoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
 }
 
 function SpecialOrderList({ orders, ownerId, deletingId, copyingId, onNew, onEdit, onPrint, onCopy, onDelete }: { orders: SpecialOrder[]; ownerId: string; deletingId: string | null; copyingId: string | null; onNew: () => void; onEdit: (order: SpecialOrder) => void; onPrint: (order: SpecialOrder) => void; onCopy: (order: SpecialOrder) => void; onDelete: (order: SpecialOrder) => void }) {
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(orders);
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} available to your unit.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Special Order</button></div> : <div className="permit-table"><RecordPagination totalRecords={orders.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Special Order" /><div className="table-head special-order-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span></span></div>{visibleRecords.map((order) => { const isOwner = order.ownerId === ownerId; return <div className="table-row special-order-list-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span className="permit-row-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPrint(order)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span></div>; })}</div>}</section>;
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} available to your Assignment.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Special Order</button></div> : <div className="permit-table"><RecordPagination totalRecords={orders.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Special Order" /><div className="table-head special-order-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span></span></div>{visibleRecords.map((order) => { const isOwner = order.ownerId === ownerId; return <div className="table-row special-order-list-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span className="permit-row-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPrint(order)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span></div>; })}</div>}</section>;
 }
 
 type EditableSpecialOrderParticipant = { name: string; position: string; office: string; userId: string; manual: boolean };
 
-function SpecialOrderParticipantEditor({ order, userId, onCancel, onSaved }: { order: SpecialOrder; userId: string; onCancel: () => void; onSaved: (order: SpecialOrder) => void }) {
+function SpecialOrderParticipantEditor({ order, userId, office, assignment, onCancel, onSaved }: { order: SpecialOrder; userId: string; office: string; assignment: string; onCancel: () => void; onSaved: (order: SpecialOrder) => void }) {
   const alignedUserIds: string[] | null = order.participantUserIds && order.participantUserIds.length === order.participants.length
     ? order.participantUserIds
     : order.participantIds && order.participantIds.length === order.participants.length ? order.participantIds : null;
@@ -1061,7 +1125,7 @@ function SpecialOrderParticipantEditor({ order, userId, onCancel, onSaved }: { o
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const entries = await loadAccountPersonnel();
+        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), office, assignment);
         if (!cancelled) {
           setPersonnel(entries);
           setPersonnelStatus("ready");
@@ -1072,7 +1136,7 @@ function SpecialOrderParticipantEditor({ order, userId, onCancel, onSaved }: { o
     }
     void loadPersonnel();
     return () => { cancelled = true; };
-  }, []);
+  }, [office, assignment]);
 
   function updateParticipant(index: number, update: Partial<EditableSpecialOrderParticipant>) {
     setParticipants((current) => current.map((participant, participantIndex) => participantIndex === index ? { ...participant, ...update } : participant));
@@ -1089,7 +1153,7 @@ function SpecialOrderParticipantEditor({ order, userId, onCancel, onSaved }: { o
         userId: participant.manual ? "" : participant.userId,
         name: participant.manual ? participant.name.trim() : selectedPerson?.name ?? participant.name.trim(),
         position: participant.manual ? participant.position.trim() : selectedPerson?.position ?? participant.position.trim(),
-        office: participant.manual ? participant.office.trim() : selectedPerson?.unit ?? participant.office.trim(),
+        office: participant.manual ? participant.office.trim() : selectedPerson?.office ?? participant.office.trim(),
       };
     }).filter((participant) => Boolean(participant.name)).filter((participant, index, all) => !participant.userId || all.findIndex((candidate) => candidate.userId === participant.userId) === index);
     if (!cleaned.length) { setError("Keep at least one personnel name in the Special Order."); return; }
@@ -1132,7 +1196,7 @@ function SpecialOrderParticipantEditor({ order, userId, onCancel, onSaved }: { o
     } finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">Edit record</p><h2>Edit designated personnel</h2><p className="muted">Update or remove personnel names, positions, and offices for {order.subject}.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>{error && <p className="error-message">{error}</p>}<form className="permit-form" onSubmit={save}><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedPerson = personnel.find((person) => person.userId === event.target.value); updateParticipant(index, { userId: event.target.value, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.unit ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => updateParticipant(index, { manual: event.target.checked, userId: "", ...(!event.target.checked ? { name: "", position: "", office: "" } : {}) })} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant remove-action" aria-label={`Remove personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { name: "", position: "", office: "", userId: "", manual: false }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload the page to try again.</span>}</div><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button></div></form></section>;
+  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">Edit record</p><h2>Edit designated personnel</h2><p className="muted">Update or remove personnel names, positions, and offices for {order.subject}.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>{error && <p className="error-message">{error}</p>}<form className="permit-form" onSubmit={save}><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedPerson = personnel.find((person) => person.userId === event.target.value); updateParticipant(index, { userId: event.target.value, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.office ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => updateParticipant(index, { manual: event.target.checked, userId: "", ...(!event.target.checked ? { name: "", position: "", office: "" } : {}) })} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant remove-action" aria-label={`Remove personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { name: "", position: "", office: "", userId: "", manual: false }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload the page to try again.</span>}</div><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button></div></form></section>;
 }
 
 function SpecialOrderSignatoryPosition({ designation }: { designation: string }) {
@@ -1389,7 +1453,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     <section className={`special-order-participants ${className}`}>
       {!continued && <div className="special-order-spacer" aria-hidden="true" />}
       <h2>{continued ? "Designated Personnel (continued):" : "Designated Personnel:"}</h2>
-      <ol>{participants.map((participant, index) => { const participantIndex = participantOffset + index; const participantRecord = order.participantUserIds?.[participantIndex] ? personnel.find((person) => person.userId === order.participantUserIds?.[participantIndex]) : personnel.find((person) => person.name === participant); const position = order.participantPositions?.[participantIndex] || participantRecord?.position; const office = order.participantOffices?.[participantIndex] || participantRecord?.unit; return <li key={`${pageKey}-${index}`}><strong>{participant}</strong>{position && <> - <em>{position}</em></>}{office && <>, {office}</>}</li>; })}</ol>
+      <ol>{participants.map((participant, index) => { const participantIndex = participantOffset + index; const participantRecord = order.participantUserIds?.[participantIndex] ? personnel.find((person) => person.userId === order.participantUserIds?.[participantIndex]) : personnel.find((person) => person.name === participant); const position = order.participantPositions?.[participantIndex] || participantRecord?.position; const office = order.participantOffices?.[participantIndex] || participantRecord?.office; return <li key={`${pageKey}-${index}`}><strong>{participant}</strong>{position && <> - <em>{position}</em></>}{office && <>, {office}</>}</li>; })}</ol>
     </section>
     {includeClosing && renderClosingUnits(closingUnits.slice(0, closingUnitsOnLastAttendeePage))}
   </>;
@@ -1412,6 +1476,9 @@ export default function Home() {
   const [philippineDateTime, setPhilippineDateTime] = useState("");
   const [biometricsGreeting, setBiometricsGreeting] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [approvalUser, setApprovalUser] = useState<User | null>(null);
+  const [approvalStatus, setApprovalStatus] = useState<AccountStatus | "Missing" | null>(null);
+  const [approvalError, setApprovalError] = useState("");
   const [permits, setPermits] = useState<Permit[]>([]);
   const [approvedPermitNumbers, setApprovedPermitNumbers] = useState<Record<string, string>>({});
   const [deletingPermitId, setDeletingPermitId] = useState<string | null>(null);
@@ -1428,9 +1495,10 @@ export default function Home() {
   const [copyingSpecialOrderId, setCopyingSpecialOrderId] = useState<string | null>(null);
   const [pendingSpecialOrderDelete, setPendingSpecialOrderDelete] = useState<SpecialOrder | null>(null);
   const [view, setView] = useState<"list" | "new">("list");
-  const [section, setSection] = useState<"permits" | "messenger" | "special-orders" | "nta" | "travel-orders" | "calendar-of-activities" | "calendar-of-activities-records" | "whereabouts-calendar" | "permit-statistics" | "permit-status" | "myar" | "my-notes" | "my-tevs" | "leave-application" | "certificate-of-appearance" | "completion" | "appreciation" | "participation">("whereabouts-calendar");
+  const [section, setSection] = useState<"permits" | "messenger" | "special-orders" | "nta" | "travel-orders" | "calendar-of-activities" | "calendar-of-activities-records" | "whereabouts-calendar" | "permit-statistics" | "permit-status" | "certificate-approval" | "user-master-list" | "myar" | "my-notes" | "my-tevs" | "leave-application" | "certificate-of-appearance" | "completion" | "appreciation" | "participation">("whereabouts-calendar");
   const [myDocsMenuOpen, setMyDocsMenuOpen] = useState(false);
   const [certificateMenuOpen, setCertificateMenuOpen] = useState(false);
+  const [adminPanelMenuOpen, setAdminPanelMenuOpen] = useState(false);
   const [amiaDocumentMenuOpen, setAmiaDocumentMenuOpen] = useState(false);
   const [preview, setPreview] = useState<Permit | null>(null);
   const [singleSlipPreview, setSingleSlipPreview] = useState(false);
@@ -1440,6 +1508,7 @@ export default function Home() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileCertificateOpen, setMobileCertificateOpen] = useState(false);
+  const [mobileAdminPanelOpen, setMobileAdminPanelOpen] = useState(false);
   const [mobileAmiaDocumentOpen, setMobileAmiaDocumentOpen] = useState(false);
   const [mobileMyDocsOpen, setMobileMyDocsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -1456,10 +1525,11 @@ export default function Home() {
   const [profileGender, setProfileGender] = useState("");
   const [profilePosition, setProfilePosition] = useState("");
   const [profileDesignation, setProfileDesignation] = useState("");
+  const [profileAssignment, setProfileAssignment] = useState("");
+  const [profileOffice, setProfileOffice] = useState("");
   const [profileAddress, setProfileAddress] = useState("");
   const [profileTaxIdentificationNo, setProfileTaxIdentificationNo] = useState("");
-  const [profileUnit, setProfileUnit] = useState<AccountUnit>(units[0]);
-  const [accountProfileUnit, setAccountProfileUnit] = useState<{ userId: string; unit: string | null } | null>(null);
+  const [accountProfile, setAccountProfile] = useState<{ userId: string; office: string | null; assignment: string | null; name: string; designation: string; accountRole: AccountRole; accountStatus: AccountStatus } | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
@@ -1598,9 +1668,10 @@ export default function Home() {
     setProfileGender("");
     setProfilePosition("");
     setProfileDesignation("");
+    setProfileAssignment("");
+    setProfileOffice("");
     setProfileAddress("");
     setProfileTaxIdentificationNo("");
-    setProfileUnit(units[0]);
     try {
       const profileSnapshot = await getDoc(doc(db, "users", user.uid));
       if (profileSnapshot.exists()) {
@@ -1614,9 +1685,11 @@ export default function Home() {
         if (typeof profile.gender === "string") setProfileGender(profile.gender);
         if (typeof profile.position === "string") setProfilePosition(profile.position);
         if (typeof profile.designation === "string") setProfileDesignation(profile.designation);
+        const profileSelection = accountProfileSelection(profile);
+        setProfileAssignment(profileSelection.assignment);
+        setProfileOffice(profileSelection.office);
         if (typeof profile.address === "string") setProfileAddress(profile.address);
         if (typeof profile.taxIdentificationNo === "string") setProfileTaxIdentificationNo(formatTaxIdentificationNo(profile.taxIdentificationNo));
-        if (accountUnitOptions.some((option) => option.value === profile.unit)) setProfileUnit(profile.unit as AccountUnit);
       }
     } catch (cause) {
       const code = (cause as { code?: string }).code;
@@ -1644,6 +1717,8 @@ export default function Home() {
     const middleName = clean(profileMiddleName);
     const lastName = clean(profileLastName);
     const gender = profileGender;
+    const office = clean(profileOffice);
+    const assignment = clean(profileAssignment);
     const address = clean(profileAddress);
     const taxIdentificationNo = formatTaxIdentificationNo(profileTaxIdentificationNo);
     const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
@@ -1661,6 +1736,18 @@ export default function Home() {
     }
     if (!address) {
       setProfileMessage({ kind: "error", text: "Enter your address." });
+      return;
+    }
+    if (!office) {
+      setProfileMessage({ kind: "error", text: "Select your Office." });
+      return;
+    }
+    if (!accountOfficeOptions.includes(office as (typeof accountOfficeOptions)[number])) {
+      setProfileMessage({ kind: "error", text: "Select your Office." });
+      return;
+    }
+    if (!assignmentsForOffice(office).some((option) => option === assignment)) {
+      setProfileMessage({ kind: "error", text: "Select an Assignment for your Office." });
       return;
     }
     if (!/^\d{3}-\d{3}-\d{3}$/.test(taxIdentificationNo)) {
@@ -1687,7 +1774,7 @@ export default function Home() {
     let profileDataSaved = false;
     let accountNameSaved = false;
     try {
-      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, designation, accountRole: accountRoleForEmail(user.email), address, taxIdentificationNo }, { merge: true });
+      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, designation, office, assignment, profileFieldsVersion: 3, unit: deleteField(), projectProgram: deleteField(), address, taxIdentificationNo }, { merge: true });
       profileDataSaved = true;
       setProfileRevision((revision) => revision + 1);
       await updateProfile(user, { displayName: name });
@@ -1698,6 +1785,8 @@ export default function Home() {
       setProfileLastName(lastName);
       setProfilePosition(position);
       setProfileDesignation(designation);
+      setProfileAssignment(assignment);
+      setProfileOffice(office);
       setProfileAddress(address);
       setProfileTaxIdentificationNo(taxIdentificationNo);
       if (wantsPasswordChange) await updatePassword(user, changePassword);
@@ -1747,34 +1836,121 @@ export default function Home() {
       const thisAuthChange = ++authChange;
       const verifiedUser = currentUser?.emailVerified ? currentUser : null;
       setLoading(true);
-      void (async () => {
-        if (verifiedUser && db) {
-          try {
-            const profileRef = doc(db, "users", verifiedUser.uid);
-            const profileSnapshot = await getDoc(profileRef);
-            const accountRole = accountRoleForEmail(verifiedUser.email);
-            if (profileSnapshot.exists() && profileSnapshot.data().accountRole !== accountRole) {
-              await setDoc(profileRef, { accountRole }, { merge: true });
-            }
-          } catch {
-            if (thisAuthChange === authChange) setError("Could not refresh your account role. Sign out and sign in again to retry.");
-          }
-        }
-        if (thisAuthChange !== authChange) return;
-        setUser(verifiedUser);
-        if (verifiedUser) { setSection("whereabouts-calendar"); setView("list"); }
+      setApprovalError("");
+      setApprovalStatus(null);
+      setApprovalUser(null);
+      if (!verifiedUser) {
+        setUser(null);
+        setAccountProfile(null);
         setLoading(false);
+        return;
+      }
+      void (async () => {
+        if (!db) { setUser(verifiedUser); setLoading(false); return; }
+        try {
+          const profileRef = doc(db, "users", verifiedUser.uid);
+          const profileSnapshot = await getDoc(profileRef);
+          if (thisAuthChange !== authChange) return;
+          if (!profileSnapshot.exists()) {
+            setUser(null);
+            setApprovalUser(verifiedUser);
+            setApprovalStatus("Missing");
+            setLoading(false);
+            return;
+          }
+          const profileData = profileSnapshot.data();
+          const isBootstrapSuperAdmin = verifiedUser.email?.trim().toLowerCase() === SUPERADMIN_EMAIL;
+          if (isBootstrapSuperAdmin) await migrateAccountProfileFieldsForSuperAdmin();
+          const accountRole = normalizeAccountRole(profileData.accountRole, verifiedUser.email);
+          const accountStatus = isBootstrapSuperAdmin ? "Approved" : normalizeAccountStatus(profileData.accountStatus);
+          const accountPatch: Record<string, unknown> = {};
+          if (profileData.profileFieldsVersion !== 3 || !profileData.office || !profileData.assignment
+            || Object.prototype.hasOwnProperty.call(profileData, "unit")
+            || Object.prototype.hasOwnProperty.call(profileData, "projectProgram")) {
+            Object.assign(accountPatch, migratedAccountProfileFields(profileData));
+            accountPatch.unit = deleteField();
+            accountPatch.projectProgram = deleteField();
+          }
+          if (profileData.emailVerified !== true) accountPatch.emailVerified = true;
+          if ((isBootstrapSuperAdmin && profileData.accountRole !== "superadmin") || (!profileData.accountRole && accountRole)) accountPatch.accountRole = accountRole;
+          if (isBootstrapSuperAdmin && profileData.accountStatus !== "Approved") accountPatch.accountStatus = "Approved";
+          if (isBootstrapSuperAdmin && profileData.isRootSuperAdmin !== true) accountPatch.isRootSuperAdmin = true;
+          if (Object.keys(accountPatch).length) await setDoc(profileRef, accountPatch, { merge: true });
+          if (thisAuthChange !== authChange) return;
+           setAccountProfile({
+            userId: verifiedUser.uid,
+            office: accountOffice(profileData),
+            assignment: accountAssignment(profileData) || null,
+            name: typeof profileData.name === "string" ? profileData.name : verifiedUser.displayName ?? "",
+            designation: typeof profileData.designation === "string" ? profileData.designation : "",
+            accountRole,
+            accountStatus,
+          });
+          if (accountStatus === "Approved") {
+            setUser(verifiedUser);
+            setApprovalUser(null);
+            setApprovalStatus(null);
+            setSection("whereabouts-calendar");
+            setView("list");
+          } else {
+            setUser(null);
+            setApprovalUser(verifiedUser);
+            setApprovalStatus(accountStatus);
+          }
+        } catch {
+          if (thisAuthChange === authChange) {
+            setError("Could not check your account approval. Try signing in again.");
+            setUser(null);
+            setApprovalUser(verifiedUser);
+            setApprovalStatus("Missing");
+            setApprovalError("We could not check your approval status. Please sign out and try again.");
+          }
+        } finally {
+          if (thisAuthChange === authChange) setLoading(false);
+        }
       })();
     });
   }, []);
   useEffect(() => {
-    if (!user || !db) { setAccountProfileUnit(null); return; }
-    setAccountProfileUnit(null);
+    if (!user || !db) { setAccountProfile(null); return; }
+    setAccountProfile((current) => current?.userId === user.uid ? current : null);
     return onSnapshot(doc(db, "users", user.uid), (snapshot) => {
-      const unit = snapshot.exists() ? snapshot.data().unit : null;
-      setAccountProfileUnit({ userId: user.uid, unit: typeof unit === "string" ? unit : null });
-    }, () => setAccountProfileUnit({ userId: user.uid, unit: null }));
+      if (!snapshot.exists()) {
+        setAccountProfile(null);
+        setUser(null);
+        setApprovalUser(user);
+        setApprovalStatus("Missing");
+        return;
+      }
+      const data = snapshot.data();
+      const accountStatus = user.email?.trim().toLowerCase() === SUPERADMIN_EMAIL ? "Approved" : normalizeAccountStatus(data.accountStatus);
+      setAccountProfile({ userId: user.uid, office: accountOffice(data), assignment: accountAssignment(data) || null, name: typeof data.name === "string" ? data.name : user.displayName ?? "", designation: typeof data.designation === "string" ? data.designation : "", accountRole: normalizeAccountRole(data.accountRole, user.email), accountStatus });
+      if (accountStatus !== "Approved") {
+        setUser(null);
+        setApprovalUser(user);
+        setApprovalStatus(accountStatus);
+      }
+    }, () => {
+      setAccountProfile({ userId: user.uid, office: null, assignment: null, name: user.displayName ?? "", designation: "", accountRole: accountRoleForEmail(user.email), accountStatus: "Approved" });
+    });
   }, [user]);
+  useEffect(() => {
+    if (!approvalUser || !db) return;
+    return onSnapshot(doc(db, "users", approvalUser.uid), (snapshot) => {
+      if (!snapshot.exists()) { setApprovalStatus("Missing"); return; }
+      const isBootstrapSuperAdmin = approvalUser.email?.trim().toLowerCase() === SUPERADMIN_EMAIL;
+      const status = isBootstrapSuperAdmin ? "Approved" : normalizeAccountStatus(snapshot.data().accountStatus);
+      if (status === "Approved") {
+        setApprovalStatus(null);
+        setApprovalUser(null);
+        setUser(approvalUser);
+        setSection("whereabouts-calendar");
+        setView("list");
+      } else {
+        setApprovalStatus(status);
+      }
+    }, () => setApprovalError("Could not refresh your approval status. Sign out and sign in again to retry."));
+  }, [approvalUser]);
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const closeOnEscape = (event: WindowEventMap["keydown"]) => { if (event.key === "Escape") setMobileMenuOpen(false); };
@@ -1825,7 +2001,8 @@ export default function Home() {
     }, () => setApprovedPermitNumbers({}));
   }, [user]);
   useEffect(() => {
-    if (!user || !db || !isPermitAdmin(user.email)) {
+    const accountRole = user && accountProfile?.userId === user.uid ? accountProfile.accountRole : undefined;
+    if (!user || !db || !isPermitAdmin(user.email, accountRole)) {
       setPendingPermitNotifications([]);
       return;
     }
@@ -1840,7 +2017,9 @@ export default function Home() {
         const permit = { ...data, id: item.id, names } as Permit;
         return names.flatMap((name, index) => {
           if (normalizeWorkflowStatus(permit.personStatuses?.[permitDecisionKey(permit, index)]?.status) !== "Pending") return [];
-          const notification = { permitId: item.id, statusKey: permitDecisionKey(permit, index), permitNo: permitPersonNumber(permit, index), name, date: permit.date, purpose: permit.purpose, submittedAt: timestampMillis(permit.createdAt) };
+          const submittedAt = timestampMillis(permit.createdAt);
+          if (submittedAt && Date.now() - submittedAt >= permitNotificationVisibilityMs) return [];
+          const notification = { permitId: item.id, statusKey: permitDecisionKey(permit, index), permitNo: permitPersonNumber(permit, index), name, date: permit.date, purpose: permit.purpose, submittedAt };
           if (item.metadata.hasPendingWrites) pendingWriteKeys.add(`${notification.permitId}:${notification.statusKey}`);
           return [notification];
         });
@@ -1855,7 +2034,7 @@ export default function Home() {
       }
       setPendingPermitNotifications(pending);
     }, () => setError("Could not load Permit Slip notifications. Refresh and try again."));
-  }, [user, playNotificationTone]);
+  }, [user, accountProfile, playNotificationTone]);
   useEffect(() => {
     if (!user || !db) { setCalendarOfActivitiesNotifications([]); return; }
     const notificationState = { initialized: false, createdAtById: new Map<string, string>() };
@@ -1907,7 +2086,8 @@ export default function Home() {
     }, () => setError("Could not load document status reminders. Refresh and try again."));
   }, [user, playNotificationTone]);
   useEffect(() => {
-    if (!user || !db || !isPermitAdmin(user.email)) { setCalendarOfActivitiesApprovalNotifications([]); return; }
+    const accountRole = user && accountProfile?.userId === user.uid ? accountProfile.accountRole : undefined;
+    if (!user || !db || !isPermitAdmin(user.email, accountRole)) { setCalendarOfActivitiesApprovalNotifications([]); return; }
     const notificationState: NotificationSnapshotState = { initialized: false, ids: new Set() };
     return onSnapshot(collection(db, calendarOfActivitiesApprovalNotificationsCollection), { includeMetadataChanges: true }, (snapshot) => {
       if (hasNewNotificationDocuments(snapshot, notificationState)) playNotificationTone();
@@ -1918,10 +2098,10 @@ export default function Home() {
       notifications.sort((left, right) => timestampMillis(right.createdAt) - timestampMillis(left.createdAt));
       setCalendarOfActivitiesApprovalNotifications(notifications);
     }, () => setError("Could not load Calendar of Activities approval notifications. Refresh and try again."));
-  }, [user, playNotificationTone]);
+  }, [user, accountProfile, playNotificationTone]);
   useEffect(() => {
     if (!user || !db) return;
-    loadUnitSharedRecords<SpecialOrder>(db, "specialOrders", user.uid, accountProfileUnit?.userId === user.uid ? accountProfileUnit.unit : null).then((orders) => {
+    loadUnitSharedRecords<SpecialOrder>(db, "specialOrders", user.uid, accountProfile?.userId === user.uid ? accountProfile.assignment : null).then((orders) => {
       orders.sort((left, right) => {
         const leftTime = (left.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
         const rightTime = (right.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
@@ -1932,7 +2112,7 @@ export default function Home() {
       const code = (error as { code?: string }).code;
       setError(code ? `Could not load special orders (${code}).` : "Could not load special orders. Refresh and try again.");
     });
-  }, [user, accountProfileUnit]);
+  }, [user, accountProfile]);
 
   async function deletePermit(permit: Permit) {
     if (!db || !user) return;
@@ -1990,8 +2170,8 @@ export default function Home() {
 
   async function copySpecialOrder(order: SpecialOrder) {
     if (!db || !user) return;
-    const ownerUnit = accountProfileUnit && accountProfileUnit.userId === user.uid ? accountProfileUnit.unit : null;
-    if (!ownerUnit) { setError("Your account unit is still loading. Try copying again in a moment."); return; }
+    const ownerUnit = accountProfile && accountProfile.userId === user.uid ? accountProfile.assignment : null;
+    if (!ownerUnit) { setError("Your Assignment is still loading. Try copying again in a moment."); return; }
     setCopyingSpecialOrderId(order.id);
     setError("");
     try {
@@ -2080,27 +2260,30 @@ export default function Home() {
   function closeMobileNavigation() {
     setMobileMenuOpen(false);
     setMobileCertificateOpen(false);
+    setMobileAdminPanelOpen(false);
     setMobileAmiaDocumentOpen(false);
     setMobileMyDocsOpen(false);
   }
 
   if (loading) return <div className="loading-screen" role="status" aria-label="Loading My Desk"><span>Loading</span><img className="loading-logo" src={publicAsset("/my%20desk%20logo.png")} alt="" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span aria-hidden="true">...</span></div>;
   if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
-  if (!user) return <Login onError={setError} />;
+  if (!user) return approvalUser ? <div className="setup-screen"><section className="setup-card account-approval-card"><p className="eyebrow">Account approval</p><h1>{approvalStatus === "Disapproved" ? "Account disapproved" : approvalStatus === "Missing" ? "Account profile unavailable" : "Awaiting approval"}</h1><p>{approvalStatus === "Disapproved" ? "Your account was disapproved. Contact the Super Admin if you need help." : approvalStatus === "Missing" ? "Your account profile could not be found. Contact the Super Admin for assistance." : "Your email is verified. Your account will be available after the Super Admin approves it."}</p>{approvalError && <p className="auth-message auth-message-error" role="alert">{approvalError}</p>}<button type="button" className="primary-button" onClick={() => { if (auth) void signOut(auth); }}>Sign Out</button></section></div> : <Login onError={setError} />;
 
   const fullName = user.displayName?.trim().replace(/\s+/g, " ") || "";
   const firstName = fullName.split(" ")[0] || "";
-  const isAdmin = isPermitAdmin(user.email);
-  const accountUnit = accountProfileUnit?.userId === user.uid ? accountProfileUnit.unit : null;
+  const activeAccountProfile = accountProfile?.userId === user.uid ? accountProfile : null;
+  const accountRole = normalizeAccountRole(activeAccountProfile?.accountRole, user.email);
+  const isAdmin = isPermitAdmin(user.email, accountRole);
+  const isSuperAdmin = accountRole === "superadmin";
+  const accountUnit = activeAccountProfile?.assignment ?? null;
   const canAccessAmiaDocumentTracking = accountUnit === "AMIA" || accountUnit === "Field Operations Division";
   const userPermitNotifications = permits.flatMap((permit) => permit.names.flatMap((name, personIndex) => {
     const decision = permit.personStatuses?.[permitDecisionKey(permit, personIndex)];
     if (decision?.status !== "Approved" && decision?.status !== "Disapproved") return [];
     return [{ permit, personIndex, permitNo: permitPersonNumber(permit, personIndex), name, date: permit.date, status: decision.status, decidedAt: decision.decidedAt }];
   })).sort((left, right) => timestampMillis(right.decidedAt) - timestampMillis(left.decidedAt));
-  const notificationCount = pendingPermitNotifications.length;
   return <div className="app-shell"><header className="topbar"><button type="button" className="brand brand-home" aria-label="My Desk home - Whereabouts Calendar" onClick={() => { closeMobileNavigation(); setSection("whereabouts-calendar"); setView("list"); }}><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span>My Desk</span></button><nav className="main-nav" aria-label="Main navigation">
-      <div className="nav-dropdown mydocs-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMyDocsMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setMyDocsMenuOpen(false); }}><button type="button" className={section === "special-orders" || section === "nta" || section === "permits" || section === "permit-status" || section === "permit-statistics" || section === "travel-orders" || section === "calendar-of-activities" || section === "calendar-of-activities-records" || section === "myar" || section === "my-notes" || section === "my-tevs" || section === "leave-application" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={myDocsMenuOpen} aria-controls="mydocs-menu" onClick={() => setMyDocsMenuOpen((open) => !open)}>myDocs <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{myDocsMenuOpen && <div className="nav-dropdown-menu mydocs-nav-menu" id="mydocs-menu">
+      <div className="nav-dropdown mydocs-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMyDocsMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setMyDocsMenuOpen(false); }}><button type="button" className={section === "special-orders" || section === "nta" || section === "permits" || section === "travel-orders" || section === "calendar-of-activities" || section === "myar" || section === "my-notes" || section === "my-tevs" || section === "leave-application" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={myDocsMenuOpen} aria-controls="mydocs-menu" onClick={() => setMyDocsMenuOpen((open) => !open)}>myDocs <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{myDocsMenuOpen && <div className="nav-dropdown-menu mydocs-nav-menu" id="mydocs-menu">
         <button type="button" className={section === "special-orders" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("special-orders"); setView("list"); setMyDocsMenuOpen(false); }}>Special Order</button>
         <button type="button" className={section === "nta" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("nta"); setView("list"); setMyDocsMenuOpen(false); }}>Notice To Attend</button>
         <button type="button" className={section === "permits" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permits"); setView("list"); setMyDocsMenuOpen(false); }}>Permit Slip</button>
@@ -2109,19 +2292,20 @@ export default function Home() {
         <button type="button" className={section === "myar" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("myar"); setView("list"); setMyDocsMenuOpen(false); }}>myAR</button>
         <button type="button" className={section === "my-notes" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("my-notes"); setView("list"); setMyDocsMenuOpen(false); }}>myNotes</button>
         <button type="button" className={section === "my-tevs" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("my-tevs"); setView("list"); setMyDocsMenuOpen(false); }}>myTEV</button>
-        <button type="button" className={section === "leave-application" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("leave-application"); setView("list"); setMyDocsMenuOpen(false); }}>Leave Application</button>
-        {isAdmin && <><div className="nav-dropdown-divider" role="separator" /><span className="nav-dropdown-label">Admin Panel</span><button type="button" className={section === "permit-status" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-status"); setMyDocsMenuOpen(false); }}>Permit Slip Status</button><button type="button" className={section === "permit-statistics" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-statistics"); setMyDocsMenuOpen(false); }}>Permit Slip Statistics</button><button type="button" className={section === "calendar-of-activities-records" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("calendar-of-activities-records"); setView("list"); setMyDocsMenuOpen(false); }}>Calendar of Activities Records</button></>}
+        <button type="button" className={section === "leave-application" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("leave-application"); setView("list"); setMyDocsMenuOpen(false); }}>myLeave</button>
       </div>}</div>
       {canAccessAmiaDocumentTracking && <div className="nav-dropdown amia-document-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAmiaDocumentMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setAmiaDocumentMenuOpen(false); }}><button type="button" className="nav-button amia-document-nav-button" aria-haspopup="true" aria-expanded={amiaDocumentMenuOpen} aria-controls="amia-document-menu" onClick={() => setAmiaDocumentMenuOpen((open) => !open)}>AMIA Document Tracking <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{amiaDocumentMenuOpen && <div className="nav-dropdown-menu amia-document-nav-menu" id="amia-document-menu">{amiaDocumentTrackingLinks.map((link) => <a className="nav-dropdown-item" href={link.href} key={link.label} target="_blank" rel="noopener noreferrer">{link.label}</a>)}</div>}</div>}
       <div className="nav-dropdown certificate-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setCertificateMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setCertificateMenuOpen(false); }}><button type="button" className={section === "certificate-of-appearance" || section === "completion" || section === "appreciation" || section === "participation" ? "nav-button certificate-nav-button active" : "nav-button certificate-nav-button"} aria-haspopup="true" aria-expanded={certificateMenuOpen} aria-controls="certificate-menu" onClick={() => setCertificateMenuOpen((open) => !open)}>Certificate <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{certificateMenuOpen && <div className="nav-dropdown-menu certificate-nav-menu" id="certificate-menu"><button type="button" className={section === "certificate-of-appearance" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("certificate-of-appearance"); setView("list"); setCertificateMenuOpen(false); }}>Appearance</button><button type="button" className={section === "completion" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("completion"); setView("list"); setCertificateMenuOpen(false); }}>Completion</button><button type="button" className={section === "appreciation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("appreciation"); setView("list"); setCertificateMenuOpen(false); }}>Appreciation</button><button type="button" className={section === "participation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("participation"); setView("list"); setCertificateMenuOpen(false); }}>Participation</button></div>}</div>
-    </nav><div className="user-menu"><MessengerButton user={user} active={section === "messenger"} onClick={() => { closeMobileNavigation(); setSection("messenger"); setView("list"); }} /><PermitNotificationCenter isAdmin={isAdmin} userId={user.uid} count={notificationCount} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} documentNotifications={documentNotifications} documentReminders={documentReminders} calendarOfActivitiesNotifications={calendarOfActivitiesNotifications} calendarOfActivitiesApprovalNotifications={calendarOfActivitiesApprovalNotifications} onReadCalendarOfActivitiesApproval={(notification) => void markCalendarOfActivitiesApprovalNotificationRead(notification)} onOpenCalendarOfActivitiesApproval={() => { closeMobileNavigation(); setSection("calendar-of-activities-records"); setView("list"); }} onReadDocument={(notification) => void markDocumentNotificationRead(notification)} onReadDocumentReminder={(notification) => void markDocumentReminderRead(notification)} onOpenDocumentReminder={(notification) => { closeMobileNavigation(); setView("list"); setSection(notification.kind === "travel-order-status" ? "travel-orders" : notification.kind === "leave-application-status" ? "leave-application" : notification.kind === "accomplishment-report" ? "myar" : "permits"); }} onReadCalendarOfActivities={(notification) => void markCalendarOfActivitiesNotificationRead(notification)} onAdminOpen={(notification) => { closeMobileNavigation(); setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onViewPermit={(notification) => { closeMobileNavigation(); setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div><button type="button" className="mobile-menu-toggle" aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen} aria-controls="mobile-navigation" onClick={() => setMobileMenuOpen((open) => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 5h18M3 12h18M3 19h18" /></svg></button></header>
+      {isAdmin && <div className="nav-dropdown admin-panel-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAdminPanelMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setAdminPanelMenuOpen(false); }}><button type="button" className={section === "permit-status" || section === "permit-statistics" || section === "calendar-of-activities-records" || section === "certificate-approval" || section === "user-master-list" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={adminPanelMenuOpen} aria-controls="admin-panel-menu" onClick={() => setAdminPanelMenuOpen((open) => !open)}>Admin Panel <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{adminPanelMenuOpen && <div className="nav-dropdown-menu admin-panel-nav-menu" id="admin-panel-menu"><button type="button" className={section === "permit-status" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-status"); setView("list"); setAdminPanelMenuOpen(false); }}>Permit Slip Status</button><button type="button" className={section === "permit-statistics" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-statistics"); setView("list"); setAdminPanelMenuOpen(false); }}>Permit Slip Statistics</button><button type="button" className={section === "calendar-of-activities-records" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("calendar-of-activities-records"); setView("list"); setAdminPanelMenuOpen(false); }}>Calendar of Activities Records</button><button type="button" className={section === "certificate-approval" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("certificate-approval"); setView("list"); setAdminPanelMenuOpen(false); }}>Certificate Approval</button>{isSuperAdmin && <button type="button" className={section === "user-master-list" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("user-master-list"); setView("list"); setAdminPanelMenuOpen(false); }}>Users&apos; Master List</button>}</div>}</div>}
+    </nav><div className="user-menu"><MessengerButton user={user} active={section === "messenger"} onClick={() => { closeMobileNavigation(); setSection("messenger"); setView("list"); }} /><PermitNotificationCenter isAdmin={isAdmin} userId={user.uid} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} documentNotifications={documentNotifications} documentReminders={documentReminders} calendarOfActivitiesNotifications={calendarOfActivitiesNotifications} calendarOfActivitiesApprovalNotifications={calendarOfActivitiesApprovalNotifications} onReadCalendarOfActivitiesApproval={(notification) => void markCalendarOfActivitiesApprovalNotificationRead(notification)} onOpenCalendarOfActivitiesApproval={() => { closeMobileNavigation(); setSection("calendar-of-activities-records"); setView("list"); }} onReadDocument={(notification) => void markDocumentNotificationRead(notification)} onOpenCertificateApproval={() => { closeMobileNavigation(); setSection("certificate-approval"); setView("list"); }} onOpenCertificateDecision={(notification) => { closeMobileNavigation(); setView("list"); setSection(notification.certificateCollection === "certificatesOfAppearance" ? "certificate-of-appearance" : notification.certificateCollection === "completionCertificates" ? "completion" : notification.certificateCollection === "appreciationCertificates" ? "appreciation" : "participation"); }} onReadDocumentReminder={(notification) => void markDocumentReminderRead(notification)} onOpenDocumentReminder={(notification) => { closeMobileNavigation(); setView("list"); setSection(notification.kind === "travel-order-status" ? "travel-orders" : notification.kind === "leave-application-status" ? "leave-application" : notification.kind === "accomplishment-report" ? "myar" : "permits"); }} onReadCalendarOfActivities={(notification) => void markCalendarOfActivitiesNotificationRead(notification)} onAdminOpen={(notification) => { closeMobileNavigation(); setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onViewPermit={(notification) => { closeMobileNavigation(); setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div><button type="button" className="mobile-menu-toggle" aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen} aria-controls="mobile-navigation" onClick={() => setMobileMenuOpen((open) => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 5h18M3 12h18M3 19h18" /></svg></button></header>
 {mobileMenuOpen && <><button type="button" className="mobile-nav-scrim" aria-label="Close navigation" onClick={closeMobileNavigation} /><nav className="mobile-navigation" id="mobile-navigation" aria-label="Mobile navigation">
 <button type="button" className="mobile-profile-link" onClick={() => { closeMobileNavigation(); setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button>
 <div className="mobile-navigation-links">
 <button type="button" className="mobile-nav-link" aria-expanded={mobileMyDocsOpen} aria-controls="mobile-mydocs-menu" onClick={() => setMobileMyDocsOpen((open) => !open)}><span>myDocs</span><span className={mobileMyDocsOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
-{mobileMyDocsOpen && <div className="mobile-nav-submenu" id="mobile-mydocs-menu"><button type="button" onClick={() => { setSection("special-orders"); setView("list"); closeMobileNavigation(); }}>Special Order</button><button type="button" onClick={() => { setSection("nta"); setView("list"); closeMobileNavigation(); }}>Notice To Attend</button><button type="button" onClick={() => { setSection("permits"); setView("list"); closeMobileNavigation(); }}>Permit Slip</button><button type="button" onClick={() => { setSection("travel-orders"); setView("list"); closeMobileNavigation(); }}>Travel Order</button><button type="button" onClick={() => { setSection("calendar-of-activities"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities</button><button type="button" onClick={() => { setSection("myar"); setView("list"); closeMobileNavigation(); }}>myAR</button><button type="button" onClick={() => { setSection("my-notes"); setView("list"); closeMobileNavigation(); }}>myNotes</button><button type="button" onClick={() => { setSection("my-tevs"); setView("list"); closeMobileNavigation(); }}>myTEV</button><button type="button" onClick={() => { setSection("leave-application"); setView("list"); closeMobileNavigation(); }}>Leave Application</button>{isAdmin && <><span className="mobile-nav-submenu-label">Admin Panel</span><button type="button" onClick={() => { setSection("permit-status"); setView("list"); closeMobileNavigation(); }}>Permit Slip Status</button><button type="button" onClick={() => { setSection("permit-statistics"); setView("list"); closeMobileNavigation(); }}>Permit Slip Statistics</button><button type="button" onClick={() => { setSection("calendar-of-activities-records"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities Records</button></>}</div>}
+{mobileMyDocsOpen && <div className="mobile-nav-submenu" id="mobile-mydocs-menu"><button type="button" onClick={() => { setSection("special-orders"); setView("list"); closeMobileNavigation(); }}>Special Order</button><button type="button" onClick={() => { setSection("nta"); setView("list"); closeMobileNavigation(); }}>Notice To Attend</button><button type="button" onClick={() => { setSection("permits"); setView("list"); closeMobileNavigation(); }}>Permit Slip</button><button type="button" onClick={() => { setSection("travel-orders"); setView("list"); closeMobileNavigation(); }}>Travel Order</button><button type="button" onClick={() => { setSection("calendar-of-activities"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities</button><button type="button" onClick={() => { setSection("myar"); setView("list"); closeMobileNavigation(); }}>myAR</button><button type="button" onClick={() => { setSection("my-notes"); setView("list"); closeMobileNavigation(); }}>myNotes</button><button type="button" onClick={() => { setSection("my-tevs"); setView("list"); closeMobileNavigation(); }}>myTEV</button><button type="button" onClick={() => { setSection("leave-application"); setView("list"); closeMobileNavigation(); }}>myLeave</button></div>}
 <button type="button" className="mobile-nav-link" aria-expanded={mobileCertificateOpen} aria-controls="mobile-certificate-menu" onClick={() => setMobileCertificateOpen((open) => !open)}><span>Certificate</span><span className={mobileCertificateOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
 {mobileCertificateOpen && <div className="mobile-nav-submenu" id="mobile-certificate-menu"><button type="button" onClick={() => { setSection("certificate-of-appearance"); setView("list"); closeMobileNavigation(); }}>Appearance</button><button type="button" onClick={() => { setSection("completion"); setView("list"); closeMobileNavigation(); }}>Completion</button><button type="button" onClick={() => { setSection("appreciation"); setView("list"); closeMobileNavigation(); }}>Appreciation</button><button type="button" onClick={() => { setSection("participation"); setView("list"); closeMobileNavigation(); }}>Participation</button></div>}
+{isAdmin && <><button type="button" className="mobile-nav-link" aria-expanded={mobileAdminPanelOpen} aria-controls="mobile-admin-panel-menu" onClick={() => setMobileAdminPanelOpen((open) => !open)}><span>Admin Panel</span><span className={mobileAdminPanelOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>{mobileAdminPanelOpen && <div className="mobile-nav-submenu" id="mobile-admin-panel-menu"><button type="button" onClick={() => { setSection("permit-status"); setView("list"); closeMobileNavigation(); }}>Permit Slip Status</button><button type="button" onClick={() => { setSection("permit-statistics"); setView("list"); closeMobileNavigation(); }}>Permit Slip Statistics</button><button type="button" onClick={() => { setSection("calendar-of-activities-records"); setView("list"); closeMobileNavigation(); }}>Calendar of Activities Records</button><button type="button" onClick={() => { setSection("certificate-approval"); setView("list"); closeMobileNavigation(); }}>Certificate Approval</button>{isSuperAdmin && <button type="button" onClick={() => { setSection("user-master-list"); setView("list"); closeMobileNavigation(); }}>Users&apos; Master List</button>}</div>}</>}
 {canAccessAmiaDocumentTracking && <><button type="button" className="mobile-nav-link" aria-expanded={mobileAmiaDocumentOpen} aria-controls="mobile-amia-document-menu" onClick={() => setMobileAmiaDocumentOpen((open) => !open)}><span>AMIA Document Tracking</span><span className={mobileAmiaDocumentOpen ? "mobile-nav-chevron is-open" : "mobile-nav-chevron"} aria-hidden="true" /></button>
 {mobileAmiaDocumentOpen && <div className="mobile-nav-submenu mobile-amia-document-submenu" id="mobile-amia-document-menu">{amiaDocumentTrackingLinks.map((link) => <a className="mobile-nav-submenu-link" href={link.href} key={link.label} target="_blank" rel="noopener noreferrer" onClick={closeMobileNavigation}>{link.label}</a>)}</div>}</>}
 </div><button type="button" className="mobile-sign-out" onClick={() => { closeMobileNavigation(); if (auth) void signOut(auth); }}>Sign Out</button></nav></>}{profileOpen && <div className="profile-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeProfile(); }} onKeyDown={(event) => { if (event.key === "Escape") closeProfile(); }}><section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title"><header className="profile-dialog-header"><div><p className="eyebrow">Account</p><h2 id="profile-title">Profile</h2></div><button type="button" className="ghost-button" onClick={closeProfile}>Close</button></header><form className="profile-form" onSubmit={saveChanges} aria-busy={profileLoading || profileSaving}>
@@ -2132,15 +2316,18 @@ export default function Home() {
   <label>Gender<select value={profileGender} onChange={(event) => setProfileGender(event.target.value)} required disabled={profileLoading || profileSaving}><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
   <label>Position<input autoComplete="organization-title" maxLength={120} value={profilePosition} onChange={(event) => setProfilePosition(event.target.value)} disabled={profileLoading || profileSaving} /></label>
   <label>Designation<input autoComplete="organization-title" maxLength={120} value={profileDesignation} onChange={(event) => setProfileDesignation(event.target.value)} disabled={profileLoading || profileSaving} /></label>
-  <label>Unit<input value={accountUnitOptions.find((option) => option.value === profileUnit)?.label ?? profileUnit} readOnly /></label>
+  <label>Office<select value={profileOffice} onChange={(event) => { const nextOffice = event.target.value; setProfileOffice(nextOffice); setProfileAssignment((current) => assignmentsForOffice(nextOffice).some((option) => option === current) ? current : ""); }} required disabled={profileLoading || profileSaving}><option value="" disabled>Select your Office</option>{accountOfficeOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+  <label>Assignment<select value={profileAssignment} onChange={(event) => setProfileAssignment(event.target.value)} required disabled={profileLoading || profileSaving || !profileOffice}><option value="" disabled>{profileOffice ? "Select your Assignment" : "Select an Office first"}</option>{assignmentsForOffice(profileOffice).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
   <label>Address<input autoComplete="street-address" maxLength={200} value={profileAddress} onChange={(event) => setProfileAddress(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
+  <div className="profile-contact-row">
   <label>Tax Identification No.<input type="text" inputMode="numeric" autoComplete="off" maxLength={11} value={profileTaxIdentificationNo} onChange={(event) => updateTaxIdentificationNo(event, setProfileTaxIdentificationNo)} onKeyDown={(event) => handleTaxIdentificationNoKeyDown(event, setProfileTaxIdentificationNo)} required disabled={profileLoading || profileSaving} /></label>
-  <div className="profile-security-fields">
   <label>Email<input type="email" value={user.email ?? ""} readOnly /></label>
+  </div>
+  <div className="profile-security-fields">
   <label>Change Password<div className="password-field"><input type={showChangePassword ? "text" : "password"} autoComplete="new-password" value={changePassword} onChange={(event) => setChangePassword(event.target.value)} /><button type="button" className="password-toggle" aria-label={showChangePassword ? "Hide new password" : "Show new password"} onClick={() => setShowChangePassword((show) => !show)}>{showChangePassword ? "Hide" : "Show"}</button></div></label>
   <label>Confirmation Password<div className="password-field"><input type={showConfirmNewPassword ? "text" : "password"} autoComplete="new-password" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} /><button type="button" className="password-toggle" aria-label={showConfirmNewPassword ? "Hide confirmation password" : "Show confirmation password"} onClick={() => setShowConfirmNewPassword((show) => !show)}>{showConfirmNewPassword ? "Hide" : "Show"}</button></div></label>
   </div>
   <div className="profile-password-actions"><button type="button" className="ghost-button" disabled={profileSaving || resetEmailBusy} onClick={() => void sendResetLink()}>{resetEmailBusy ? "Sending..." : "Reset Password"}</button><button className="primary-button" disabled={profileLoading || profileSaving || resetEmailBusy}>{profileLoading ? "Loading..." : profileSaving ? "Saving..." : "Save Changes"}</button></div>
   {profileMessage && <p className={`auth-message auth-message-${profileMessage.kind}`} role={profileMessage.kind === "error" ? "alert" : "status"}>{profileMessage.text}</p>}
-  </form></section></div>}<main className="dashboard"><div className={`dashboard-header${section === "messenger" ? " hide-on-mobile" : ""}`}><div className="dashboard-header-content"><p className="eyebrow">{philippineDateTime && <>{philippineDateTime.split(" | ")[0]} | <span className="dashboard-time">{philippineDateTime.split(" | ")[1]}</span></>}</p><h1>{biometricsGreeting === "Masaganang Buntag" ? <>Masaganang Buntag{firstName ? <> <span className="dashboard-greeting-name">{firstName}</span>!</> : "!"}</> : <>{biometricsGreeting ?? "Masaganang Agrikultura"}{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</>}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{section === "appreciation" ? <AppreciationCertificate user={user} /> : section === "completion" ? <CompletionCertificate user={user} /> : section === "participation" ? <ParticipationCertificate user={user} /> : section === "certificate-of-appearance" ? <CertificateOfAppearance user={user} /> : section === "leave-application" ? <LeaveApplicationModule user={user} /> : section === "myar" ? <AccomplishmentReportModule user={user} /> : section === "my-notes" ? <MyNotesModule user={user} /> : section === "my-tevs" ? <MyTevModule user={user} /> : section === "nta" ? <NtaModule user={user} unit={accountUnit} /> : section === "travel-orders" ? <TravelOrderModule user={user} unit={accountUnit} /> : section === "calendar-of-activities" ? <CalendarOfActivitiesModule user={user} profileRevision={profileRevision} /> : section === "calendar-of-activities-records" && isAdmin ? <CalendarOfActivitiesModule user={user} mode="approved-records" /> : section === "messenger" ? <MessengerModule user={user} profileUnit={accountUnit} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} /> : section === "permit-statistics" && isAdmin ? <PermitSlipAdmin user={user} mode="statistics" /> : section === "permit-status" && isAdmin ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} approvedPermitNumbers={approvedPermitNumbers} deletingId={deletingPermitId} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} onDelete={setPendingPermitDelete} />) : editingSpecialOrder ? <SpecialOrderParticipantEditor order={editingSpecialOrder} userId={user.uid} onCancel={() => setEditingSpecialOrder(null)} onSaved={(updatedOrder) => { setSpecialOrders((current) => current.map((order) => order.id === updatedOrder.id ? updatedOrder : order)); setEditingSpecialOrder(null); }} /> : (view === "new" ? <SpecialOrderForm user={user} ownerUnit={accountUnit} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} ownerId={user.uid} deletingId={deletingSpecialOrderId} onNew={() => { setError(""); setView("new"); }} onEdit={setEditingSpecialOrder} onPrint={setSpecialOrderPreview} copyingId={copyingSpecialOrderId} onCopy={(order) => void copySpecialOrder(order)} onDelete={setPendingSpecialOrderDelete} />)}</main><DeleteConfirmation open={Boolean(pendingPermitDelete)} title="Confirm Permit Slip Deletion?" description="Are you sure you want to delete this Permit Slip? This action cannot be undone." busy={Boolean(pendingPermitDelete && deletingPermitId === pendingPermitDelete.id)} onCancel={() => setPendingPermitDelete(null)} onConfirm={() => { if (pendingPermitDelete) void deletePermit(pendingPermitDelete); }} /><DeleteConfirmation open={Boolean(pendingSpecialOrderDelete && pendingSpecialOrderDelete.ownerId === user.uid)} title="Confirm Special Order Deletion?" description="Are you sure you want to delete this Special Order? This action cannot be undone." busy={Boolean(pendingSpecialOrderDelete && deletingSpecialOrderId === pendingSpecialOrderDelete.id)} onCancel={() => setPendingSpecialOrderDelete(null)} onConfirm={() => { if (pendingSpecialOrderDelete) void deleteSpecialOrder(pendingSpecialOrderDelete); }} />{preview && <PrintPreview permit={preview} approvedPermitNumbers={approvedPermitNumbers} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
+  </form></section></div>}<main className="dashboard"><div className={`dashboard-header${section === "messenger" ? " hide-on-mobile" : ""}`}><div className="dashboard-header-content"><p className="eyebrow">{philippineDateTime && <>{philippineDateTime.split(" | ")[0]} | <span className="dashboard-time">{philippineDateTime.split(" | ")[1]}</span></>}</p><h1>{biometricsGreeting === "Masaganang Buntag" ? <>Masaganang Buntag{firstName ? <> <span className="dashboard-greeting-name">{firstName}</span>!</> : "!"}</> : <>{biometricsGreeting ?? "Masaganang Agrikultura"}{firstName ? <>, <span className="dashboard-greeting-name">{firstName}!</span></> : "!"}</>}</h1></div><div className="status-pill"><span /> Secure session</div></div>{error && <div className="error-message">{error}</div>}{!isAdmin && (section === "permit-status" || section === "permit-statistics" || section === "calendar-of-activities-records" || section === "certificate-approval" || section === "user-master-list") ? <WhereaboutsCalendarModule user={user} accountRole={accountRole} office={activeAccountProfile?.office ?? ""} assignment={accountUnit ?? ""} /> : section === "user-master-list" ? (isSuperAdmin ? <UserMasterList user={user} /> : null) : section === "certificate-approval" ? <CertificateApproval user={user} role={accountRole} office={activeAccountProfile?.office} assignment={activeAccountProfile?.assignment} designation={activeAccountProfile?.designation} accountName={activeAccountProfile?.name} /> : section === "appreciation" ? <AppreciationCertificate user={user} /> : section === "completion" ? <CompletionCertificate user={user} /> : section === "participation" ? <ParticipationCertificate user={user} /> : section === "certificate-of-appearance" ? <CertificateOfAppearance user={user} ownerOffice={activeAccountProfile?.office} role={accountRole} /> : section === "leave-application" ? <LeaveApplicationModule user={user} /> : section === "myar" ? <AccomplishmentReportModule user={user} /> : section === "my-notes" ? <MyNotesModule user={user} /> : section === "my-tevs" ? <MyTevModule user={user} /> : section === "nta" ? <NtaModule user={user} office={activeAccountProfile?.office ?? ""} unit={accountUnit} /> : section === "travel-orders" ? <TravelOrderModule user={user} office={activeAccountProfile?.office ?? ""} unit={accountUnit} /> : section === "calendar-of-activities" ? <CalendarOfActivitiesModule user={user} profileRevision={profileRevision} /> : section === "calendar-of-activities-records" ? <CalendarOfActivitiesModule user={user} mode="approved-records" /> : section === "messenger" ? <MessengerModule user={user} profileOffice={activeAccountProfile?.office} profileAssignment={accountUnit} /> : section === "whereabouts-calendar" ? <WhereaboutsCalendarModule user={user} accountRole={accountRole} office={activeAccountProfile?.office ?? ""} assignment={accountUnit ?? ""} /> : section === "permit-statistics" ? <PermitSlipAdmin user={user} mode="statistics" canManagePermits={isAdmin} /> : section === "permit-status" ? <PermitSlipAdmin user={user} mode="status" focusNotificationKey={focusedPermitNotificationKey} canManagePermits={isAdmin} /> : section === "permits" ? (view === "new" ? <PermitForm user={user} office={activeAccountProfile?.office ?? ""} assignment={accountUnit ?? ""} onSaved={(permit) => { setPermits([permit, ...permits]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <PermitList permits={permits} approvedPermitNumbers={approvedPermitNumbers} deletingId={deletingPermitId} onNew={() => { setError(""); setView("new"); }} onPrint={(permit) => { setSingleSlipPreview(false); setPreview(permit); }} onDelete={setPendingPermitDelete} />) : editingSpecialOrder ? <SpecialOrderParticipantEditor order={editingSpecialOrder} userId={user.uid} office={activeAccountProfile?.office ?? ""} assignment={accountUnit ?? ""} onCancel={() => setEditingSpecialOrder(null)} onSaved={(updatedOrder) => { setSpecialOrders((current) => current.map((order) => order.id === updatedOrder.id ? updatedOrder : order)); setEditingSpecialOrder(null); }} /> : (view === "new" ? <SpecialOrderForm user={user} ownerOffice={activeAccountProfile?.office ?? ""} ownerUnit={accountUnit} onSaved={(order) => { setSpecialOrders([order, ...specialOrders]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : <SpecialOrderList orders={specialOrders} ownerId={user.uid} deletingId={deletingSpecialOrderId} onNew={() => { setError(""); setView("new"); }} onEdit={setEditingSpecialOrder} onPrint={setSpecialOrderPreview} copyingId={copyingSpecialOrderId} onCopy={(order) => void copySpecialOrder(order)} onDelete={setPendingSpecialOrderDelete} />)}</main><DeleteConfirmation open={Boolean(pendingPermitDelete)} title="Confirm Permit Slip Deletion?" description="Are you sure you want to delete this Permit Slip? This action cannot be undone." busy={Boolean(pendingPermitDelete && deletingPermitId === pendingPermitDelete.id)} onCancel={() => setPendingPermitDelete(null)} onConfirm={() => { if (pendingPermitDelete) void deletePermit(pendingPermitDelete); }} /><DeleteConfirmation open={Boolean(pendingSpecialOrderDelete && pendingSpecialOrderDelete.ownerId === user.uid)} title="Confirm Special Order Deletion?" description="Are you sure you want to delete this Special Order? This action cannot be undone." busy={Boolean(pendingSpecialOrderDelete && deletingSpecialOrderId === pendingSpecialOrderDelete.id)} onCancel={() => setPendingSpecialOrderDelete(null)} onConfirm={() => { if (pendingSpecialOrderDelete) void deleteSpecialOrder(pendingSpecialOrderDelete); }} />{preview && <PrintPreview permit={preview} approvedPermitNumbers={approvedPermitNumbers} singleSlip={singleSlipPreview} onClose={() => { setPreview(null); setSingleSlipPreview(false); }} />}{specialOrderPreview && <SpecialOrderPreview order={specialOrderPreview} onClose={() => setSpecialOrderPreview(null)} />}</div>;
 }

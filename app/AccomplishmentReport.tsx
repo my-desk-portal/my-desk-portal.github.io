@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import type { User } from "firebase/auth";
 import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { accountAssignment } from "@/lib/account-profile";
 import { divisionSignatory, tevDivisions } from "@/lib/mytev";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
@@ -283,8 +284,9 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       const unsubscribeProfile = onSnapshot(doc(db, "users", user.uid), (profileSnapshot) => {
         if (!current) return;
         const data = profileSnapshot.data();
-        if (profileSnapshot.exists() && data && typeof data.name === "string" && typeof data.position === "string" && typeof data.unit === "string" && ["AMIA", "AGRISTAT", "DRRM"].includes(data.unit)) {
-          setProfile({ name: data.name, position: data.position, unit: data.unit as Unit });
+        const assignment = data ? accountAssignment(data) : "";
+        if (profileSnapshot.exists() && data && typeof data.name === "string" && typeof data.position === "string" && ["AMIA", "AGRISTAT", "DRRM"].includes(assignment)) {
+          setProfile({ name: data.name, position: data.position, unit: assignment as Unit });
         } else {
           setProfile(null);
         }
@@ -340,7 +342,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       return;
     }
     if (!preparedProfile?.name.trim() || !preparedProfile.position.trim() || !preparedProfile.unit) {
-      setMessage({ kind: "error", text: "Complete your name, position, and unit in Profile before creating a report." });
+      setMessage({ kind: "error", text: "Complete your name, position, and Assignment in Profile before creating a report." });
       return;
     }
     const cleanActivities = activities.map((activity) => activity.trim());
@@ -397,7 +399,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
     {showForm && <section className="content-section ar-entry-section">
       <div className="section-heading"><div><p className="eyebrow">{editingReport ? "myAR · Edit activities" : "myAR · Data entry"}</p><h2>{editingReport ? "Edit Report Activities" : "Accomplishment Report"}</h2><p className="muted">{editingReport ? "Update the activities for this saved report." : "Enter the reporting period and activities. Your profile details fill the report automatically."}</p></div><button type="button" className="ghost-button" disabled={saving} onClick={cancelEdit}>{editingReport ? "Cancel Edit" : "Cancel"}</button></div>
       {message && <p className={`auth-message auth-message-${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
-      {loading ? <p className="muted">Loading your profile and reports…</p> : !preparedProfile ? <div className="ar-profile-notice"><strong>Profile details needed</strong><p>Add your name, position, and unit in Profile to prepare an accomplishment report.</p><button type="button" className="ghost-button" onClick={cancelEdit}>Back to Saved Reports</button></div> : <>
+      {loading ? <p className="muted">Loading your profile and reports…</p> : !preparedProfile ? <div className="ar-profile-notice"><strong>Profile details needed</strong><p>Add your name, position, and Assignment in Profile to prepare an accomplishment report.</p><button type="button" className="ghost-button" onClick={cancelEdit}>Back to Saved Reports</button></div> : <>
         <form className="ar-form" onSubmit={saveReport}>
           <div className="ar-form-fields">
             <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} required disabled={!!editingReport} /></label>

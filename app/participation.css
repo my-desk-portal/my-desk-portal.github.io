@@ -32,7 +32,7 @@
 .participation-checkbox input{accent-color:var(--accent);flex:0 0 18px;height:18px;margin:0;padding:0;width:18px}
 .participation-hold-note{color:var(--muted);font-size:11px;margin:18px 0 0}
 .participation-record-list{border-top:1px solid var(--line)}
-.participation-record-head,.participation-record-row{align-items:center;display:grid;gap:14px;grid-template-columns:90px minmax(140px,.9fr) minmax(180px,1.3fr) minmax(150px,1fr) 140px;padding:15px 8px}
+.participation-record-head,.participation-record-row{align-items:center;display:grid;gap:14px;grid-template-columns:90px minmax(140px,.9fr) minmax(180px,1.3fr) minmax(150px,1fr) minmax(105px,.7fr) 140px;padding:15px 8px}
 .participation-record-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
 .participation-record-row{border-top:1px solid var(--line);font-size:13px}
 .participation-record-row>strong,.participation-record-row>span{overflow-wrap:anywhere}
@@ -80,7 +80,7 @@
   .participation-record-head{display:none}
   .participation-record-row{align-items:start;gap:7px;grid-template-columns:minmax(0,1fr) auto;padding:15px 4px}
   .participation-record-row>strong,.participation-record-row>span:nth-of-type(n+2){grid-column:1/-1}
-  .participation-record-actions{align-content:start;display:grid;gap:8px;grid-column:2;grid-row:1/5}
+  .participation-record-actions{align-content:start;display:grid;gap:8px;grid-column:2;grid-row:1/6}
   .participation-record-actions .row-action{text-align:right}
   .participation-list-actions{align-items:stretch;flex-direction:column}.participation-empty-actions{align-items:center;flex-direction:column}
   .participation-preview-toolbar{justify-content:flex-start}

@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { User } from "firebase/auth";
 import { arrayUnion, collection, deleteField, doc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { accountOfficeOptions, accountProfileSelection, assignmentsForOffice } from "@/lib/account-profile";
 import { isSuperadminRole } from "@/lib/user-roles";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./messenger.css";
 
-type Person = { id: string; name: string; position: string; unit: string; photoURL: string };
+type Person = { id: string; name: string; position: string; office: string; unit: string; photoURL: string };
 type Chat = { id: string; members: string[]; pending?: boolean; lastText?: string; lastSenderId?: string; lastAt?: Timestamp | null; readAt?: Record<string, Timestamp | null>; clearedAt?: Record<string, Timestamp | null> };
 type MessageKind = "text" | "sticker" | "gif";
 type ReplyRef = { id: string; senderId: string; kind: MessageKind; text: string };
@@ -16,16 +17,15 @@ type Message = { id: string; senderId: string; kind: MessageKind; text: string; 
 type Picker = "emoji" | "sticker" | "gif" | null;
 type GifResult = { id: string; url: string };
 
-const unitOptions = [
-  { value: "All", label: "All Units" },
-  { value: "AGRISTAT", label: "FOD-AGRISTAT" },
-  { value: "AMIA", label: "FOD-AMIA" },
-  { value: "DRRM", label: "FOD-DRRM" },
-  { value: "Field Operations Division", label: "Field Operations Division" },
-];
-const profileUnitFilterValue = (unit?: string | null) => {
-  const normalizedUnit = unit?.trim().replace(/^FOD[-\s]+/i, "").toUpperCase() ?? "";
-  return unitOptions.find((option) => option.value.toUpperCase() === normalizedUnit)?.value ?? "All";
+const allOfficesFilter = "All";
+const allAssignmentsFilter = "All";
+const profileOfficeFilterValue = (office?: string | null, assignment?: string | null) => {
+  const profile = accountProfileSelection({ office: office ?? "", assignment: assignment ?? "", profileFieldsVersion: 3 });
+  return profile.office || allOfficesFilter;
+};
+const profileAssignmentFilterValue = (office?: string | null, assignment?: string | null) => {
+  const profile = accountProfileSelection({ office: office ?? "", assignment: assignment ?? "", profileFieldsVersion: 3 });
+  return profile.office === "Field Operations Division (ILD)" || !profile.assignment ? allAssignmentsFilter : profile.assignment;
 };
 const emojis = ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤔", "😅", "😢", "😭", "😡", "🥳", "😴", "🙄", "👍", "👎", "👏", "🙏", "💪", "🤝", "👌", "✌️", "❤️", "💔", "🔥", "✨", "🎉", "✅", "❌", "⭐"];
 const stickers = ["👍", "❤️", "😂", "🎉", "🙏", "😍", "🔥", "👏", "😢", "😎", "🥳", "💯", "🤝", "🙌", "😴", "🤔"];
@@ -43,7 +43,12 @@ const giphyKey = process.env.NEXT_PUBLIC_GIPHY_API_KEY;
 const chatIdFor = (first: string, second: string) => [first, second].sort().join("_");
 const millis = (value?: Timestamp | null) => value?.toMillis?.() ?? 0;
 const isUnread = (chat: Chat, userId: string) => Boolean(chat.lastSenderId && chat.lastSenderId !== userId && millis(chat.lastAt) > millis(chat.readAt?.[userId]));
-const unitLabel = (unit: string) => unit === "Field Operations Division" ? unit : unit ? `FOD-${unit}` : "";
+const unitLabel = (office: string, unit: string) => {
+  if (office === "Regional Field Office") return unit || office;
+  if (office === "Field Operations Division (ILD)") return unit ? `FOD-${unit}` : office;
+  if (office === "Field Operations Division") return unit ? `${office} · ${unit}` : office;
+  return unit;
+};
 const isHttpsUrl = (value: string) => { try { return new URL(value).protocol === "https:" && value.length <= 500; } catch { return false; } };
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 
@@ -180,12 +185,13 @@ export function MessengerButton({ user, active, onClick }: { user: User; active:
   </button>;
 }
 
-export default function MessengerModule({ user, profileUnit }: { user: User; profileUnit?: string | null }) {
+export default function MessengerModule({ user, profileOffice, profileAssignment }: { user: User; profileOffice?: string | null; profileAssignment?: string | null }) {
   const chats = useChats(user.uid);
   const [people, setPeople] = useState<Person[]>([]);
   const [loadingPeople, setLoadingPeople] = useState(true);
   const [search, setSearch] = useState("");
-  const [unitFilter, setUnitFilter] = useState(() => profileUnitFilterValue(profileUnit));
+  const [officeFilter, setOfficeFilter] = useState(() => profileOfficeFilterValue(profileOffice, profileAssignment));
+  const [assignmentFilter, setAssignmentFilter] = useState(() => profileAssignmentFilterValue(profileOffice, profileAssignment));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -205,15 +211,17 @@ export default function MessengerModule({ user, profileUnit }: { user: User; pro
   const threadRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (profileUnit) setUnitFilter(profileUnitFilterValue(profileUnit));
-  }, [profileUnit]);
+    setOfficeFilter(profileOfficeFilterValue(profileOffice, profileAssignment));
+    setAssignmentFilter(profileAssignmentFilterValue(profileOffice, profileAssignment));
+  }, [profileOffice, profileAssignment]);
 
   useEffect(() => {
     if (!db) { setLoadingPeople(false); return; }
     return onSnapshot(collection(db, "users"), (snapshot) => {
       setPeople(snapshot.docs.filter((item) => item.id !== user.uid && !isSuperadminRole(item.data().accountRole)).map((item) => {
         const data = item.data();
-        return { id: item.id, name: typeof data.name === "string" ? data.name : "", position: typeof data.position === "string" ? data.position : "", unit: typeof data.unit === "string" ? data.unit : "", photoURL: typeof data.photoURL === "string" ? data.photoURL : "" };
+        const profile = accountProfileSelection(data);
+        return { id: item.id, name: typeof data.name === "string" ? data.name : "", position: typeof data.position === "string" ? data.position : "", office: profile.office, unit: profile.assignment, photoURL: typeof data.photoURL === "string" ? data.photoURL : "" };
       }).filter((person) => person.name));
       setLoadingPeople(false);
     }, () => {
@@ -236,9 +244,17 @@ export default function MessengerModule({ user, profileUnit }: { user: User; pro
     const term = search.trim().toLocaleLowerCase();
     return people
       .filter((person) => !term || person.name.toLocaleLowerCase().includes(term))
-      .filter((person) => unitFilter === "All" || person.unit === unitFilter)
+      .filter((person) => officeFilter === allOfficesFilter || person.office === officeFilter)
+      .filter((person) => assignmentFilter === allAssignmentsFilter || person.unit === assignmentFilter)
       .sort((left, right) => lastVisibleAt(chatByPerson.get(right.id)) - lastVisibleAt(chatByPerson.get(left.id)) || left.name.localeCompare(right.name, "en", { sensitivity: "base" }));
-  }, [people, search, unitFilter, chatByPerson]);
+  }, [people, search, officeFilter, assignmentFilter, chatByPerson]);
+
+  const assignmentOptions = useMemo(() => {
+    if (officeFilter === allOfficesFilter) {
+      return [...new Set(people.map((person) => person.unit).filter(Boolean))].sort((first, second) => first.localeCompare(second, "en", { sensitivity: "base" }));
+    }
+    return [...assignmentsForOffice(officeFilter)];
+  }, [officeFilter, people]);
 
   const selected = people.find((person) => person.id === selectedId) ?? null;
   const selectedChat = selected ? chatByPerson.get(selected.id) ?? null : null;
@@ -440,7 +456,8 @@ export default function MessengerModule({ user, profileUnit }: { user: User; pro
       <header><h2>Messages</h2></header>
       <div className="messenger-filters">
         <label>Search by Name<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by Name" /></label>
-        <label>Filter by Unit<select value={unitFilter} onChange={(event) => setUnitFilter(event.target.value)}>{unitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label>Filter by Office<select value={officeFilter} onChange={(event) => { setOfficeFilter(event.target.value); setAssignmentFilter(allAssignmentsFilter); }}><option value={allOfficesFilter}>All Offices</option>{accountOfficeOptions.map((office) => <option key={office} value={office}>{office}</option>)}</select></label>
+        <label>Filter by Assignment<select value={assignmentFilter} onChange={(event) => setAssignmentFilter(event.target.value)}><option value={allAssignmentsFilter}>All Assignments</option>{assignmentOptions.map((assignment) => <option key={assignment} value={assignment}>{assignment}</option>)}</select></label>
       </div>
       <ul className="messenger-people-list">
         {loadingPeople && <li className="messenger-empty">Loading people…</li>}
@@ -450,7 +467,7 @@ export default function MessengerModule({ user, profileUnit }: { user: User; pro
           const unread = chat ? isUnread(chat, user.uid) : false;
           return <li key={person.id}><button type="button" className={`messenger-person${selectedId === person.id ? " active" : ""}${unread ? " unread" : ""}`} onClick={() => { setSelectedId(person.id); setPicker(null); setError(""); }}>
             <PersonAvatar person={person} />
-            <span className="messenger-person-text"><strong>{person.name}</strong><small>{chat && lastVisibleAt(chat) > 0 && chat.lastText ? `${chat.lastSenderId === user.uid ? "You: " : ""}${chat.lastText}` : unitLabel(person.unit) || person.position}</small></span>
+            <span className="messenger-person-text"><strong>{person.name}</strong><small>{chat && lastVisibleAt(chat) > 0 && chat.lastText ? `${chat.lastSenderId === user.uid ? "You: " : ""}${chat.lastText}` : [unitLabel(person.office, person.unit), person.position].filter(Boolean).join(" · ")}</small></span>
             {unread && <span className="messenger-unread-dot" aria-label="Unread" />}
           </button></li>;
         })}
@@ -461,7 +478,7 @@ export default function MessengerModule({ user, profileUnit }: { user: User; pro
         <header className="messenger-chat-header">
           <button type="button" className="messenger-back" onClick={() => setSelectedId(null)} aria-label="Back to people">‹</button>
           <PersonAvatar person={selected} />
-          <div><strong>{selected.name}</strong><small>{[selected.position, unitLabel(selected.unit)].filter(Boolean).join(" · ")}</small></div>
+          <div><strong>{selected.name}</strong><small>{[selected.position, unitLabel(selected.office, selected.unit)].filter(Boolean).join(" · ")}</small></div>
           {selectedChat && <button type="button" className="ghost-button messenger-delete-chat" onClick={() => setConfirmClear(true)}>Delete chat</button>}
         </header>
         <div className="messenger-thread" ref={threadRef}>

@@ -6,13 +6,14 @@ import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { accountOffice } from "@/lib/account-profile";
 import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
 import { makeDocumentNotification } from "@/lib/document-notifications";
 import DeleteConfirmation from "./DeleteConfirmation";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./leave-application.css";
 
-type Office = "FOD-AGRISTAT" | "FOD-AMIA" | "FOD-DRRM";
+type Office = string;
 type LeaveType =
   | "Vacation Leave"
   | "Mandatory/Forced Leave"
@@ -141,11 +142,12 @@ function normalizeNamePart(value: string) {
 }
 
 function officeFromProfile(value: unknown): Office | "" {
-  const unit = typeof value === "string" ? value.trim().toUpperCase() : "";
-  if (unit === "AGRISTAT" || unit === "FOD-AGRISTAT" || unit === "AGRICULTURAL STATISTICS") return "FOD-AGRISTAT";
-  if (unit === "AMIA" || unit === "FOD-AMIA") return "FOD-AMIA";
-  if (unit === "DRRM" || unit === "FOD-DRRM") return "FOD-DRRM";
-  return "";
+  const unit = typeof value === "string" ? value.trim() : "";
+  const normalized = unit.toUpperCase();
+  if (normalized === "AGRISTAT" || normalized === "FOD-AGRISTAT" || normalized === "AGRICULTURAL STATISTICS") return "FOD-AGRISTAT";
+  if (normalized === "AMIA" || normalized === "FOD-AMIA") return "FOD-AMIA";
+  if (normalized === "DRRM" || normalized === "FOD-DRRM") return "FOD-DRRM";
+  return unit;
 }
 
 function safePdfText(value: string) {
@@ -398,7 +400,7 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
         const defaults = {
           name: typeof profile.name === "string" && profile.name.trim() ? profile.name : user.displayName ?? "",
           position: typeof profile.position === "string" ? profile.position : "",
-          office: officeFromProfile(profile.unit),
+          office: officeFromProfile(accountOffice(profile)),
           applicant,
         };
         setProfileDefaults(defaults);
@@ -549,9 +551,9 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
       const batch = writeBatch(db);
       batch.set(leaveRef, leaveData);
       batch.set(doc(db, "approvedLeaveCalendar", record.id), leaveCalendarData(record, user.uid));
-      const superadminSnapshot = await getDocs(query(collection(db, "users"), where("accountRole", "==", "superadmin")));
-      superadminSnapshot.docs
-        .filter((account) => account.id !== user.uid)
+      const adminAccountSnapshot = await getDocs(query(collection(db, "users"), where("accountRole", "in", ["superadmin", "admin"])));
+      adminAccountSnapshot.docs
+        .filter((account) => account.id !== user.uid && (account.data().accountStatus ?? "Approved") === "Approved")
         .forEach((account) => {
           const notification = makeDocumentNotification(firestore, {
             recipientId: account.id,

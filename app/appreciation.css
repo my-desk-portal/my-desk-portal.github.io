@@ -31,7 +31,7 @@
 .appreciation-empty-actions{justify-content:center;margin-top:8px}
 .appreciation-hold-note{color:var(--muted);font-size:11px;font-weight:400;line-height:1.2;margin:18px 0 0}
 .appreciation-record-list{border-top:1px solid var(--line)}
-.appreciation-record-head,.appreciation-record-row{align-items:center;display:grid;gap:14px;grid-template-columns:75px minmax(150px,1fr) minmax(180px,1.3fr) minmax(165px,1fr) 150px;padding:15px 8px}
+.appreciation-record-head,.appreciation-record-row{align-items:center;display:grid;gap:14px;grid-template-columns:75px minmax(150px,1fr) minmax(180px,1.3fr) minmax(165px,1fr) minmax(105px,.7fr) 150px;padding:15px 8px}
 .appreciation-record-head{color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
 .appreciation-record-row{border-top:1px solid var(--line);font-size:13px}
 .appreciation-record-row>strong,.appreciation-record-row>span{overflow-wrap:anywhere}
@@ -75,7 +75,7 @@
   .appreciation-record-head{display:none}
   .appreciation-record-row{align-items:start;gap:7px;grid-template-columns:minmax(0,1fr) auto;padding:15px 4px}
   .appreciation-record-row>span:nth-of-type(n+2),.appreciation-record-row>strong{grid-column:1/-1}
-  .appreciation-record-actions{align-content:start;display:grid;gap:8px;grid-column:2;grid-row:1/5}
+  .appreciation-record-actions{align-content:start;display:grid;gap:8px;grid-column:2;grid-row:1/6}
   .appreciation-record-actions .row-action{text-align:right}
   .appreciation-preview-backdrop{align-content:start;grid-template-columns:minmax(0,1fr);overflow-x:hidden;padding:12px}
   .appreciation-preview-toolbar{display:grid;gap:8px;grid-template-columns:repeat(3,minmax(0,1fr));justify-content:stretch;max-width:11in;width:100%}

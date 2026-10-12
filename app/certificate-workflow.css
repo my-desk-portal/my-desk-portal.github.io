@@ -1,0 +1,48 @@
+.certificate-workflow-status {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  max-width: 100%;
+}
+
+.certificate-workflow-status strong {
+  border-radius: 3px;
+  background: #f2f4f2;
+  color: #52615a;
+  font-size: 11px;
+  padding: 4px 7px;
+}
+
+.certificate-workflow-status.is-pending strong { background: #fff4d2; color: #7b5a00; }
+.certificate-workflow-status.is-approved strong { background: #e8f5ec; color: #27683d; }
+.certificate-workflow-status.is-disapproved strong { background: #fff0eb; color: #9e3824; }
+.certificate-workflow-status.is-exempt strong { background: #f2f4f2; color: var(--muted); }
+.certificate-workflow-status small { color: var(--muted); font-size: 10px; line-height: 1.35; }
+
+.certificate-approved-signature {
+  position: absolute;
+  z-index: 5;
+  top: auto;
+  right: 7.5%;
+  bottom: 20.5%;
+  width: 36%;
+  display: grid;
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 1%;
+  color: #27352c;
+  font-family: Arial, sans-serif;
+  font-size: .9cqi;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.certificate-approved-signature img { display: block; width: 100%; max-height: 9cqi; object-fit: contain; }
+.certificate-approved-signature-meta { display: grid; min-width: 0; }
+.certificate-approved-signature strong { font-size: 1cqi; overflow-wrap: anywhere; text-transform: uppercase; }
+.certificate-approved-signature small { color: inherit; font-size: .78cqi; }
+
+@media print {
+  .certificate-workflow-status { display: none !important; }
+}

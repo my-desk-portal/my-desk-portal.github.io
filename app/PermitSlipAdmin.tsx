@@ -4,14 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { ADMIN_EMAIL, SUPERADMIN_EMAIL, accountRoleForEmail } from "@/lib/user-roles";
+import { ADMIN_EMAIL, SUPERADMIN_EMAIL, normalizeAccountRole, type AccountRole } from "@/lib/user-roles";
 import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import { assignApprovedPermitNumbers, displayPermitNumber, highestApprovedPermitSequence, permitNumberYear } from "./permit-number";
 import "./permit-slip-admin.css";
 
 type PermitStatus = WorkflowStatus;
-type PermitUnitFilter = "All" | "AGRISTAT" | "AMIA" | "DRRM";
-type PermitUnit = Exclude<PermitUnitFilter, "All">;
+type PermitUnitFilter = string;
 type PersonDecision = { status?: PermitStatus; decidedAt?: unknown; signerName?: string; decidedBy?: string; approvedPermitNo?: string };
 export type AdminPermit = {
   id: string;
@@ -20,16 +19,17 @@ export type AdminPermit = {
   date: string;
   names: string[];
   name?: string;
-  personUnits?: PermitUnit[];
-  unit?: PermitUnit;
+  personUnits?: string[];
+  unit?: string;
   purpose: string;
   ownerId?: string;
   personStatuses?: Record<string, PersonDecision>;
 };
 
 export const PERMIT_ADMIN_EMAILS = [ADMIN_EMAIL, SUPERADMIN_EMAIL] as const;
-export function isPermitAdmin(email?: string | null) {
-  return accountRoleForEmail(email) === "admin" || accountRoleForEmail(email) === "superadmin";
+export function isPermitAdmin(email?: string | null, role?: AccountRole) {
+  const accountRole = normalizeAccountRole(role, email);
+  return accountRole === "admin" || accountRole === "superadmin";
 }
 
 function permitNumber(permit: AdminPermit, index: number) {
@@ -65,7 +65,7 @@ function displayDate(value: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`));
 }
 
-export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { user: User; mode: "statistics" | "status"; focusNotificationKey?: string | null }) {
+export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canManagePermits }: { user: User; mode: "statistics" | "status"; focusNotificationKey?: string | null; canManagePermits: boolean }) {
   const [permits, setPermits] = useState<AdminPermit[]>([]);
   const [month, setMonth] = useState(monthString(new Date()));
   const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>("All");
@@ -74,7 +74,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!db || !isPermitAdmin(user.email)) { setLoading(false); return; }
+    if (!db) { setLoading(false); return; }
     const firestore = db;
     return onSnapshot(query(collection(firestore, "permits")), (snapshot) => {
       setPermits(snapshot.docs.map((permitDoc) => {
@@ -93,7 +93,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
       setError(snapshotError.code ? `Could not load Permit Slips (${snapshotError.code}).` : "Could not load Permit Slips.");
       setLoading(false);
     });
-  }, [user.email]);
+  }, [user.uid]);
 
   const entries = useMemo(() => permits.flatMap((permit) => permit.names.map((name, index) => ({
     permit,
@@ -104,6 +104,8 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
     status: personStatus(permit, index),
     approvedPermitNo: permit.personStatuses?.[decisionKey(permit, index)]?.approvedPermitNo,
   }))), [permits]);
+  const availableAssignments = useMemo(() => [...new Set(entries.map((entry) => entry.unit).filter((unit): unit is string => Boolean(unit?.trim())))]
+    .sort((first, second) => first.localeCompare(second, "en", { sensitivity: "base" })), [entries]);
   const approvedPermitNumbers = useMemo(() => assignApprovedPermitNumbers(entries
     .filter((entry) => entry.status === "Approved")
     .map((entry) => ({ permitNo: entry.permitNo, approvedPermitNo: entry.approvedPermitNo }))), [entries]);
@@ -139,7 +141,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
   }, [entries, month, unitFilter]);
 
   async function changeStatus(permit: AdminPermit, personIndex: number, status: PermitStatus) {
-    if (!db || !isPermitAdmin(user.email)) return;
+    if (!db || !canManagePermits) return;
     if (status === "Pending") return;
     if (personStatus(permit, personIndex) !== "Pending") return;
     const permitNo = permitNumber(permit, personIndex);
@@ -162,6 +164,11 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
       }, highestApprovedPermitSequence(currentNumbers, targetYear));
 
       await runTransaction(firestore, async (transaction) => {
+        const profileSnapshot = await transaction.get(doc(firestore, "users", user.uid));
+        const signerName = profileSnapshot.exists() && typeof profileSnapshot.data().name === "string"
+          ? profileSnapshot.data().name.trim()
+          : "";
+        if (!signerName) throw new Error("Your account name is missing. Update your profile before deciding this Permit Slip.");
         const permitSnapshot = await transaction.get(permitRef);
         if (!permitSnapshot.exists()) throw new Error("This Permit Slip no longer exists.");
         const data = permitSnapshot.data();
@@ -198,7 +205,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
           status,
           decidedAt: serverTimestamp(),
           decidedBy: user.email ?? "",
-          signerName: "GERLIE B. ANTIPASO",
+          signerName,
         };
         if (approvedPermitNo) nextDecision.approvedPermitNo = approvedPermitNo;
         transaction.update(permitRef, { [`personStatuses.${statusKey}`]: nextDecision, lastDecisionKey: statusKey });
@@ -216,6 +223,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
             date: latestDate,
             purpose: typeof data.purpose === "string" ? data.purpose : permit.purpose,
             unit: units[personIndex] ?? data.unit ?? permit.personUnits?.[personIndex] ?? permit.unit ?? "",
+            ...(typeof data.ownerId === "string" ? { ownerId: data.ownerId } : {}),
           });
         } else {
           transaction.delete(calendarRef);
@@ -229,23 +237,55 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey }: { 
     }
   }
 
-  if (!isPermitAdmin(user.email)) return null;
   const title = mode === "statistics" ? "Permit Slip Statistics" : "Permit Slip Status";
 
   return <section className="content-section permit-admin-section">
     <div className="section-heading permit-admin-heading">
-      <div><p className="eyebrow">Administrator access</p><h2>{title}</h2><p className="muted">{mode === "statistics" ? "Monthly approved and disapproved Permit Slips, grouped by person." : "Review and update each person’s Permit Slip independently."}</p></div>
-      <div className="permit-admin-filters">{mode === "statistics" && <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}<label>Unit<select value={unitFilter} onChange={(event) => setUnitFilter(event.target.value as PermitUnitFilter)}><option value="All">All Units</option><option value="AGRISTAT">Agricultural Statistics</option><option value="AMIA">AMIA</option><option value="DRRM">DRRM</option></select></label></div>
+      <div><p className="eyebrow">{canManagePermits ? "Administrator access" : "Reports"}</p><h2>{title}</h2><p className="muted">{mode === "statistics" ? "Monthly approved and disapproved Permit Slips, grouped by person." : canManagePermits ? "Review and update each person’s Permit Slip independently." : "View the current status of Permit Slips."}</p></div>
+      <div className="permit-admin-filters">{mode === "statistics" && <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}<label>Assignment<select value={unitFilter} onChange={(event) => setUnitFilter(event.target.value as PermitUnitFilter)}><option value="All">All Assignments</option>{availableAssignments.map((assignment) => <option key={assignment} value={assignment}>{assignment}</option>)}</select></label></div>
     </div>
     {error && <div className="permit-admin-error" role="alert">{error}</div>}
     {loading ? <p className="permit-admin-empty">Loading Permit Slips…</p> : mode === "statistics" ? <>
       <p className="permit-admin-period">{monthDateString(month)}</p>
       {monthlyStats.length === 0 ? <p className="permit-admin-empty">No Permit Slips were created this month.</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table"><thead><tr><th>Name</th><th>Purpose</th><th>No. of Approved Permit Slips</th><th>No. of Disapproved Permit Slips</th></tr></thead><tbody>{monthlyStats.map((row) => <tr key={row.name}><td data-label="Name">{row.name}</td><td data-label="Purpose">{[...row.purposes].join("; ") || "—"}</td><td data-label="No. of Approved Permit Slips">{row.approved}</td><td data-label="No. of Disapproved Permit Slips">{row.disapproved}</td></tr>)}</tbody></table></div>}
-    </> : statusEntries.length === 0 ? <p className="permit-admin-empty">{permits.length === 0 ? "No Permit Slips have been submitted." : "No Permit Slips match this unit."}</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table permit-status-table"><thead><tr><th>PS No.</th><th>Date</th><th>Name</th><th>Unit</th><th>Purpose</th><th>Status</th></tr></thead><tbody>{statusEntries.map(({ permit, index, name, unit, permitNo, status, approvedPermitNo }) => {
+    </> : statusEntries.length === 0 ? <p className="permit-admin-empty">{permits.length === 0 ? "No Permit Slips have been submitted." : "No Permit Slips match this office."}</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table permit-status-table"><thead><tr><th>PS No.</th><th>Date</th><th>Name</th><th>Office</th><th>Purpose</th><th>Status</th></tr></thead><tbody>{statusEntries.map(({ permit, index, name, unit, permitNo, status, approvedPermitNo }) => {
       const key = `${permit.id}:${decisionKey(permit, index)}`;
       const originalNumber = displayPermitNumber(permitNo);
       const displayedNumber = status === "Approved" ? (approvedPermitNo ?? approvedPermitNumbers[originalNumber] ?? originalNumber) || "—" : "Pending";
-      return <tr id={`permit-status-${encodeURIComponent(key)}`} className={key === focusNotificationKey ? "permit-admin-notification-target" : undefined} key={key}><td data-label="PS No.">{displayedNumber}</td><td data-label="Date">{displayDate(permit.date)}</td><td data-label="Name">{name}</td><td data-label="Unit">{unit || "—"}</td><td data-label="Purpose">{permit.purpose || "—"}</td><td data-label="Status"><select className={`permit-admin-status permit-admin-status-${status.toLowerCase()}`} value={status} disabled={savingKey === key || status !== "Pending"} title={status !== "Pending" ? `${status} Permit Slips cannot be changed.` : undefined} aria-label={`Status for ${name}, ${displayPermitNumber(permitNo)}${status !== "Pending" ? `, locked after ${status.toLowerCase()}` : ""}`} onChange={(event) => void changeStatus(permit, index, event.target.value as PermitStatus)}><option>Pending</option><option>Approved</option><option>Disapproved</option></select>{savingKey === key && <small className="permit-admin-saving">Saving…</small>}</td></tr>;
+       return (
+         <tr
+           id={`permit-status-${encodeURIComponent(key)}`}
+           className={key === focusNotificationKey ? "permit-admin-notification-target" : undefined}
+           key={key}
+         >
+           <td data-label="PS No.">{displayedNumber}</td>
+           <td data-label="Date">{displayDate(permit.date)}</td>
+           <td data-label="Name">{name}</td>
+           <td data-label="Office">{unit || "—"}</td>
+           <td data-label="Purpose">{permit.purpose || "—"}</td>
+           <td data-label="Status">
+             {canManagePermits ? (
+               <>
+                 <select
+                   className={`permit-admin-status permit-admin-status-${status.toLowerCase()}`}
+                   value={status}
+                   disabled={savingKey === key || status !== "Pending"}
+                   title={status !== "Pending" ? `${status} Permit Slips cannot be changed.` : undefined}
+                   aria-label={`Status for ${name}, ${displayPermitNumber(permitNo)}${status !== "Pending" ? `, locked after ${status.toLowerCase()}` : ""}`}
+                   onChange={(event) => void changeStatus(permit, index, event.target.value as PermitStatus)}
+                 >
+                   <option>Pending</option>
+                   <option>Approved</option>
+                   <option>Disapproved</option>
+                 </select>
+                 {savingKey === key && <small className="permit-admin-saving">Saving…</small>}
+               </>
+             ) : (
+               status
+             )}
+           </td>
+         </tr>
+       );
     })}</tbody></table></div>}
   </section>;
 }

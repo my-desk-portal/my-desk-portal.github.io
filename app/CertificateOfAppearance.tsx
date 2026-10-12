@@ -1,19 +1,27 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
+import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { db } from "@/lib/firebase";
+import { accountDivisionForApproval, accountOffice, accountAssignment } from "@/lib/account-profile";
+import { makeDocumentNotification } from "@/lib/document-notifications";
+import type { AccountRole } from "@/lib/user-roles";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
+import { CertificateApprovalSignature, CertificateStatusBadge, certificateWorkflowStatus, type CertificateWorkflowFields } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./certificate-of-appearance.css";
+import "./certificate-workflow.css";
 
 type CertificateGender = "female" | "male" | "unspecified" | "";
 type CertificatePerson = { name: string; gender: CertificateGender; office?: string };
-type CertificateRecord = {
+type CertificateRecord = CertificateWorkflowFields & {
   id: string;
+  recordType?: "appearance" | "blank";
   office?: string;
+  ownerOffice?: string;
   eventTitle: string;
   destination: string;
   eventDateFrom?: string;
@@ -24,12 +32,13 @@ type CertificateRecord = {
   designation: string;
   division: string;
   ownerId: string;
-  createdAt?: { toMillis?: () => number };
+  createdAt?: { toMillis?: () => number; toDate?: () => Date };
 };
 
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const blankCertificateAsset = publicAsset("/certificate-of-appearance-blank.jpg");
 const blankCertificatePdfAsset = publicAsset("/certificate-of-appearance.pdf");
+const fieldOperationsChiefSignature = "field_operations_division_chief_signature.png";
 const certificateDivisionDisplayNames: Record<string, string> = {
   "Planning, Monitoring and Evaluation Division": "PMED",
   "Agribusiness and Marketing Assistance Division": "AMAD",
@@ -40,6 +49,21 @@ const newPerson = (): CertificatePerson => ({ name: "", gender: "", office: "" }
 function displayDate(value: string) {
   if (!value) return "";
   return new Intl.DateTimeFormat("en-PH", { month: "long", day: "numeric", year: "numeric" }).format(new Date(`${value}T00:00:00`));
+}
+
+function displaySavedDate(createdAt?: CertificateRecord["createdAt"]) {
+  const savedAt = createdAt?.toDate?.() ?? (createdAt?.toMillis ? new Date(createdAt.toMillis()) : null);
+  return savedAt
+    ? `Saved ${new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(savedAt)}`
+    : "Saved just now";
+}
+
+function certificateApprovalDate(value: unknown) {
+  if (value && typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
+    const date = value.toDate();
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+  }
+  return value instanceof Date && !Number.isNaN(value.getTime()) ? value : null;
 }
 
 function displayDateRange(from?: string, to?: string) {
@@ -65,6 +89,24 @@ function eventDateRange(from?: string, to?: string) {
   const start = from ?? "";
   const end = to ?? from ?? "";
   return displayDateRange(start || end, end || start);
+}
+
+async function findAppearanceApprovalAdmins(division: string) {
+  if (!db) return [];
+  const snapshot = await getDocs(collection(db, "users"));
+  const targetDivision = division.trim().toLocaleLowerCase("en");
+  const admins = new Set<string>();
+  for (const profile of snapshot.docs) {
+    const data = profile.data();
+    const office = accountOffice(data)?.trim();
+    const assignment = accountAssignment(data)?.trim();
+    const isAssignedDivision = office
+      && accountDivisionForApproval(office, assignment ?? "").toLocaleLowerCase("en") === targetDivision;
+    if (data.accountRole === "admin" && data.accountStatus === "Approved" && data.designation === "Chief" && isAssignedDivision) {
+      admins.add(profile.id);
+    }
+  }
+  return [...admins];
 }
 
 function pronoun(gender: CertificateGender) {
@@ -120,7 +162,8 @@ async function makeSignatoryBlockImage(name: string, designation: string, divisi
   return canvas.toDataURL("image/png");
 }
 
-export default function CertificateOfAppearance({ user }: { user: User }) {
+export default function CertificateOfAppearance({ user, ownerOffice, role }: { user: User; ownerOffice?: string | null; role: AccountRole }) {
+  const normalizedOwnerOffice = ownerOffice?.trim() ?? "";
   const [records, setRecords] = useState<CertificateRecord[]>([]);
   const [view, setView] = useState<"list" | "new" | "edit" | "blank-ca">("list");
   const [editingRecord, setEditingRecord] = useState<CertificateRecord | null>(null);
@@ -133,29 +176,101 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
   const [printing, setPrinting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
-  const [generatingBlank, setGeneratingBlank] = useState(false);
+  const [savingBlank, setSavingBlank] = useState(false);
+  const [blankPreview, setBlankPreview] = useState<CertificateRecord | null>(null);
+  const [blankPreviewUrl, setBlankPreviewUrl] = useState("");
+  const [blankPreviewRendering, setBlankPreviewRendering] = useState(false);
+  const [blankPreviewError, setBlankPreviewError] = useState("");
   const [blankError, setBlankError] = useState("");
   const [error, setError] = useState("");
   const pagesRef = useRef<HTMLDivElement>(null);
+  const blankPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => () => {
+    if (blankPreviewUrl) URL.revokeObjectURL(blankPreviewUrl);
+  }, [blankPreviewUrl]);
+
   useEffect(() => {
+    const canvas = blankPreviewCanvasRef.current;
+    if (!blankPreviewUrl || !canvas) return;
+    const renderCanvas = canvas;
+    let cancelled = false;
+    let cancelRender: (() => void) | null = null;
+    let loadingTask: PDFDocumentLoadingTask | null = null;
+    setBlankPreviewRendering(true);
+    setBlankPreviewError("");
+    renderCanvas.width = 1;
+    renderCanvas.height = 1;
+
+    async function renderBlankPreview() {
+      try {
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        if (cancelled) return;
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
+        const response = await fetch(blankPreviewUrl);
+        if (!response.ok) throw new Error("The blank Certificate of Appearance PDF could not be loaded.");
+        if (cancelled) return;
+        const data = new Uint8Array(await response.arrayBuffer());
+        if (cancelled) return;
+        loadingTask = pdfjs.getDocument({ data });
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        const page = await pdf.getPage(1);
+        if (cancelled) return;
+        const viewport = page.getViewport({ scale: 2.5 });
+        renderCanvas.width = Math.ceil(viewport.width);
+        renderCanvas.height = Math.ceil(viewport.height);
+        const task = page.render({ canvas: renderCanvas, viewport });
+        cancelRender = () => task.cancel();
+        await task.promise;
+        if (!cancelled) setBlankPreviewRendering(false);
+      } catch (cause) {
+        if (!cancelled) {
+          setBlankPreviewRendering(false);
+          setBlankPreviewError(cause instanceof Error ? cause.message : "The blank Certificate of Appearance preview could not be rendered.");
+        }
+      }
+    }
+
+    void renderBlankPreview();
+    return () => {
+      cancelled = true;
+      cancelRender?.();
+      if (loadingTask) void loadingTask.destroy();
+    };
+  }, [blankPreviewUrl]);
+
+  useEffect(() => {
+    let active = true;
     if (!db) { setLoading(false); setError("Certificate storage is unavailable."); return; }
     getDocs(query(collection(db, "certificatesOfAppearance"), where("ownerId", "==", user.uid)))
       .then((snapshot) => {
-        const loaded = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as CertificateRecord));
+        if (!active) return;
+        const loaded = snapshot.docs.map((item) => {
+          const data = item.data();
+          const savedOwnerOffice = typeof data.ownerOffice === "string" ? data.ownerOffice : "";
+          const blankOffice = data.recordType === "blank" ? normalizedOwnerOffice || savedOwnerOffice : "";
+          return {
+            id: item.id,
+            ...data,
+            ...(blankOffice ? { ownerOffice: blankOffice, destination: blankOffice } : {}),
+          } as CertificateRecord;
+        });
         loaded.sort((first, second) => (second.createdAt?.toMillis?.() ?? 0) - (first.createdAt?.toMillis?.() ?? 0));
         setRecords(loaded);
       })
       .catch((cause) => {
+        if (!active) return;
         const code = (cause as { code?: string }).code;
         setError(code ? `Could not load certificates (${code}).` : "Could not load certificates. Refresh and try again.");
       })
-      .finally(() => setLoading(false));
-  }, [user.uid]);
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [user.uid, normalizedOwnerOffice]);
 
   async function deleteRecord(record: CertificateRecord) {
-    if (!db) return;
+    if (!db || certificateWorkflowStatus(record.status) === "Approved") return;
     setDeletingId(record.id);
     setError("");
     try {
@@ -191,17 +306,41 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
       signatoryName: signatory.name,
       designation: signatory.position,
       division,
+      status: "Pending" as const,
       ownerId: user.uid,
       createdAt: serverTimestamp(),
     };
     setSaving(true);
     try {
-      const reference = await addDoc(collection(db, "certificatesOfAppearance"), recordData);
+      const reference = doc(collection(db, "certificatesOfAppearance"));
+      const batch = writeBatch(db);
+      batch.set(reference, recordData);
+      if (role === "regular") {
+        const admins = await findAppearanceApprovalAdmins(division);
+        if (!admins.length) throw new Error(`No approved Chief Admin is assigned to ${division}. The certificate was not submitted.`);
+        for (const recipientId of admins) {
+          const notification = makeDocumentNotification(db, {
+            recipientId,
+            ownerId: user.uid,
+            documentId: reference.id,
+            documentType: "Certificate Approval",
+            certificateType: "Appearance",
+            activityTitle: recordData.eventTitle,
+            dateFrom: recordData.eventDateFrom,
+            dateTo: recordData.eventDateTo,
+            destination: recordData.destination,
+          });
+          batch.set(notification.reference, notification.data);
+        }
+      }
+      await batch.commit();
       setRecords((current) => [{ ...recordData, id: reference.id, createdAt: undefined }, ...current]);
       setView("list");
     } catch (cause) {
       const code = (cause as { code?: string }).code;
-      setError(code ? `Could not save the certificate (${code}).` : "Could not save the certificate. Try again.");
+      setError(cause instanceof Error && cause.message.startsWith("No approved Chief Admin")
+        ? cause.message
+        : code ? `Could not save the certificate (${code}).` : "Could not save the certificate. Try again.");
     } finally {
       setSaving(false);
     }
@@ -210,7 +349,7 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
   async function saveNameCorrections(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!db || !editingRecord) { setError("The certificate could not be updated."); return; }
+    if (!db || !editingRecord || certificateWorkflowStatus(editingRecord.status) === "Approved") { setError("Approved certificates cannot be edited."); return; }
     const form = new FormData(event.currentTarget);
     const correctedNames = form.getAll("person-name").map((value) => String(value).trim());
     const genders = form.getAll("person-gender").map((value) => String(value) as CertificateGender);
@@ -260,7 +399,7 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
         const batch = writeBatch(db);
         const chunk: CertificateRecord[] = parsed.slice(offset, offset + 450).map((record) => {
           const reference = doc(certificateCollection);
-          const data = { ...record, ownerId: user.uid, createdAt: serverTimestamp() };
+          const data = { ...record, status: "Pending" as const, ownerId: user.uid, createdAt: serverTimestamp() };
           batch.set(reference, data);
           return { ...data, id: reference.id, createdAt: undefined } as CertificateRecord;
         });
@@ -305,7 +444,10 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
         if (index > 0) pdf.addPage();
         pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, 210, 297);
       }
-      pdf.save(`certificate-of-appearance-${preview?.eventDateFrom || preview?.eventDate || "record"}.pdf`);
+      const fileName = blankPreview
+        ? `certificate-of-appearance-blank-${blankPreview.division.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}.pdf`
+        : `certificate-of-appearance-${preview?.eventDateFrom || preview?.eventDate || "record"}.pdf`;
+      pdf.save(fileName);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to create the PDF.");
     } finally {
@@ -317,7 +459,11 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     setPrinting(true);
     setError("");
     try {
-      await waitForImages();
+      if (blankPreview) {
+        if (blankPreviewRendering || !blankPreviewCanvasRef.current) throw new Error("Wait for the Certificate of Appearance preview to finish loading.");
+      } else {
+        await waitForImages();
+      }
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       window.print();
     } catch (cause) {
@@ -327,44 +473,146 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     }
   }
 
-  async function generateBlankCertificate(division: TevDivision) {
-    if (!tevDivisions.includes(division)) return;
-    setGeneratingBlank(true);
-    setBlankError("");
-    try {
-      const response = await fetch(blankCertificatePdfAsset);
-      if (!response.ok) throw new Error("The Certificate of Appearance PDF could not be loaded.");
-      const { PDFDocument } = await import("pdf-lib");
-      const pdf = await PDFDocument.load(await response.arrayBuffer());
-      const page = pdf.getPages()[0];
-      if (!page) throw new Error("The Certificate of Appearance PDF has no pages.");
+  async function makeBlankCertificatePdf(record: CertificateRecord) {
+    const response = await fetch(blankCertificatePdfAsset);
+    if (!response.ok) throw new Error("The Certificate of Appearance PDF could not be loaded.");
+    const { PDFDocument } = await import("pdf-lib");
+    const pdf = await PDFDocument.load(await response.arrayBuffer());
+    const page = pdf.getPages()[0];
+    if (!page) throw new Error("The Certificate of Appearance PDF has no pages.");
 
-      const signatory = divisionSignatory(division);
-      const signatoryImage = await pdf.embedPng(await makeSignatoryBlockImage(signatory.name, signatory.position, division));
-      const signatureBlocks = [
-        { y: 480 },
-        { y: 66.5 },
-      ];
-
-      for (const block of signatureBlocks) {
-        page.drawImage(signatoryImage, { x: 260, y: block.y, width: 271.5, height: 32 });
-      }
-
-      const pdfBytes = await pdf.save();
-      const downloadData = new Uint8Array(pdfBytes).buffer as ArrayBuffer;
-      const downloadUrl = URL.createObjectURL(new Blob([downloadData], { type: "application/pdf" }));
-      const downloadLink = document.createElement("a");
-      downloadLink.href = downloadUrl;
-      downloadLink.download = `certificate-of-appearance-blank-${division.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}.pdf`;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      downloadLink.remove();
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-    } catch (cause) {
-      setBlankError(cause instanceof Error ? cause.message : "Unable to generate the blank Certificate of Appearance PDF.");
-    } finally {
-      setGeneratingBlank(false);
+    const division = record.division as TevDivision;
+    const signatory = divisionSignatory(division);
+    const signatoryImage = await pdf.embedPng(await makeSignatoryBlockImage(signatory.name, signatory.position, division));
+    for (const y of [480, 66.5]) {
+      page.drawImage(signatoryImage, { x: 260, y, width: 271.5, height: 32 });
     }
+
+    const isFieldOperationsChiefApproval = certificateWorkflowStatus(record.status) === "Approved"
+      && record.signatureAsset === fieldOperationsChiefSignature
+      && record.signerDesignation?.trim() === "Chief"
+      && record.signerOffice === "Field Operations Division";
+    if (isFieldOperationsChiefApproval) {
+      const signatureResponse = await fetch(publicAsset(`/${fieldOperationsChiefSignature}`));
+      if (!signatureResponse.ok) throw new Error("The Field Operations Division Chief signature could not be loaded.");
+      const signatureImage = await pdf.embedPng(await signatureResponse.arrayBuffer());
+      const [regularFont, boldFont] = await Promise.all([pdf.embedFont("Helvetica"), pdf.embedFont("Helvetica-Bold")]);
+      const approvedAt = certificateApprovalDate(record.decidedAt);
+      const dateParts = approvedAt
+        ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(approvedAt)
+        : [];
+      const datePart = (type: string) => dateParts.find((part) => part.type === type)?.value ?? "";
+      const approvalDate = approvedAt ? `${datePart("year")}.${datePart("month")}.${datePart("day")}` : "";
+      const approvalTime = approvedAt
+        ? `${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(approvedAt)} +0800`
+        : "";
+      const metadataRight = 531.5;
+      const metadataColumnWidth = 102;
+      const metadataSize = 6.8;
+      const signerNameSize = 7.1;
+      const signerName = (record.signerName?.trim() || "Chief, Field Operations Division").toLocaleUpperCase("en");
+      const fittedSignerNameSize = Math.min(signerNameSize, signerNameSize * metadataColumnWidth / boldFont.widthOfTextAtSize(signerName, signerNameSize));
+      const drawRightAlignedText = (text: string, y: number, size: number, font: typeof regularFont) => {
+        page.drawText(text, { x: metadataRight - font.widthOfTextAtSize(text, size), y, size, font });
+      };
+      for (const y of [480, 66.5]) {
+        page.drawImage(signatureImage, { x: 360.5, y: y + 38, width: 102, height: 51 });
+        drawRightAlignedText("Digitally Signed By", y + 72, metadataSize, regularFont);
+        drawRightAlignedText(signerName, y + 64, fittedSignerNameSize, boldFont);
+        if (approvalDate) drawRightAlignedText(`Date: ${approvalDate}`, y + 56, metadataSize, regularFont);
+        if (approvalTime) drawRightAlignedText(`Time: ${approvalTime}`, y + 48, metadataSize, regularFont);
+      }
+    }
+    return pdf.save();
+  }
+
+  async function saveBlankCertificate(division: TevDivision) {
+    if (!tevDivisions.includes(division)) return;
+    setBlankError("");
+    setImportMessage("");
+    if (!db) { setBlankError("Certificate storage is unavailable."); return; }
+    if (!normalizedOwnerOffice) { setBlankError("Set your Office in Profile before saving a Blank Certificate of Appearance."); return; }
+    setSavingBlank(true);
+    try {
+      const signatory = divisionSignatory(division);
+      const recordData = {
+        recordType: "blank" as const,
+        eventTitle: "Blank Certificate of Appearance",
+        destination: normalizedOwnerOffice,
+        ownerOffice: normalizedOwnerOffice,
+        eventDateFrom: "",
+        eventDateTo: "",
+        people: [] as CertificatePerson[],
+        signatoryName: signatory.name,
+        designation: signatory.position,
+        division,
+        status: "Pending" as const,
+        ownerId: user.uid,
+        createdAt: serverTimestamp(),
+      };
+      const reference = doc(collection(db, "certificatesOfAppearance"));
+      const batch = writeBatch(db);
+      batch.set(reference, recordData);
+      if (role === "regular") {
+        const admins = await findAppearanceApprovalAdmins(division);
+        if (!admins.length) throw new Error(`No approved Chief Admin is assigned to ${division}. The blank certificate was not submitted.`);
+        for (const recipientId of admins) {
+          const notification = makeDocumentNotification(db, {
+            recipientId,
+            ownerId: user.uid,
+            documentId: reference.id,
+            documentType: "Certificate Approval",
+            certificateType: "Appearance",
+            activityTitle: recordData.eventTitle,
+            dateFrom: recordData.eventDateFrom,
+            dateTo: recordData.eventDateTo,
+            destination: recordData.destination,
+          });
+          batch.set(notification.reference, notification.data);
+        }
+      }
+      await batch.commit();
+      setRecords((current) => [{ ...recordData, id: reference.id, createdAt: undefined }, ...current]);
+      setImportMessage(`Saved a blank Certificate of Appearance for ${normalizedOwnerOffice}.`);
+      setView("list");
+    } catch (cause) {
+      const code = (cause as { code?: string }).code;
+      setBlankError(cause instanceof Error && cause.message.startsWith("No approved Chief Admin")
+        ? cause.message
+        : code === "permission-denied"
+          ? "Firestore blocked this save. Check that your account is approved, your Office matches your profile, and the latest firestore.rules are deployed to the ps-taguibo database."
+        : code ? `Could not save the blank certificate (${code}).` : "Could not save the blank certificate. Try again.");
+    } finally {
+      setSavingBlank(false);
+    }
+  }
+
+  function viewSavedBlankCertificate(record: CertificateRecord) {
+    if (!tevDivisions.includes(record.division as TevDivision)) {
+      setError("The saved certificate has an invalid division.");
+      return;
+    }
+    setError("");
+    setBlankPreviewError("");
+    setBlankPreviewRendering(true);
+    setBlankPreview(record);
+    void makeBlankCertificatePdf(record).then((bytes) => {
+      const pdfData = new Uint8Array(bytes).buffer as ArrayBuffer;
+      setBlankPreviewUrl(URL.createObjectURL(new Blob([pdfData], { type: "application/pdf" })));
+    }).catch((cause) => {
+      setBlankPreviewRendering(false);
+      setBlankPreviewError(cause instanceof Error ? cause.message : "The blank Certificate of Appearance PDF could not be created.");
+    });
+  }
+
+  function downloadBlankPreviewPdf() {
+    if (!blankPreview || !blankPreviewUrl) return;
+    const downloadLink = document.createElement("a");
+    downloadLink.href = blankPreviewUrl;
+    downloadLink.download = `certificate-of-appearance-blank-${blankPreview.division.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}.pdf`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
   }
 
   if (preview) {
@@ -381,7 +629,14 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
 
   if (view === "new") return <CertificateForm onCancel={() => { setView("list"); setError(""); }} onSubmit={saveCertificate} saving={saving} error={error} />;
   if (view === "edit" && editingRecord) return <CertificateNamesForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveNameCorrections} saving={saving} error={error} />;
-  if (view === "blank-ca") return <BlankCertificateGenerator onCancel={() => { setView("list"); setBlankError(""); }} onGenerate={(division) => void generateBlankCertificate(division)} generating={generatingBlank} error={blankError} />;
+  if (view === "blank-ca") return <BlankCertificateGenerator onCancel={() => { setView("list"); setBlankError(""); }} onSave={(division) => void saveBlankCertificate(division)} saving={savingBlank} error={blankError} />;
+
+  if (blankPreview) return <div className="preview-backdrop coa-preview-backdrop">
+    <div className="preview-toolbar coa-preview-toolbar"><span>Certificate of Appearance preview</span><button type="button" className="ghost-button" onClick={() => { setBlankPreview(null); setBlankPreviewUrl(""); setBlankPreviewError(""); setError(""); }}>Close</button><button type="button" className="pdf-button" disabled={!blankPreviewUrl || blankPreviewRendering || Boolean(blankPreviewError)} onClick={downloadBlankPreviewPdf}>Download PDF</button><button type="button" className="pdf-button" disabled={printing || blankPreviewRendering || Boolean(blankPreviewError)} onClick={() => void printCertificates()}>{printing ? "Preparing print..." : "Print"}</button></div>
+    {blankPreviewRendering && <p className="coa-preview-loading">Preparing preview...</p>}
+    {blankPreviewError && <p className="coa-error" role="alert">{blankPreviewError}</p>}
+    <div className="coa-blank-preview-paper"><canvas ref={blankPreviewCanvasRef} className="coa-blank-preview-canvas" aria-label={`Blank Certificate of Appearance for ${blankPreview.division}`} /></div>
+  </div>;
 
   return <>
   <section className="content-section form-section coa-list-section">
@@ -389,26 +644,26 @@ export default function CertificateOfAppearance({ user }: { user: User }) {
     <input ref={importInputRef} className="coa-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importCertificates(event)} aria-label="Import Certificate of Appearance workbook" />
     {error && <p className="coa-error" role="alert">{error}</p>}
     {importMessage && <p className="coa-success" role="status">{importMessage}</p>}
-    {loading ? <p className="muted">Loading certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates yet</h3><p>Add appearance details manually or import the completed CA_Importing_Template.xlsx workbook.</p><div className="coa-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add Appearance Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="coa-record-list"><div className="coa-record-head"><span>Event&apos;s Title</span><span>Event&apos;s Destination</span><span>Event&apos;s Date</span><span></span></div>{records.map((record) => <div className="coa-record-row" key={record.id}><strong>{record.eventTitle}</strong><span>{record.destination}</span><span>{displayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</span><div className="coa-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></div></div>)}</div>}
+    {loading ? <p className="muted">Loading certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates yet</h3><p>Add appearance details manually or import the completed CA_Importing_Template.xlsx workbook.</p><div className="coa-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add Appearance Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="coa-record-list"><div className="coa-record-head"><span>Event&apos;s Title</span><span>Event&apos;s Destination</span><span>Event&apos;s Date</span><span>Status</span><span></span></div>{records.map((record) => <div className="coa-record-row" key={record.id}><strong>{record.recordType === "blank" ? "Blank Certificate of Appearance" : record.eventTitle}</strong><span>{record.destination}</span><span>{record.recordType === "blank" ? displaySavedDate(record.createdAt) : displayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</span><span><CertificateStatusBadge record={record} /></span><div className="coa-record-actions">{record.recordType === "blank" ? <button type="button" className="row-action" onClick={() => viewSavedBlankCertificate(record)}>View</button> : <>{certificateWorkflowStatus(record.status) !== "Approved" && <button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button>}<button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button></>}{certificateWorkflowStatus(record.status) !== "Approved" && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</div></div>)}</div>}
   </section>
   <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Certificate of Appearance Deletion?" description="Are you sure you want to delete this Certificate of Appearance? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
   </>;
 }
 
-function BlankCertificateGenerator({ onCancel, onGenerate, generating, error }: { onCancel: () => void; onGenerate: (division: TevDivision) => void; generating: boolean; error: string }) {
+function BlankCertificateGenerator({ onCancel, onSave, saving, error }: { onCancel: () => void; onSave: (division: TevDivision) => void; saving: boolean; error: string }) {
   const [division, setDivision] = useState<TevDivision | "">("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (division) onGenerate(division);
+    if (division) onSave(division);
   }
 
   return <section className="content-section form-section coa-form-section coa-blank-section">
-    <div className="section-heading"><div><p className="eyebrow">Blank certificate</p><h2>Generate a Blank Certificate of Appearance</h2><p className="muted">Select your division to fill in its signatory details, then download the A4 certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">Blank certificate</p><h2>Save a Blank Certificate of Appearance</h2><p className="muted">Select your division to save its certificate in Appearance Generated Reports. Open it from the report list to view the PDF.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="coa-error" role="alert">{error}</p>}
     <form className="permit-form coa-blank-form" onSubmit={submit}>
       <label className="wide-field">Select a Division<select value={division} onChange={(event) => setDivision(event.target.value as TevDivision | "")} required><option value="" disabled>Select a Division</option>{tevDivisions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
-      <div className="wide-field form-actions"><button type="submit" className="primary-button" disabled={!division || generating}>{generating ? "Generating PDF..." : "Generate"}</button></div>
+      <div className="wide-field form-actions"><button type="submit" className="primary-button" disabled={!division || saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
 }
@@ -454,6 +709,10 @@ function CertificateNamesForm({ record, onCancel, onSubmit, saving, error }: { r
 }
 
 function CertificatePaper({ record, person }: { record: CertificateRecord; person: CertificatePerson }) {
+  const showApprovalSignature = certificateWorkflowStatus(record.status) === "Approved"
+    && record.signatureAsset === fieldOperationsChiefSignature
+    && record.signerDesignation?.trim() === "Chief"
+    && record.signerOffice === "Field Operations Division";
   return <article className="coa-certificate-card">
     <img className="coa-letterhead" src={blankCertificateAsset} alt="" />
     <h1 className="coa-title">CERTIFICATE OF APPEARANCE</h1>
@@ -461,6 +720,9 @@ function CertificatePaper({ record, person }: { record: CertificateRecord; perso
       <p>This is to certify that <strong className="coa-name">{person.name}</strong> of the <strong className="coa-office">{person.office ?? record.office}</strong> has attended the <strong><em>“{record.eventTitle}”</em></strong> held in <strong>{record.destination}</strong> on <strong>{eventDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</strong>.</p>
       <p>This certification is issued upon the request of the above-named person for whatever legal purpose it may serve {pronoun(person.gender)} best.</p>
     </div>
-    <footer className="coa-signatory"><strong>{record.signatoryName}</strong><div className="coa-signatory-role"><em>{record.designation},</em> <span>{certificateDivisionDisplayNames[record.division] ?? record.division}</span></div></footer>
+    <div className={`coa-signatory-block${showApprovalSignature ? " is-approved" : ""}`}>
+      <CertificateApprovalSignature record={record} />
+      <footer className="coa-signatory"><strong>{record.signatoryName}</strong><div className="coa-signatory-role"><em>{record.designation},</em> <span>{certificateDivisionDisplayNames[record.division] ?? record.division}</span></div></footer>
+    </div>
   </article>;
 }

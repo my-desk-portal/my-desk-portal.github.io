@@ -1,18 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { collection, doc, getDocs, onSnapshot, query, setDoc, where, writeBatch, type Firestore } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import type { AccountRole } from "@/lib/user-roles";
 import { calendarOfActivitiesCollection } from "@/lib/calendar-of-activities-storage";
 import { isPermitAdmin } from "./PermitSlipAdmin";
 import { LEGACY_PENDING_STATUS, normalizeWorkflowStatus } from "./workflow-status";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
-import { loadPersonnel } from "@/lib/personnel";
+import { accountOfficeOptions, accountProfileSelection, assignmentsForOffice } from "@/lib/account-profile";
 import "./whereabouts-calendar.css";
 
 type CalendarTravelOrder = {
   id: string;
+  ownerId?: string;
+  ownerUnit?: string;
   status: string;
   people: { name: string; position?: string; salary?: string; toNumber?: string }[];
   departureDate: string;
@@ -23,6 +26,7 @@ type CalendarTravelOrder = {
 };
 type ApprovedPermitSlip = {
   id: string;
+  ownerId?: string;
   status: string;
   permitNo: string;
   approvedPermitNo?: string;
@@ -47,6 +51,7 @@ type ApprovedLeaveApplication = {
 };
 type ApprovedCalendarOfActivities = {
   id: string;
+  ownerId?: string;
   unit: string;
   month: string;
   preparedName?: string;
@@ -58,6 +63,7 @@ type StoredPermit = {
   permitNos?: string[];
   date: string;
   names?: string[];
+  personIds?: string[];
   name?: string;
   personUnits?: string[];
   purpose: string;
@@ -65,7 +71,7 @@ type StoredPermit = {
   personStatuses?: Record<string, { status?: string; approvedPermitNo?: string }>;
 };
 
-type PermitUnitFilter = "All" | "AGRISTAT" | "AMIA" | "DRRM";
+type PermitUnitFilter = "All" | string;
 type SelectedCalendarEntry = {
   id: string;
   type: "Travel Order" | "Permit Slip" | "Leave Application";
@@ -76,6 +82,105 @@ type SelectedCalendarEntry = {
   destination: string;
   unit?: string;
 };
+
+type CalendarFilterOption = { value: string; label: string };
+
+function CalendarFilterDropdown({ label, value, options, onChange }: {
+  label: string;
+  value: string;
+  options: CalendarFilterOption[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const activeOptionId = `${listboxId}-option-${activeIndex}`;
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [open]);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!open) {
+        setActiveIndex(selectedIndex);
+        setOpen(true);
+      } else {
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        setActiveIndex((index) => (index + direction + options.length) % options.length);
+      }
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex(event.key === "Home" ? 0 : options.length - 1);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+      event.preventDefault();
+      if (!open) {
+        setActiveIndex(selectedIndex);
+        setOpen(true);
+      } else {
+        const option = options[activeIndex];
+        if (option) onChange(option.value);
+        setOpen(false);
+      }
+      return;
+    }
+    if (event.key === "Escape" && open) {
+      event.preventDefault();
+      setOpen(false);
+      return;
+    }
+    if (event.key === "Tab" && open) setOpen(false);
+  }
+
+  const selectedOption = options[selectedIndex];
+  return <div className="whereabouts-filter-control" ref={rootRef}>
+    <button
+      type="button"
+      className="whereabouts-filter-trigger"
+      role="combobox"
+      aria-label={label}
+      aria-haspopup="listbox"
+      aria-expanded={open}
+      aria-controls={listboxId}
+      aria-activedescendant={open ? activeOptionId : undefined}
+      onClick={() => {
+        setActiveIndex(selectedIndex);
+        setOpen((current) => !current);
+      }}
+      onKeyDown={handleKeyDown}
+    >
+      <span>{selectedOption?.label ?? "Select an option"}</span>
+      <svg aria-hidden="true" viewBox="0 0 20 20"><path d="m5 7.5 5 5 5-5" /></svg>
+    </button>
+    {open && <div className="whereabouts-filter-menu" id={listboxId} role="listbox" aria-label={label}>
+      {options.map((option, index) => <button
+        type="button"
+        className={`whereabouts-filter-option${index === activeIndex ? " is-active" : ""}`}
+        id={`${listboxId}-option-${index}`}
+        key={option.value}
+        role="option"
+        aria-selected={option.value === value}
+        tabIndex={-1}
+        onMouseDown={(event) => event.preventDefault()}
+        onMouseEnter={() => setActiveIndex(index)}
+        onClick={() => { onChange(option.value); setOpen(false); }}
+      >{option.label}</button>)}
+    </div>}
+  </div>;
+}
 
 function normalizeUnit(value?: string): Exclude<PermitUnitFilter, "All"> | "" {
   const unit = value?.trim().toUpperCase();
@@ -150,10 +255,11 @@ async function publishExistingApprovedPermits(firestore: Firestore) {
       const decision = permit.personStatuses?.[statusKey];
       const existingEntry = existingCalendarEntries.get(calendarId);
       if (decision?.status !== "Approved" || !permit.date || !name
-        || (existingEntry && existingEntry.approvedPermitNo === decision.approvedPermitNo)) return;
+        || (existingEntry && existingEntry.approvedPermitNo === decision.approvedPermitNo
+          && existingEntry.ownerId === permit.ownerId)) return;
       missingEntries.push({
         id: calendarId,
-        data: { permitId: permit.id, statusKey, status: "Approved", permitNo, ...(decision.approvedPermitNo ? { approvedPermitNo: decision.approvedPermitNo } : {}), name, date: permit.date, purpose: permit.purpose ?? "", unit: permit.personUnits?.[index] ?? permit.unit ?? "" },
+        data: { permitId: permit.id, statusKey, status: "Approved", permitNo, ...(decision.approvedPermitNo ? { approvedPermitNo: decision.approvedPermitNo } : {}), name, date: permit.date, purpose: permit.purpose ?? "", unit: permit.personUnits?.[index] ?? permit.unit ?? "", ...(permit.ownerId ? { ownerId: permit.ownerId } : {}) },
       });
     });
   });
@@ -189,7 +295,11 @@ function formatCalendarDateRange(from: string, to: string) {
   return `${startDate} - ${endMonthName} ${endDay}, ${endYear}`;
 }
 
-export default function WhereaboutsCalendarModule({ user }: { user: User }) {
+export default function WhereaboutsCalendarModule({ user, accountRole, office, assignment }: { user: User; accountRole: AccountRole; office: string; assignment: string }) {
+  const canFilterOfficeAssignment = isPermitAdmin(user.email, accountRole);
+  const accountScope = accountProfileSelection({ office, assignment, profileFieldsVersion: 3 });
+  const defaultOfficeFilter = canFilterOfficeAssignment ? "All" : accountScope.office || "All";
+  const defaultAssignmentFilter: PermitUnitFilter = canFilterOfficeAssignment ? "All" : accountScope.assignment || "All";
   const today = new Date();
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
   const [orders, setOrders] = useState<CalendarTravelOrder[]>([]);
@@ -198,11 +308,13 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const [calendarsOfActivities, setCalendarsOfActivities] = useState<ApprovedCalendarOfActivities[]>([]);
   const [totalPersonnelCount, setTotalPersonnelCount] = useState<number | null>(null);
   const [totalPersonnelLoading, setTotalPersonnelLoading] = useState(true);
+  const [accountScopes, setAccountScopes] = useState<Map<string, { office: string; assignment: string; name: string }>>(() => new Map());
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [nameSearch, setNameSearch] = useState("");
   const [documentFilter, setDocumentFilter] = useState<"permit" | "travel" | "leave" | "calendar-of-activities">("permit");
-  const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>("All");
+  const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>(defaultAssignmentFilter);
+  const [summaryOfficeFilter, setSummaryOfficeFilter] = useState(defaultOfficeFilter);
   const [selectedPeoplePage, setSelectedPeoplePage] = useState(0);
   const [permitPage, setPermitPage] = useState(0);
   const [travelPage, setTravelPage] = useState(0);
@@ -213,6 +325,10 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const approvedPermitNumbers = useMemo(() => assignApprovedPermitNumbers(permitSlips), [permitSlips]);
 
   useEffect(() => { setSelectedPeoplePage(0); }, [selectedDate]);
+  useEffect(() => {
+    setUnitFilter(defaultAssignmentFilter);
+    setSummaryOfficeFilter(defaultOfficeFilter);
+  }, [defaultOfficeFilter, defaultAssignmentFilter]);
 
   useEffect(() => {
     let active = true;
@@ -221,19 +337,31 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     setPermitSlips([]);
     setLeaveApplications([]);
     setCalendarsOfActivities([]);
+    setAccountScopes(new Map());
     setTotalPersonnelCount(null);
     setTotalPersonnelLoading(true);
     setError("");
     if (!db) { setError("Firebase is not configured."); setLoading(false); setTotalPersonnelLoading(false); return () => { active = false; }; }
     const firestore = db;
-    void loadPersonnel({ includeAllAccounts: true }).then((personnel) => {
-      if (active) setTotalPersonnelCount(personnel.length);
+    void getDocs(collection(firestore, "users")).then((snapshot) => {
+      if (!active) return;
+      const scopes = new Map<string, { office: string; assignment: string; name: string }>();
+      snapshot.docs.forEach((account) => {
+        const profile = accountProfileSelection(account.data());
+        scopes.set(account.id, {
+          office: profile.office,
+          assignment: profile.assignment,
+          name: typeof account.data().name === "string" ? account.data().name.trim() : "",
+        });
+      });
+      setAccountScopes(scopes);
+      setTotalPersonnelCount(snapshot.docs.length);
     }).catch(() => {
       if (active) setTotalPersonnelCount(null);
     }).finally(() => {
       if (active) setTotalPersonnelLoading(false);
     });
-    if (isPermitAdmin(user.email)) {
+    if (isPermitAdmin(user.email, accountRole)) {
       void publishExistingApprovedPermits(firestore).catch((cause) => {
         const code = (cause as { code?: string }).code;
         if (active) setError(code ? `Could not sync approved Permit Slips (${code}).` : "Could not sync approved Permit Slips.");
@@ -320,7 +448,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       finishInitialLoad("leave-backfill");
     });
     return () => { active = false; unsubscribeTravel(); unsubscribeCalendarsOfActivities(); unsubscribePermits(); unsubscribeLeaveApplications(); unsubscribeLeaveBackfill(); };
-  }, [user.uid, user.email]);
+  }, [user.uid, user.email, accountRole, office, assignment]);
 
   const year = month.getFullYear();
   const monthIndex = month.getMonth();
@@ -333,25 +461,68 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     return day > 0 && day <= daysInMonth ? day : null;
   });
 
+  const assignmentMatchesFilter = (recordAssignment: string, selectedAssignment: string) => {
+    if (selectedAssignment === "All") return true;
+    const normalizedRecord = normalizeUnit(recordAssignment);
+    const normalizedSelected = normalizeUnit(selectedAssignment);
+    return normalizedRecord && normalizedSelected
+      ? normalizedRecord === normalizedSelected
+      : recordAssignment.trim().toLocaleLowerCase() === selectedAssignment.trim().toLocaleLowerCase();
+  };
+  const recordMatchesSelectedScope = (recordOffice?: string, recordAssignment?: string) => {
+    const inferredOffice = recordOffice
+      || (normalizeUnit(recordAssignment) ? "Field Operations Division (ILD)" : "")
+      || accountOfficeOptions.find((officeOption) => assignmentsForOffice(officeOption).some((option) => option.toLocaleLowerCase() === recordAssignment?.trim().toLocaleLowerCase()))
+      || "";
+    const candidate = accountProfileSelection({ office: inferredOffice, assignment: recordAssignment ?? "", profileFieldsVersion: 3 });
+    if (summaryOfficeFilter !== "All" && candidate.office !== summaryOfficeFilter) return false;
+    return assignmentMatchesFilter(candidate.assignment || recordAssignment || "", unitFilter);
+  };
+  const recordMatchesAccountScope = (ownerId?: string, recordAssignment?: string, recordOffice?: string, recordName?: string) => {
+    const ownerScope = ownerId ? accountScopes.get(ownerId) : undefined;
+    if (ownerScope?.office) return recordMatchesSelectedScope(ownerScope.office, ownerScope.assignment);
+    const normalizedAssignment = normalizeUnit(recordAssignment);
+    const normalizedName = recordName?.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    if (normalizedName) {
+      const matchingPeople = [...accountScopes.values()].filter((person) => {
+        const nameMatches = person.name.trim().replace(/\s+/g, " ").toLocaleLowerCase() === normalizedName;
+        return nameMatches && (!recordAssignment || assignmentMatchesFilter(person.assignment, normalizedAssignment || recordAssignment));
+      });
+      if (matchingPeople.length) return matchingPeople.some((person) => recordMatchesSelectedScope(person.office, person.assignment));
+    }
+    if (summaryOfficeFilter === "All" && unitFilter === "All" && !recordOffice && !recordAssignment) return true;
+    const fallbackOffice = recordOffice || (normalizedAssignment ? "Field Operations Division (ILD)" : accountScope.office);
+    return recordMatchesSelectedScope(fallbackOffice, normalizedAssignment || recordAssignment || "");
+  };
+  const recordAssignmentForFilter = (ownerId?: string, fallbackAssignment?: string) =>
+    accountScopes.get(ownerId ?? "")?.assignment || normalizeUnit(fallbackAssignment) || fallbackAssignment || "";
+  const availableSummaryAssignments = summaryOfficeFilter === "All"
+    ? [...new Set(accountOfficeOptions.flatMap((option) => assignmentsForOffice(option)))]
+      .sort((first, second) => first.localeCompare(second, "en", { sensitivity: "base" }))
+    : [...assignmentsForOffice(summaryOfficeFilter)];
+  const calendarOrders = orders.filter((order) => recordMatchesAccountScope(order.ownerId, order.ownerUnit ?? order.chargeTo));
+  const calendarPermitSlips = permitSlips.filter((permit) => recordMatchesAccountScope(permit.ownerId, permit.unit, undefined, permit.name));
+  const calendarLeaveApplications = leaveApplications.filter((leave) => recordMatchesAccountScope(leave.ownerId, leave.office));
+
   function ordersOnDate(key: string) {
-    return orders.filter((order) => order.departureDate <= key && order.returnDate >= key);
+    return calendarOrders.filter((order) => order.departureDate <= key && order.returnDate >= key);
   }
 
   function peopleOnDate(key: string) {
     return ordersOnDate(key).reduce((total, order) => total + Math.max(order.people?.length ?? 0, 1), 0)
-      + permitSlips.filter((permit) => permit.date === key).length
-      + leaveApplications.filter((leave) => leave.inclusiveDateFrom <= key && leave.inclusiveDateTo >= key).length;
+      + calendarPermitSlips.filter((permit) => permit.date === key).length
+      + calendarLeaveApplications.filter((leave) => leave.inclusiveDateFrom <= key && leave.inclusiveDateTo >= key).length;
   }
 
   function hasPendingItemOnDate(key: string) {
-    return orders.some((order) => order.status === "Pending" && order.departureDate <= key && order.returnDate >= key)
-      || leaveApplications.some((leave) => leave.status === "Pending" && leave.inclusiveDateFrom <= key && leave.inclusiveDateTo >= key);
+    return calendarOrders.some((order) => order.status === "Pending" && order.departureDate <= key && order.returnDate >= key)
+      || calendarLeaveApplications.some((leave) => leave.status === "Pending" && leave.inclusiveDateFrom <= key && leave.inclusiveDateTo >= key);
   }
 
   function hasApprovedItemOnDate(key: string) {
-    return orders.some((order) => order.status === "Approved" && order.departureDate <= key && order.returnDate >= key)
-      || permitSlips.some((permit) => permit.date === key)
-      || leaveApplications.some((leave) => leave.status === "Approved" && leave.inclusiveDateFrom <= key && leave.inclusiveDateTo >= key);
+    return calendarOrders.some((order) => order.status === "Approved" && order.departureDate <= key && order.returnDate >= key)
+      || calendarPermitSlips.some((permit) => permit.date === key)
+      || calendarLeaveApplications.some((leave) => leave.status === "Approved" && leave.inclusiveDateFrom <= key && leave.inclusiveDateTo >= key);
   }
 
   function changeMonth(offset: number) {
@@ -365,7 +536,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   }
 
   const selectedOrders = ordersOnDate(selectedDate);
-  const selectedPermitSlips = permitSlips.filter((permit) => permit.date === selectedDate);
+  const selectedPermitSlips = calendarPermitSlips.filter((permit) => permit.date === selectedDate);
   const selectedPeopleEntries = [
     ...selectedOrders.flatMap((order) => {
       const people: CalendarTravelOrder["people"] = order.people?.length ? order.people : [{ name: "Not specified" }];
@@ -392,7 +563,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       destination: "",
       unit: permit.unit || "",
     })),
-    ...leaveApplications.filter((leave) => leave.inclusiveDateFrom <= selectedDate && leave.inclusiveDateTo >= selectedDate).map((leave) => ({
+    ...calendarLeaveApplications.filter((leave) => leave.inclusiveDateFrom <= selectedDate && leave.inclusiveDateTo >= selectedDate).map((leave) => ({
       id: `leave-${leave.id}`,
       type: "Leave Application",
       status: leave.status,
@@ -444,28 +615,32 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const normalizedSearch = nameSearch.trim().toLocaleLowerCase();
   const annualPermits = permitSlips
     .filter((permit) => permit.date >= yearStart && permit.date <= yearEnd)
+    .filter((permit) => recordMatchesAccountScope(permit.ownerId, permit.unit, undefined, permit.name))
     .filter((permit) => !normalizedSearch || (permit.name ?? "").toLocaleLowerCase().includes(normalizedSearch))
-    .filter((permit) => unitFilter === "All" || normalizeUnit(permit.unit) === unitFilter)
+    .filter((permit) => assignmentMatchesFilter(recordAssignmentForFilter(permit.ownerId, permit.unit), unitFilter))
     .sort((left, right) => right.date.localeCompare(left.date) || right.name.localeCompare(left.name));
   const annualOrders = orders
     .filter((order) => order.status === "Approved")
     .filter((order) => order.departureDate <= yearEnd && order.returnDate >= yearStart)
+    .filter((order) => recordMatchesAccountScope(order.ownerId, order.ownerUnit ?? order.chargeTo))
     .filter((order) => !normalizedSearch || (order.people ?? []).some((person) => (person.name ?? "").toLocaleLowerCase().includes(normalizedSearch)))
-    .filter((order) => unitFilter === "All" || normalizeUnit(order.chargeTo) === unitFilter)
+    .filter((order) => assignmentMatchesFilter(recordAssignmentForFilter(order.ownerId, order.ownerUnit ?? order.chargeTo), unitFilter))
     .sort((left, right) => right.departureDate.localeCompare(left.departureDate) || right.returnDate.localeCompare(left.returnDate));
   const annualLeaveApplications = leaveApplications
     .filter((leave) => leave.status === "Approved")
     .filter((leave) => leave.inclusiveDateFrom <= yearEnd && leave.inclusiveDateTo >= yearStart)
+    .filter((leave) => recordMatchesAccountScope(leave.ownerId, leave.office))
     .filter((leave) => !normalizedSearch || leaveApplicantName(leave).toLocaleLowerCase().includes(normalizedSearch))
-    .filter((leave) => unitFilter === "All" || normalizeUnit(leave.office) === unitFilter)
+    .filter((leave) => assignmentMatchesFilter(recordAssignmentForFilter(leave.ownerId, leave.office), unitFilter))
     .sort((left, right) => right.inclusiveDateFrom.localeCompare(left.inclusiveDateFrom) || leaveApplicantName(left).localeCompare(leaveApplicantName(right)));
   const permitPageCount = Math.max(1, Math.ceil(annualPermits.length / 10));
   const travelPageCount = Math.max(1, Math.ceil(annualOrders.length / 10));
   const leavePageCount = Math.max(1, Math.ceil(annualLeaveApplications.length / 10));
   const annualCalendarsOfActivities = calendarsOfActivities
     .filter((plan) => plan.month.startsWith(`${summaryYear}-`))
+    .filter((plan) => recordMatchesAccountScope(plan.ownerId, plan.unit))
     .filter((plan) => !normalizedSearch || plan.activities.some((activity) => (activity.responsiblePeople ?? []).some((person) => (person.name ?? "").toLocaleLowerCase().includes(normalizedSearch))))
-    .filter((plan) => unitFilter === "All" || normalizeUnit(plan.unit) === unitFilter)
+    .filter((plan) => assignmentMatchesFilter(recordAssignmentForFilter(plan.ownerId, plan.unit), unitFilter))
     .sort((left, right) => right.month.localeCompare(left.month) || (left.unit ?? "").localeCompare(right.unit ?? ""));
   const calendarsOfActivitiesPageCount = Math.max(1, Math.ceil(annualCalendarsOfActivities.length / 10));
   const currentCalendarsOfActivitiesPage = Math.min(calendarsOfActivitiesPage, calendarsOfActivitiesPageCount - 1);
@@ -476,8 +651,15 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
   const visibleAnnualPermits = annualPermits.slice(currentPermitPage * 10, currentPermitPage * 10 + 10);
   const visibleAnnualOrders = annualOrders.slice(currentTravelPage * 10, currentTravelPage * 10 + 10);
   const visibleAnnualLeaveApplications = annualLeaveApplications.slice(currentLeavePage * 10, currentLeavePage * 10 + 10);
+  const selectedPersonnelTotal = (summaryOfficeFilter !== "All" || unitFilter !== "All")
+    ? [...accountScopes.values()].filter((person) => recordMatchesSelectedScope(person.office, person.assignment)).length
+    : totalPersonnelCount;
   return <section className="content-section whereabouts-calendar-section">
     <div className="section-heading whereabouts-heading"><div><p className="eyebrow">Travel, Leave, and Permit Records</p><h2>Whereabouts Calendar</h2><p className="muted">Select a shaded date to view pending or approved Travel Orders and Leave Applications, plus approved Permit Slips.</p></div></div>
+    <div className="whereabouts-calendar-filters" aria-label="Filter whereabouts calendar">
+      <CalendarFilterDropdown label="Office" value={summaryOfficeFilter} options={[{ value: "All", label: "All Offices" }, ...accountOfficeOptions.map((option) => ({ value: option, label: option }))]} onChange={(value) => { setSummaryOfficeFilter(value); setUnitFilter("All"); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); setLeavePage(0); setCalendarsOfActivitiesPage(0); }} />
+      <CalendarFilterDropdown label="Assignment" value={unitFilter} options={[{ value: "All", label: "All Assignments" }, ...availableSummaryAssignments.map((option) => ({ value: option, label: option }))]} onChange={(value) => { setUnitFilter(value as PermitUnitFilter); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); setLeavePage(0); setCalendarsOfActivitiesPage(0); }} />
+    </div>
     {error && <div className="error-message whereabouts-error">{error}</div>}
     <section className="whereabouts-calendar" aria-label="Travel Order, Leave Application, and Permit Slip calendar">
       <header className="whereabouts-calendar-toolbar"><button type="button" className="whereabouts-month-arrow" aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button><h3>{monthName}</h3><button type="button" className="whereabouts-month-arrow" aria-label="Next month" onClick={() => changeMonth(1)}>›</button><button type="button" className="whereabouts-today-button" onClick={() => { setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setSelectedDate(todayKey); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); setLeavePage(0); }}>Today</button></header>
@@ -501,7 +683,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     </section>
     <section className="whereabouts-date-details" aria-live="polite">
       <div className="whereabouts-details-heading"><div><p className="eyebrow">Selected date</p><h3>{formatCalendarDate(selectedDate)}</h3></div><span className="whereabouts-detail-count">{loading ? "Loading..." : `${selectedPeople.length} ${selectedPeople.length === 1 ? "entry" : "entries"}`}</span></div>
-      {loading ? <p className="whereabouts-personnel-count"><span>No. of Personnel Out of Office</span><strong>Loading...</strong><span>of</span><strong>Loading...</strong></p> : personnelNotInOfficeCount === 0 ? <p className="whereabouts-personnel-count">{zeroPersonnelMessage}</p> : <p className="whereabouts-personnel-count"><span>No. of Personnel Out of Office</span><strong>{personnelNotInOfficeCount}</strong><span>of</span><strong>{totalPersonnelLoading ? "Loading..." : totalPersonnelCount ?? "Unavailable"}</strong></p>}
+      {loading ? <p className="whereabouts-personnel-count"><span>No. of Personnel Out of Office</span><strong>Loading...</strong><span>of</span><strong>Loading...</strong></p> : personnelNotInOfficeCount === 0 ? <p className="whereabouts-personnel-count">{zeroPersonnelMessage}</p> : <p className="whereabouts-personnel-count"><span>No. of Personnel Out of Office</span><strong>{personnelNotInOfficeCount}</strong><span>of</span><strong>{totalPersonnelLoading ? "Loading..." : selectedPersonnelTotal ?? "Unavailable"}</strong></p>}
       {loading ? <p className="muted">Loading Travel Orders, Permit Slips, and Leave Applications...</p> : personnelNotInOfficeCount === 0 ? null : selectedPeople.length === 0 ? <p className="whereabouts-empty-date">No Travel Orders, Permit Slips, or Leave Applications on this date.</p> : <>
         {selectedPeoplePageCount > 1 && <nav className="whereabouts-pagination whereabouts-date-pagination" aria-label="Selected date people pages"><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.max(0, page - 1))} disabled={currentSelectedPeoplePage === 0}>Previous</button><span aria-live="polite">Page {currentSelectedPeoplePage + 1} of {selectedPeoplePageCount}</span><button type="button" onClick={() => setSelectedPeoplePage((page) => Math.min(selectedPeoplePageCount - 1, page + 1))} disabled={currentSelectedPeoplePage >= selectedPeoplePageCount - 1}>Next</button></nav>}
         <div className="whereabouts-date-table-wrap"><table className="whereabouts-date-table"><thead><tr><th>Person</th><th>Date</th><th>Purpose / Destination</th></tr></thead><tbody>
@@ -511,14 +693,13 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
     </section>
     <section className="whereabouts-annual-summary" aria-label={`Whereabouts records for ${summaryYear}`}>
       <header className="whereabouts-summary-heading"><div><p className="eyebrow">Annual summary</p><h2>Approved Records — {summaryYear}</h2></div></header>
-      <div className="whereabouts-summary-filters">
+      <div className={`whereabouts-summary-filters${canFilterOfficeAssignment ? "" : " whereabouts-summary-filters-regular"}`}>
         <label>Approved Document<select value={documentFilter} onChange={(event) => setDocumentFilter(event.target.value as "permit" | "travel" | "leave" | "calendar-of-activities")}><option value="permit">Permit Slips</option><option value="travel">Travel Orders</option><option value="leave">Leave Applications</option><option value="calendar-of-activities">Calendar of Activities</option></select></label>
         <label>Name Search<input type="search" value={nameSearch} onChange={(event) => { setNameSearch(event.target.value); setPermitPage(0); setTravelPage(0); setLeavePage(0); setCalendarsOfActivitiesPage(0); }} placeholder="Search by Name" /></label>
-        <label>Unit<select value={unitFilter} onChange={(event) => { setUnitFilter(event.target.value as PermitUnitFilter); setPermitPage(0); setTravelPage(0); setLeavePage(0); setCalendarsOfActivitiesPage(0); }}><option value="All">All Units</option><option value="AGRISTAT">FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select></label>
       </div>
       {documentFilter === "permit" && <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-permit-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-permit-summary-title">Approved Permit Slips</h3><span>{annualPermits.length === 0 ? "0 records" : `${currentPermitPage * 10 + 1}–${Math.min(currentPermitPage * 10 + visibleAnnualPermits.length, annualPermits.length)} of ${annualPermits.length}`}</span></div>
-        <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Date</th><th>Name</th><th>Unit</th><th>Purpose</th></tr></thead><tbody>
+        <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table"><thead><tr><th>Date</th><th>Name</th><th>Office</th><th>Purpose</th></tr></thead><tbody>
           {visibleAnnualPermits.map((permit) => <tr key={`annual-permit-${permit.id}`}><td>{formatCalendarDate(permit.date)}</td><td>{permit.name}{permit.approvedPermitNo || permit.permitNo ? ` (PS No. ${permit.approvedPermitNo ?? approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)})` : ""}</td><td>{permit.unit ? displayUnit(permit.unit) : "—"}</td><td>{permit.purpose || "—"}</td></tr>)}
           {!loading && visibleAnnualPermits.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={4}>No approved Permit Slips match this year and filter.</td></tr>}
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={4}>Loading approved Permit Slips…</td></tr>}
@@ -545,7 +726,7 @@ export default function WhereaboutsCalendarModule({ user }: { user: User }) {
       </section>}
       {documentFilter === "calendar-of-activities" && <section className="whereabouts-summary-table-section" aria-labelledby="whereabouts-calendar-of-activities-summary-title">
         <div className="whereabouts-summary-table-heading"><h3 id="whereabouts-calendar-of-activities-summary-title">Approved Calendar of Activities Records</h3><span>{annualCalendarsOfActivities.length === 0 ? "0 records" : `${currentCalendarsOfActivitiesPage * 10 + 1}–${Math.min(currentCalendarsOfActivitiesPage * 10 + visibleCalendarsOfActivities.length, annualCalendarsOfActivities.length)} of ${annualCalendarsOfActivities.length}`}</span></div>
-        <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table whereabouts-activities-table"><thead><tr><th>Month</th><th>Unit</th><th>Activities</th></tr></thead><tbody>
+        <div className="whereabouts-summary-table-wrap"><table className="whereabouts-summary-table whereabouts-activities-table"><thead><tr><th>Month</th><th>Office</th><th>Activities</th></tr></thead><tbody>
           {visibleCalendarsOfActivities.map((plan) => <tr key={`annual-calendars-of-activities-${plan.id}`}><td>{formatCalendarDate(`${plan.month}-01`, { month: "long", year: "numeric" })}</td><td>{displayUnit(plan.unit) || "—"}</td><td>{plan.activities.map((activity, index) => <p key={index}><strong>{`${formatCalendarDateRange(activity.dateFrom, activity.dateTo).replace(/,? \d{4}/g, "")}:`}</strong>{` ${activity.activity}${activity.location ? ` (${activity.location})` : ""}`}</p>)}</td></tr>)}
           {!loading && visibleCalendarsOfActivities.length === 0 && <tr><td className="whereabouts-summary-empty" colSpan={3}>No approved Calendar of Activities records match this year and filter.</td></tr>}
           {loading && <tr><td className="whereabouts-summary-empty" colSpan={3}>Loading Calendar of Activities…</td></tr>}

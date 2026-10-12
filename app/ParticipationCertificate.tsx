@@ -5,16 +5,18 @@ import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, up
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { loadPdfTools } from "@/lib/pdf-tools";
+import { CertificateStatusBadge, certificateWorkflowStatus, type CertificateWorkflowFields } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./participation.css";
 import "./participation-amia.css";
 import "./participation-drrm.css";
+import "./certificate-workflow.css";
 
 type ParticipationUnit = "AMIA" | "AGRISTAT" | "DRRM";
 type ParticipantGender = "female" | "male";
 type ParticipantDetails = { name: string; gender: ParticipantGender };
 type ParticipantDraft = { name: string; gender: ParticipantGender | "" };
-type ParticipationRecord = {
+type ParticipationRecord = CertificateWorkflowFields & {
   id: string;
   unit: ParticipationUnit;
   participantNames?: string[];
@@ -139,7 +141,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
   }, [user.uid]);
 
   async function deleteRecord(record: ParticipationRecord) {
-    if (!db) return;
+    if (!db || certificateWorkflowStatus(record.status) === "Approved") return;
     setDeletingId(record.id);
     setError("");
     try {
@@ -188,6 +190,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
       distributionDate: String(form.get("event-date-to") || ""),
       distributionSameAsDestination: sameAsDestination,
       distributionPlace: sameAsDestination ? eventDestination : String(form.get("distribution-place") ?? "").trim(),
+      status: "Pending" as const,
       ownerId: user.uid,
       createdAt: serverTimestamp(),
     };
@@ -207,8 +210,8 @@ export default function ParticipationCertificate({ user }: { user: User }) {
   async function saveNameCorrection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!db || !editingRecord) {
-      setError("The participation certificate could not be updated.");
+    if (!db || !editingRecord || certificateWorkflowStatus(editingRecord.status) === "Approved") {
+      setError("Approved certificates cannot be edited.");
       return;
     }
     const form = new FormData(event.currentTarget);
@@ -257,7 +260,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
         const batch = writeBatch(db);
         const chunk: ParticipationRecord[] = parsed.slice(offset, offset + 450).map((record) => {
           const reference = doc(certificateCollection);
-          const data = { ...record, ownerId: user.uid, createdAt: serverTimestamp() };
+          const data = { ...record, status: "Pending" as const, ownerId: user.uid, createdAt: serverTimestamp() };
           batch.set(reference, data);
           return { ...data, id: reference.id, createdAt: undefined } as ParticipationRecord;
         });
@@ -393,7 +396,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
     <input ref={importInputRef} className="participation-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importParticipations(event)} aria-label="Import Participation certificate workbook" />
     {error && <p className="participation-error" role="alert">{error}</p>}
     {importMessage && <p className="participation-success" role="status">{importMessage}</p>}
-    {loading ? <p className="muted">Loading participation certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No participation certificates yet</h3><p>Add participation details manually or import the completed Participation_Importing_Template.xlsx workbook.</p><div className="participation-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add a Participation Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="participation-record-list"><div className="participation-record-head"><span>Unit</span><span>Participant(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="participation-record-row" key={record.id}><span><span className="participation-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="participation-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></div></div>)}</div>}
+    {loading ? <p className="muted">Loading participation certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No participation certificates yet</h3><p>Add participation details manually or import the completed Participation_Importing_Template.xlsx workbook.</p><div className="participation-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add a Participation Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="participation-record-list"><div className="participation-record-head"><span>Office</span><span>Participant(s)</span><span>Event</span><span>Event dates</span><span>Status</span><span></span></div>{records.map((record) => <div className="participation-record-row" key={record.id}><span><span className="participation-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><span><CertificateStatusBadge record={record} /></span><div className="participation-record-actions">{certificateWorkflowStatus(record.status) !== "Approved" && <button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button>}<button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button>{certificateWorkflowStatus(record.status) !== "Approved" && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</div></div>)}</div>}
     <p className="participation-hold-note">AGRISTAT participation template on hold.</p>
   </section>
   <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Participation Certificate Deletion?" description="Are you sure you want to delete this Participation Certificate? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
@@ -413,7 +416,7 @@ function ParticipationForm({ onCancel, onSubmit, saving, error }: { onCancel: ()
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Participation</h2><p className="muted">Enter participant and event details. Each participant gets a separate {unit === "DRRM" ? "Letter" : "A4"} landscape certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="participation-error" role="alert">{error}</p>}
     <form className="permit-form participation-form" onSubmit={onSubmit}>
-      <label className="wide-field">Unit<select name="unit" value={unit} onChange={(event) => setUnit(event.target.value as ParticipationUnit)}><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT participation template on hold.</small></label>
+      <label className="wide-field">Office<select name="unit" value={unit} onChange={(event) => setUnit(event.target.value as ParticipationUnit)}><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT participation template on hold.</small></label>
       <ParticipationParticipantsFieldset participants={participants} onChange={(index, values) => setParticipants((current) => current.map((person, personIndex) => personIndex === index ? { ...person, ...values } : person))} onAdd={() => setParticipants((current) => [...current, { name: "", gender: "" }])} onRemove={(index) => setParticipants((current) => current.filter((_, personIndex) => personIndex !== index))} />
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field participation-schedule">

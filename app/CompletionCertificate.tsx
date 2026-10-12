@@ -5,12 +5,14 @@ import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, up
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { loadPdfTools } from "@/lib/pdf-tools";
+import { CertificateStatusBadge, certificateWorkflowStatus, type CertificateWorkflowFields } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./completion.css";
 import "./completion-amia.css";
+import "./certificate-workflow.css";
 
 type CompletionUnit = "AMIA" | "AGRISTAT" | "DRRM";
-type CompletionRecord = {
+type CompletionRecord = CertificateWorkflowFields & {
   id: string;
   unit: CompletionUnit;
   participantNames?: string[];
@@ -129,7 +131,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
   }, [user.uid]);
 
   async function deleteRecord(record: CompletionRecord) {
-    if (!db) return;
+    if (!db || certificateWorkflowStatus(record.status) === "Approved") return;
     setDeletingId(record.id);
     setError("");
     try {
@@ -175,6 +177,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
       eventDestination,
       distributionSameAsDestination: sameAsDestination,
       distributionPlace: sameAsDestination ? eventDestination : String(form.get("distribution-place") ?? "").trim(),
+      status: "Pending" as const,
       ownerId: user.uid,
       createdAt: serverTimestamp(),
     };
@@ -194,8 +197,8 @@ export default function CompletionCertificate({ user }: { user: User }) {
   async function saveNameCorrection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!db || !editingRecord) {
-      setError("The completion certificate could not be updated.");
+    if (!db || !editingRecord || certificateWorkflowStatus(editingRecord.status) === "Approved") {
+      setError("Approved certificates cannot be edited.");
       return;
     }
     const names = new FormData(event.currentTarget).getAll("participant-name").map((value) => String(value).trim());
@@ -242,7 +245,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
         const batch = writeBatch(db);
         const chunk: CompletionRecord[] = parsed.slice(offset, offset + 450).map((record) => {
           const reference = doc(certificateCollection);
-          const data = { ...record, ownerId: user.uid, createdAt: serverTimestamp() };
+          const data = { ...record, status: "Pending" as const, ownerId: user.uid, createdAt: serverTimestamp() };
           batch.set(reference, data);
           return { ...data, id: reference.id, createdAt: undefined } as CompletionRecord;
         });
@@ -385,7 +388,7 @@ export default function CompletionCertificate({ user }: { user: User }) {
     <input ref={importInputRef} className="completion-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importCompletions(event)} aria-label="Import Completion certificate workbook" />
     {error && <p className="completion-error" role="alert">{error}</p>}
     {importMessage && <p className="completion-success" role="status">{importMessage}</p>}
-    {loading ? <p className="muted">Loading completion certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No completion certificates yet</h3><p>Add completion details manually or import the completed Completion_Importing_Template.xlsx workbook.</p><div className="completion-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add a Completion Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="completion-record-list"><div className="completion-record-head"><span>Unit</span><span>Completer(s)</span><span>Event</span><span>Event dates</span><span></span></div>{records.map((record) => <div className="completion-record-row" key={record.id}><span><span className="completion-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="completion-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></div></div>)}</div>}
+    {loading ? <p className="muted">Loading completion certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No completion certificates yet</h3><p>Add completion details manually or import the completed Completion_Importing_Template.xlsx workbook.</p><div className="completion-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add a Completion Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="completion-record-list"><div className="completion-record-head"><span>Office</span><span>Completer(s)</span><span>Event</span><span>Event dates</span><span>Status</span><span></span></div>{records.map((record) => <div className="completion-record-row" key={record.id}><span><span className="completion-unit-tag">{record.unit}</span></span><strong>{participantNames(record).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><span><CertificateStatusBadge record={record} /></span><div className="completion-record-actions">{certificateWorkflowStatus(record.status) !== "Approved" && <button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button>}<button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button>{certificateWorkflowStatus(record.status) !== "Approved" && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</div></div>)}</div>}
     <p className="completion-hold-note">AGRISTAT completion template on hold.</p>
   </section>
   <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Completion Certificate Deletion?" description="Are you sure you want to delete this Completion Certificate? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
@@ -404,7 +407,7 @@ function CompletionForm({ onCancel, onSubmit, saving, error }: { onCancel: () =>
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Completion</h2><p className="muted">Enter the event and completer details. AMIA certificates print on A4; DRRM certificates print on landscape Letter paper.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="completion-error" role="alert">{error}</p>}
     <form className="permit-form completion-form" onSubmit={onSubmit}>
-      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT completion template on hold.</small></label>
+      <label className="wide-field">Office<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT completion template on hold.</small></label>
       <fieldset className="wide-field completion-participants-fieldset"><legend>Completer&apos;s Name</legend><p className="completion-participants-hint">Enter one or more names. A separate certificate will be created for each completer.</p>{names.map((name, index) => <div className="completion-name-row" key={index}><label>Completer {index + 1}<input name="participant-name" maxLength={180} value={name} onChange={(event) => setNames((current) => current.map((person, personIndex) => personIndex === index ? event.target.value : person))} required /></label>{names.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete completer ${index + 1}`} onClick={() => setNames((current) => current.filter((_, personIndex) => personIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button" disabled={names.length >= MAX_PARTICIPANTS} onClick={() => setNames((current) => [...current, ""])}>+ Add completer</button></fieldset>
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field completion-schedule">
