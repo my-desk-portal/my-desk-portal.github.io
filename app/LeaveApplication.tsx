@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
-import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
+import { makeDocumentNotification } from "@/lib/document-notifications";
 import DeleteConfirmation from "./DeleteConfirmation";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./leave-application.css";
@@ -547,6 +548,22 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
       const batch = writeBatch(db);
       batch.set(leaveRef, leaveData);
       batch.set(doc(db, "approvedLeaveCalendar", record.id), leaveCalendarData(record, user.uid));
+      const superadminSnapshot = await getDocs(query(collection(db, "users"), where("accountRole", "==", "superadmin")));
+      superadminSnapshot.docs
+        .filter((account) => account.id !== user.uid)
+        .forEach((account) => {
+          const notification = makeDocumentNotification(db, {
+            recipientId: account.id,
+            ownerId: user.uid,
+            documentId: leaveRef.id,
+            documentType: "Leave Application",
+            applicantName: record.name,
+            leaveType: record.leaveType,
+            inclusiveDateFrom: record.inclusiveDateFrom,
+            inclusiveDateTo: record.inclusiveDateTo,
+          });
+          batch.set(notification.reference, notification.data);
+        });
       await batch.commit();
       setMessage("Leave Application saved.");
       setView("list");

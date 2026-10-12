@@ -348,6 +348,14 @@ service cloud.firestore {
             && request.resource.data.returnDate == getAfter(documentPath("travelOrders", request.resource.data.documentId)).data.returnDate
             && request.resource.data.placeOfTravel == getAfter(documentPath("travelOrders", request.resource.data.documentId)).data.placeOfTravel
             && request.resource.data.purpose == getAfter(documentPath("travelOrders", request.resource.data.documentId)).data.purpose)
+          || (request.resource.data.documentType == "Leave Application"
+            && existsAfter(documentPath("leaveApplications", request.resource.data.documentId))
+            && getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.ownerId == request.auth.uid
+            && get(documentPath("users", request.resource.data.recipientId)).data.accountRole == "superadmin"
+            && request.resource.data.applicantName == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.name
+            && request.resource.data.leaveType == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.leaveType
+            && request.resource.data.inclusiveDateFrom == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.inclusiveDateFrom
+            && request.resource.data.inclusiveDateTo == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.inclusiveDateTo)
         );
       allow update: if isVerifiedUser()
         && resource.data.recipientId == request.auth.uid
