@@ -386,7 +386,7 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
           <label>OR No.<input value={certification.cutShortOrNo} maxLength={60} onChange={(event) => updateCertification({ cutShortOrNo: event.target.value })} /></label>
           <div className="mytev-date-field"><span>Date</span><MonthAwareDateInput label="Cut short refund date" month={month} value={certification.cutShortDate} onChange={(value) => updateCertification({ cutShortDate: value })} /></div>
         </div>}
-        {certification.otherDeviation && <label className="mytev-certification-explanation">Explanation or Justification<textarea value={certification.otherExplanation} maxLength={500} rows={3} onChange={(event) => updateCertification({ otherExplanation: event.target.value })} /></label>}
+        {(certification.cutShort || certification.extended || certification.otherDeviation) && <label className="mytev-certification-explanation">Explanation or Justification<textarea value={certification.otherExplanation} maxLength={500} rows={3} required onChange={(event) => updateCertification({ otherExplanation: event.target.value })} /></label>}
         </fieldset>
         <fieldset className="mytev-evidence-picker"><legend>Evidence of Travel</legend><div className="mytev-evidence-options">{tevEvidenceOptions.map((option) => <label key={option.label}><input type="checkbox" checked={selectedEvidence.includes(option.label)} onChange={(event) => toggleEvidence(option.label, event.target.checked)} disabled={saving} /><span>{option.label}</span></label>)}</div></fieldset>
       </section>
