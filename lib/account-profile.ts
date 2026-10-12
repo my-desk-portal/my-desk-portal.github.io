@@ -96,7 +96,6 @@ export const accountDesignationOptions = [
   "F2C2",
   "Alternate OAP / 4K Program Coordinator",
   "RSBSA & Extension and Partnership",
-  "AGRISTAT Alternate",
   "DRRM Procurement & Budget Officer",
   "DRRM Procurement & Planning Officer",
   "DRRM Early Response & Recovery",

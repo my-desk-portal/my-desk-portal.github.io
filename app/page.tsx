@@ -1363,6 +1363,10 @@ function SpecialOrderSignatoryPosition({ designation }: { designation: string })
   return division.endsWith("Division") ? <><em>{position}</em> {division}</> : <em>{designation}</em>;
 }
 
+function specialOrderSignatoryDesignation(name: string, designation: string) {
+  return name.trim().toUpperCase() === "REBECCA R. ATEGA" ? "RTD for Operations" : designation;
+}
+
 function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose: () => void }) {
   const pagesRef = useRef<HTMLDivElement>(null);
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
@@ -1423,7 +1427,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     <ul className="special-order-obligation-list special-order-closing-unit" data-special-order-closing-unit key="report"><li>Submit a brief written report and/or feedback within ____ days after the activity.</li></ul>,
     <p className="special-order-expenses special-order-closing-unit" data-special-order-closing-unit key="expenses">Travel and other incidental expenses, if any, shall be charged against available funds subject to existing accounting and auditing rules and regulations.</p>,
     <p className="special-order-done special-order-closing-unit" data-special-order-closing-unit key="done">Done this ____ day of ____________, {new Date().getFullYear()}</p>,
-    <footer className="special-order-signatory special-order-closing-unit" data-special-order-closing-unit key="signatory"><strong>{order.signatoryName || specialOrderSignatories[0].name}</strong><span><SpecialOrderSignatoryPosition designation={order.signatoryDesignation || specialOrderSignatories[0].designation} /></span></footer>,
+    <footer className="special-order-signatory special-order-closing-unit" data-special-order-closing-unit key="signatory"><strong>{order.signatoryName || specialOrderSignatories[0].name}</strong><span><SpecialOrderSignatoryPosition designation={specialOrderSignatoryDesignation(order.signatoryName || specialOrderSignatories[0].name, order.signatoryDesignation || specialOrderSignatories[0].designation)} /></span></footer>,
   ];
   const closingContinuationPages: (typeof closingUnits)[] = [];
   const remainingClosingUnits = closingUnits.slice(closingUnitsOnLastAttendeePage);

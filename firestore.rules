@@ -410,8 +410,10 @@ service cloud.firestore {
     }
     match /calendarOfActivities/{calendarId} {
       allow read: if isVerifiedUser()
-        && (isCalendarOwnerOrSameUnit(calendarId)
-          || resource.data.status == "Approved");
+        && (resource.data.get("ownerId", "") == request.auth.uid
+          || resource.data.get("unit", "") == signedInUnit()
+          || resource.data.get("status", "") == "Approved"
+          || isCalendarOwnerOrSameUnit(calendarId));
       allow create: if isVerifiedUser()
         && request.resource.data.keys().hasAll(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
         && request.resource.data.keys().hasOnly(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
