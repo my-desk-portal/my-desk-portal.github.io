@@ -56,6 +56,15 @@
 .mytev-evidence-options>label{align-items:center;background:#fff;border:1px solid var(--line);display:flex;gap:10px;min-width:0;padding:12px}
 .mytev-evidence-options input[type=checkbox]{accent-color:var(--accent);flex:0 0 auto;height:18px;margin:0;padding:0;width:18px}
 .mytev-evidence-options span{color:#4e5b55;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+.mytev-certification-picker{border:1px solid var(--line);display:grid;gap:14px;margin:0;min-width:0;padding:16px}
+.mytev-certification-picker legend{color:var(--ink);font-size:14px;font-weight:700;padding:0 7px}
+.mytev-certification-options{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
+.mytev-certification-options>label{align-items:center;background:#fff;border:1px solid var(--line);display:grid;gap:11px;grid-template-columns:20px minmax(0,1fr);line-height:1.45;min-height:64px;min-width:0;padding:13px}
+.mytev-certification-options input{accent-color:var(--accent);height:19px;margin:0;padding:0;width:19px}
+.mytev-certification-options span{color:#4e5b55;font-size:13px;overflow-wrap:anywhere}
+.mytev-certification-fields{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));min-width:0}
+.mytev-certification-explanation{min-width:0}
+.mytev-certification-explanation textarea{min-width:0;width:100%}
 .mytev-form-message{background:#fff0eb;border-left:3px solid var(--accent);color:#9e3824;font-size:12px;line-height:1.5;margin:0;padding:12px 14px}
 .mytev-stepper{border-bottom:1px solid var(--line);display:grid;gap:0;grid-template-columns:repeat(2,minmax(0,1fr));list-style:none;margin:0;padding:0}
 .mytev-stepper li{align-items:center;color:var(--muted);display:flex;font-size:12px;gap:10px;padding:12px 10px}
@@ -448,8 +457,10 @@
 .mytev-ctc-conditions i{border:var(--mytev-thin-line);height:3.2mm;margin-top:.5mm;width:3.2mm}
 .mytev-ctc-conditions i.is-checked{position:relative}
 .mytev-ctc-conditions i.is-checked:after{border-bottom:1mm solid #111;border-right:1mm solid #111;content:"";height:2mm;left:.8mm;position:absolute;top:.2mm;transform:rotate(45deg);width:1mm}
+.mytev-ctc-inline-value{border-bottom:var(--mytev-thin-line);display:inline-block;min-width:18mm;padding:0 .5mm;text-align:center;vertical-align:baseline}
 .mytev-ctc-explanation{display:grid;gap:2mm;margin:3mm 0 2mm}
 .mytev-ctc-explanation span{border-bottom:var(--mytev-medium-line);height:4mm}
+.mytev-ctc-explanation span.has-value{height:auto;min-height:4mm;overflow-wrap:anywhere;padding:.5mm}
 .mytev-ctc-evidence{display:grid;gap:1mm;grid-template-columns:minmax(0,1fr);margin-top:3mm}
 .mytev-ctc-evidence span{border-bottom:var(--mytev-medium-line);font-style:italic;min-height:6mm;overflow-wrap:anywhere}
 .mytev-ctc-submitted{margin:9mm 0 0 50%;text-align:left}

@@ -789,10 +789,29 @@ service cloud.firestore {
             && recordData.evidenceOfTravelOptions.size() <= 8
             && recordData.evidenceOfTravelOptions.hasOnly(["Approved Itinerary of Travel", "Approved Travel Orders", "Boarding Pass", "Boat Ticket", "Bus Ticket", "Certificate of Appearance", "COENRR", "Plane Ticket"]));
       }
+      function hasValidCertificationOfTravel(recordData) {
+        return !recordData.keys().hasAny(["certificationOfTravel"])
+          || (recordData.certificationOfTravel is map
+            && recordData.certificationOfTravel.keys().hasAll(["strictlyInAccordance", "cutShort", "cutShortAmount", "cutShortOrNo", "cutShortDate", "extended", "otherDeviation", "otherExplanation"])
+            && recordData.certificationOfTravel.keys().hasOnly(["strictlyInAccordance", "cutShort", "cutShortAmount", "cutShortOrNo", "cutShortDate", "extended", "otherDeviation", "otherExplanation"])
+            && recordData.certificationOfTravel.strictlyInAccordance is bool
+            && recordData.certificationOfTravel.cutShort is bool
+            && recordData.certificationOfTravel.cutShortAmount is string
+            && recordData.certificationOfTravel.cutShortAmount.size() <= 32
+            && recordData.certificationOfTravel.cutShortOrNo is string
+            && recordData.certificationOfTravel.cutShortOrNo.size() <= 60
+            && recordData.certificationOfTravel.cutShortDate is string
+            && (recordData.certificationOfTravel.cutShortDate == "" || recordData.certificationOfTravel.cutShortDate.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))
+            && recordData.certificationOfTravel.extended is bool
+            && recordData.certificationOfTravel.otherDeviation is bool
+            && recordData.certificationOfTravel.otherExplanation is string
+            && recordData.certificationOfTravel.otherExplanation.size() <= 500);
+      }
       function isValidMyTevRecord(recordData) {
         return recordData.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
-          && recordData.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "divisionName", "itineraries", "createdAt"])
+          && recordData.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "certificationOfTravel", "divisionName", "itineraries", "createdAt"])
           && hasValidEvidenceOptions(recordData)
+          && hasValidCertificationOfTravel(recordData)
           && recordData.ownerId == request.auth.uid
           && recordData.profile is map
           && recordData.profile.keys().hasOnly(["name", "address", "taxIdentificationNo", "position", "unit"])
@@ -827,8 +846,9 @@ service cloud.firestore {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
       allow create: if isVerifiedUser()
         && request.resource.data.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
-        && request.resource.data.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "divisionName", "itineraries", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "certificationOfTravel", "divisionName", "itineraries", "createdAt"])
         && hasValidEvidenceOptions(request.resource.data)
+        && hasValidCertificationOfTravel(request.resource.data)
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.profile is map
         && request.resource.data.profile.keys().hasOnly(["name", "address", "taxIdentificationNo", "position", "unit"])

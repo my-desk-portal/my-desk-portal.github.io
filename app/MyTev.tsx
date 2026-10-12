@@ -9,6 +9,7 @@ import {
   blankTevItinerary,
   blankTevItineraryRow,
   blankTevTravelReference,
+  defaultTevCertificationOfTravel,
   isTevTransportationAmountRequired,
   loadTevRegionRates,
   formatTevAmount,
@@ -24,6 +25,7 @@ import {
   normalizeTevTransportationMeansForEditor,
   type MyTevRecord,
   type TevDivision,
+  type TevCertificationOfTravel,
   type TevItinerary,
   type TevItineraryRow,
   type TevProfile,
@@ -202,6 +204,7 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
   const [selectedEvidence, setSelectedEvidence] = useState<string[]>(() => initialRecord
     ? tevEvidenceOptions.filter((option) => initialRecord.evidenceOfTravelOptions?.includes(option.label) || option.pattern.test(initialRecord.evidenceOfTravel ?? "")).map((option) => option.label)
     : []);
+  const [certification, setCertification] = useState<TevCertificationOfTravel>(() => ({ ...defaultTevCertificationOfTravel(), ...initialRecord?.certificationOfTravel }));
   const evidenceOfTravel = selectedEvidence.join(", ");
   const [divisionName, setDivisionName] = useState<TevDivision>(() => initialRecord?.divisionName ?? tevDivisions[0]);
   const [itineraries, setItineraries] = useState<TevItinerary[]>(() => initialRecord
@@ -213,6 +216,10 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
   function updateReference(index: number, changes: Partial<TevTravelReference>) {
     setReferences((current) => current.map((reference, itemIndex) => itemIndex === index ? { ...reference, ...changes } : reference));
     setMessage("");
+  }
+
+  function updateCertification(changes: Partial<TevCertificationOfTravel>) {
+    setCertification((current) => ({ ...current, ...changes }));
   }
 
   function updateMonth(value: string) {
@@ -323,6 +330,7 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
       travelReferences: references.map((reference) => ({ ...reference, travelOrderNo: reference.travelOrderNo.trim() })),
       evidenceOfTravel: evidenceOfTravel.trim(),
       evidenceOfTravelOptions: tevEvidenceOptions.filter((option) => selectedEvidence.includes(option.label)).map((option) => option.label),
+      certificationOfTravel: certification,
       divisionName,
       itineraries: result.itineraries,
     };
@@ -367,6 +375,19 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
           <div className="mytev-date-field"><span>Date To</span><MonthAwareDateInput label="Date To" month={month} minDate={reference.dateFrom} value={reference.dateTo} required onChange={(value) => updateReference(index, { dateTo: value })} /></div>
           {references.length > 1 && <button type="button" className="mytev-remove-reference remove-action" aria-label={`Remove travel reference ${index + 1}`} onClick={() => setReferences((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
         </fieldset>)}</div>
+        <fieldset className="mytev-certification-picker"><legend>Certification of Travel Completed</legend><div className="mytev-certification-options">
+          <label><input type="checkbox" checked={certification.strictlyInAccordance} onChange={(event) => updateCertification({ strictlyInAccordance: event.target.checked })} disabled={saving} /><span>Strictly in accordance with the approved itinerary.</span></label>
+          <label><input type="checkbox" checked={certification.cutShort} onChange={(event) => updateCertification({ cutShort: event.target.checked })} disabled={saving} /><span>Cut short as explained below.</span></label>
+          <label><input type="checkbox" checked={certification.extended} onChange={(event) => updateCertification({ extended: event.target.checked })} disabled={saving} /><span>Extended as explained below, additional itinerary was submitted.</span></label>
+          <label><input type="checkbox" checked={certification.otherDeviation} onChange={(event) => updateCertification({ otherDeviation: event.target.checked })} disabled={saving} /><span>Other deviation as explained below.</span></label>
+        </div>
+        {certification.cutShort && <div className="mytev-certification-fields">
+          <label>Amount<input type="number" min="0" step="0.01" inputMode="decimal" value={certification.cutShortAmount} onChange={(event) => updateCertification({ cutShortAmount: event.target.value })} placeholder="0.00" /></label>
+          <label>OR No.<input value={certification.cutShortOrNo} maxLength={60} onChange={(event) => updateCertification({ cutShortOrNo: event.target.value })} /></label>
+          <div className="mytev-date-field"><span>Date</span><MonthAwareDateInput label="Cut short refund date" month={month} value={certification.cutShortDate} onChange={(value) => updateCertification({ cutShortDate: value })} /></div>
+        </div>}
+        {certification.otherDeviation && <label className="mytev-certification-explanation">Explanation or Justification<textarea value={certification.otherExplanation} maxLength={500} rows={3} onChange={(event) => updateCertification({ otherExplanation: event.target.value })} /></label>}
+        </fieldset>
         <fieldset className="mytev-evidence-picker"><legend>Evidence of Travel</legend><div className="mytev-evidence-options">{tevEvidenceOptions.map((option) => <label key={option.label}><input type="checkbox" checked={selectedEvidence.includes(option.label)} onChange={(event) => toggleEvidence(option.label, event.target.checked)} disabled={saving} /><span>{option.label}</span></label>)}</div></fieldset>
       </section>
       <div className="mytev-form-actions"><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button><button className="primary-button">Continue</button></div>

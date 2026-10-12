@@ -93,6 +93,17 @@ export type TevItinerary = {
   rows: TevItineraryRow[];
 };
 
+export type TevCertificationOfTravel = {
+  strictlyInAccordance: boolean;
+  cutShort: boolean;
+  cutShortAmount: string;
+  cutShortOrNo: string;
+  cutShortDate: string;
+  extended: boolean;
+  otherDeviation: boolean;
+  otherExplanation: string;
+};
+
 export type MyTevRecord = {
   id: string;
   ownerId: string;
@@ -103,6 +114,7 @@ export type MyTevRecord = {
   travelReferences: TevTravelReference[];
   evidenceOfTravel: string;
   evidenceOfTravelOptions?: string[];
+  certificationOfTravel?: TevCertificationOfTravel;
   divisionName: TevDivision;
   itineraries: TevItinerary[];
 };
@@ -146,6 +158,19 @@ export function blankTevItinerary(id: string): TevItinerary {
     dateFrom: "",
     dateTo: "",
     rows: [blankTevItineraryRow()],
+  };
+}
+
+export function defaultTevCertificationOfTravel(): TevCertificationOfTravel {
+  return {
+    strictlyInAccordance: true,
+    cutShort: false,
+    cutShortAmount: "",
+    cutShortOrNo: "",
+    cutShortDate: "",
+    extended: false,
+    otherDeviation: false,
+    otherExplanation: "",
   };
 }
 

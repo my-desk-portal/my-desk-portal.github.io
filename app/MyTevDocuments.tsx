@@ -2,9 +2,11 @@ import type { CSSProperties } from "react";
 import {
   cenrrRows,
   chargedToForUnit,
+  defaultTevCertificationOfTravel,
   displayTevTransportationMeans,
   divisionSignatory,
   formatTevAmount,
+  formatTevDate,
   formatTevDateRange,
   formatTevTime,
   formatTevTravelDateRanges,
@@ -348,7 +350,8 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
   const profile = record.profile;
   const signatory = divisionSignatory(record.divisionName);
   const references = formatTevTravelReferences(record.travelReferences);
-  const denseContent = references.length > 120 || record.evidenceOfTravel.length > 140;
+  const certification = record.certificationOfTravel ?? defaultTevCertificationOfTravel();
+  const denseContent = references.length > 120 || record.evidenceOfTravel.length > 140 || certification.otherExplanation.length > 150;
   return <div className="mytev-paper-frame"><article className="mytev-paper mytev-ctc-paper">
     <div className={`mytev-ctc-document${denseContent ? " mytev-ctc-document-dense" : ""}`}>
       <span className="mytev-ctc-appendix">Appendix 47</span>
@@ -356,8 +359,13 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
       <div className="mytev-ctc-entity"><b>Entity Name:</b><span>{tevEntityName}</span><b>Fund Cluster:</b><span>{tevFundCluster}</span></div>
       <div className="mytev-ctc-station"><div><b style={fitTextStyle(tevCtcDirector, 48)}>{tevCtcDirector.toLocaleUpperCase("en-PH")}</b><em>Director-In-Charge</em></div><div><b style={{ ...fitTextStyle(tevCtcDirectorOffice, 32), whiteSpace: "nowrap", overflowWrap: "normal" }}>{tevCtcDirectorOffice.toLocaleUpperCase("en-PH")}</b><span>Station</span></div></div>
       <p className="mytev-ctc-statement" style={fitTextStyle(references, 220)}><b>I HEREBY CERTIFY THAT</b> I have completed the travel as authorized in Travel Order/Itinerary of Travel Nos. <strong>{references}</strong>, under the conditions indicated below:</p>
-      <div className="mytev-ctc-conditions"><p><i className="is-checked" />Strictly in accordance with the approved itinerary.</p><p><i />Cut short as explained below. Excess payment in the amount of ₱ __________ was refunded under O. R. No. __________ dated __________.</p><p><i />Extended as explained below, additional itinerary was submitted.</p><p><i />Other deviation as explained below.</p></div>
-      <div className="mytev-ctc-explanation"><b>Explanation or Justification:</b><span /><span /></div>
+      <div className="mytev-ctc-conditions">
+        <p><i className={certification.strictlyInAccordance ? "is-checked" : undefined} />Strictly in accordance with the approved itinerary.</p>
+        <p><i className={certification.cutShort ? "is-checked" : undefined} />Cut short as explained below. Excess payment in the amount of ₱ <span className="mytev-ctc-inline-value">{certification.cutShort && certification.cutShortAmount ? certification.cutShortAmount : " "}</span> was refunded under O. R. No. <span className="mytev-ctc-inline-value">{certification.cutShort && certification.cutShortOrNo ? certification.cutShortOrNo : " "}</span> dated <span className="mytev-ctc-inline-value">{certification.cutShort && certification.cutShortDate ? formatTevDate(certification.cutShortDate) : " "}</span>.</p>
+        <p><i className={certification.extended ? "is-checked" : undefined} />Extended as explained below, additional itinerary was submitted.</p>
+        <p><i className={certification.otherDeviation ? "is-checked" : undefined} />Other deviation as explained below.</p>
+      </div>
+      <div className="mytev-ctc-explanation"><b>Explanation or Justification:</b><span className={certification.otherDeviation && certification.otherExplanation ? "has-value" : undefined}>{certification.otherDeviation ? certification.otherExplanation : ""}</span><span /></div>
       <div className="mytev-ctc-evidence"><b>Evidence of Travel:</b><span style={fitTextStyle(record.evidenceOfTravel, 150)}>{record.evidenceOfTravel}</span></div>
       <p className="mytev-ctc-submitted">Respectfully submitted:</p>
       <div className="mytev-ctc-employee"><strong style={fitTextStyle(profile.name, 36)}>{profile.name.toLocaleUpperCase("en-PH")}</strong><span>Name of Employee</span></div>
