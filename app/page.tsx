@@ -1635,7 +1635,6 @@ export default function Home() {
   const [approvalUser, setApprovalUser] = useState<User | null>(null);
   const [approvalStatus, setApprovalStatus] = useState<AccountStatus | "Missing" | null>(null);
   const [approvalError, setApprovalError] = useState("");
-  const [showWelcomeNotification, setShowWelcomeNotification] = useState(false);
   const [permits, setPermits] = useState<Permit[]>([]);
   const [approvedPermitNumbers, setApprovedPermitNumbers] = useState<Record<string, string>>({});
   const [deletingPermitId, setDeletingPermitId] = useState<string | null>(null);
@@ -2008,7 +2007,6 @@ export default function Home() {
       setApprovalStatus(null);
       setApprovalUser(null);
       setProfileSetupUser(null);
-      setShowWelcomeNotification(false);
       if (!verifiedUser) {
         setUser(null);
         setAccountProfile(null);
@@ -2040,37 +2038,7 @@ export default function Home() {
           if (isBootstrapSuperAdmin) await migrateAccountProfileFieldsForSuperAdmin();
           const accountRole = normalizeAccountRole(profileData.accountRole, verifiedUser.email);
           const accountStatus = isBootstrapSuperAdmin ? "Approved" : normalizeAccountStatus(profileData.accountStatus);
-          let welcomeNotificationSeen = Boolean(profileData.welcomeNotificationSeenAt);
-          const welcomeNotificationStorageKey = `my-desk:welcome-notification-seen:${verifiedUser.uid}`;
-          try {
-            welcomeNotificationSeen = welcomeNotificationSeen
-              || window.localStorage.getItem(welcomeNotificationStorageKey) === "true";
-          } catch {
-            // Continue with the Firestore marker when browser storage is unavailable.
-          }
-          let shouldShowWelcomeNotification = false;
-          if (!isBootstrapSuperAdmin && accountStatus === "Approved") {
-            if (welcomeNotificationSeen) {
-              try { window.localStorage.setItem(welcomeNotificationStorageKey, "true"); } catch { /* Firestore remains the durable marker. */ }
-            } else {
-              try {
-                shouldShowWelcomeNotification = await runTransaction(db, async (transaction) => {
-                  const currentProfile = await transaction.get(profileRef);
-                  if (!currentProfile.exists()) return false;
-                  const currentData = currentProfile.data();
-                  if (normalizeAccountStatus(currentData.accountStatus) !== "Approved" || currentData.welcomeNotificationSeenAt) return false;
-                  transaction.update(profileRef, { welcomeNotificationSeenAt: serverTimestamp() });
-                  return true;
-                });
-              } catch {
-                // Fall back to a one-time notice on this browser if the marker cannot be saved to Firestore.
-                shouldShowWelcomeNotification = true;
-              }
-              try { window.localStorage.setItem(welcomeNotificationStorageKey, "true"); } catch { /* The session can still show the notice once. */ }
-            }
-          }
           if (thisAuthChange !== authChange) return;
-          setShowWelcomeNotification(shouldShowWelcomeNotification);
           const accountPatch: Record<string, unknown> = {};
           if (profileData.profileFieldsVersion !== 3 || !profileData.office || !profileData.assignment
             || Object.prototype.hasOwnProperty.call(profileData, "unit")
@@ -2392,16 +2360,6 @@ export default function Home() {
     });
   }, [user, accountProfile]);
 
-  async function acknowledgeWelcomeNotification() {
-    if (!user) return;
-    setShowWelcomeNotification(false);
-    try {
-      window.localStorage.setItem(`my-desk:welcome-notification-seen:${user.uid}`, "true");
-    } catch {
-      // The notice is still dismissed for this session if storage is unavailable.
-    }
-  }
-
   async function deletePermit(permit: Permit) {
     if (!db || !user) return;
     if (hasFinalPermitStatus(permit)) {
@@ -2589,7 +2547,6 @@ export default function Home() {
       <div className="nav-dropdown certificate-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setCertificateMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setCertificateMenuOpen(false); }}><button type="button" className={section === "certificate-of-appearance" || section === "completion" || section === "appreciation" || section === "participation" ? "nav-button certificate-nav-button active" : "nav-button certificate-nav-button"} aria-haspopup="true" aria-expanded={certificateMenuOpen} aria-controls="certificate-menu" onClick={() => setCertificateMenuOpen((open) => !open)}>Certificate <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{certificateMenuOpen && <div className="nav-dropdown-menu certificate-nav-menu" id="certificate-menu"><button type="button" className={section === "certificate-of-appearance" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("certificate-of-appearance"); setView("list"); setCertificateMenuOpen(false); }}>Appearance</button><button type="button" className={section === "completion" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("completion"); setView("list"); setCertificateMenuOpen(false); }}>Completion</button><button type="button" className={section === "appreciation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("appreciation"); setView("list"); setCertificateMenuOpen(false); }}>Appreciation</button><button type="button" className={section === "participation" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("participation"); setView("list"); setCertificateMenuOpen(false); }}>Participation</button></div>}</div>
       {isAdmin && <div className="nav-dropdown admin-panel-nav-dropdown" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAdminPanelMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setAdminPanelMenuOpen(false); }}><button type="button" className={section === "permit-status" || section === "permit-statistics" || section === "calendar-of-activities-records" || section === "certificate-approval" || section === "user-master-list" ? "nav-button active" : "nav-button"} aria-haspopup="true" aria-expanded={adminPanelMenuOpen} aria-controls="admin-panel-menu" onClick={() => setAdminPanelMenuOpen((open) => !open)}>Admin Panel <span className="nav-dropdown-arrow" aria-hidden="true">&#9662;</span></button>{adminPanelMenuOpen && <div className="nav-dropdown-menu admin-panel-nav-menu" id="admin-panel-menu"><button type="button" className={section === "permit-status" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-status"); setView("list"); setAdminPanelMenuOpen(false); }}>Permit Slip Status</button><button type="button" className={section === "permit-statistics" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("permit-statistics"); setView("list"); setAdminPanelMenuOpen(false); }}>Permit Slip Statistics</button><button type="button" className={section === "calendar-of-activities-records" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("calendar-of-activities-records"); setView("list"); setAdminPanelMenuOpen(false); }}>Calendar of Activities Records</button>{canAccessCertificateApproval && <button type="button" className={section === "certificate-approval" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("certificate-approval"); setView("list"); setAdminPanelMenuOpen(false); }}>Certificate Approval</button>}{isSuperAdmin && <button type="button" className={section === "user-master-list" ? "nav-dropdown-item active" : "nav-dropdown-item"} onClick={() => { setSection("user-master-list"); setView("list"); setAdminPanelMenuOpen(false); }}>Users&apos; Master List</button>}</div>}</div>}
     </nav><div className="user-menu"><MessengerButton user={user} active={section === "messenger"} onClick={() => { closeMobileNavigation(); setSection("messenger"); setView("list"); }} /><PermitNotificationCenter isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} userId={user.uid} notifications={userPermitNotifications} pendingNotifications={pendingPermitNotifications} pendingAccountApprovals={pendingAccountApprovals} documentNotifications={documentNotifications} documentReminders={documentReminders} calendarOfActivitiesNotifications={calendarOfActivitiesNotifications} calendarOfActivitiesApprovalNotifications={calendarOfActivitiesApprovalNotifications} onReadCalendarOfActivitiesApproval={(notification) => void markCalendarOfActivitiesApprovalNotificationRead(notification)} onOpenCalendarOfActivitiesApproval={() => { closeMobileNavigation(); setSection("calendar-of-activities-records"); setView("list"); }} onReadDocument={(notification) => void markDocumentNotificationRead(notification)} onOpenCertificateApproval={() => { closeMobileNavigation(); setSection("certificate-approval"); setView("list"); }} onOpenCertificateDecision={(notification) => { closeMobileNavigation(); setView("list"); setSection(notification.certificateCollection === "certificatesOfAppearance" ? "certificate-of-appearance" : notification.certificateCollection === "completionCertificates" ? "completion" : notification.certificateCollection === "appreciationCertificates" ? "appreciation" : "participation"); }} onReadDocumentReminder={(notification) => void markDocumentReminderRead(notification)} onOpenDocumentReminder={(notification) => { closeMobileNavigation(); setView("list"); setSection(notification.kind === "travel-order-status" ? "travel-orders" : notification.kind === "leave-application-status" ? "leave-application" : notification.kind === "accomplishment-report" ? "myar" : "permits"); }} onReadCalendarOfActivities={(notification) => void markCalendarOfActivitiesNotificationRead(notification)} onAdminOpen={(notification) => { closeMobileNavigation(); setFocusedPermitNotificationKey(`${notification.permitId}:${notification.statusKey}`); setSection("permit-status"); setView("list"); }} onOpenAccountApprovals={() => { closeMobileNavigation(); setSection("user-master-list"); setView("list"); }} onViewPermit={(notification) => { closeMobileNavigation(); setSingleSlipPreview(true); setPreview(singlePersonPermitPreview(notification.permit, notification.personIndex)); }} /><div className="profile-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProfileMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setProfileMenuOpen(false); }}><button type="button" className="user-greeting profile-trigger" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>{firstName}<span aria-hidden="true">▾</span></button>{profileMenuOpen && <div className="profile-dropdown" role="menu"><button type="button" role="menuitem" onClick={() => { setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button></div>}</div><button type="button" className="text-button logout-button" aria-label="Log out" title="Log out" onClick={() => auth && signOut(auth)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg></button></div><button type="button" className="mobile-menu-toggle" aria-label={mobileMenuOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileMenuOpen} aria-controls="mobile-navigation" onClick={() => setMobileMenuOpen((open) => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 5h18M3 12h18M3 19h18" /></svg></button></header>
-{showWelcomeNotification && <aside className="welcome-notification" role="status" aria-live="polite"><p><strong>Welcome to MyDesk: Portal of Your Desk of Documents!</strong></p><button type="button" className="primary-button" onClick={() => void acknowledgeWelcomeNotification()}>Got it</button></aside>}
 {mobileMenuOpen && <><button type="button" className="mobile-nav-scrim" aria-label="Close navigation" onClick={closeMobileNavigation} /><nav className="mobile-navigation" id="mobile-navigation" aria-label="Mobile navigation">
 <button type="button" className="mobile-profile-link" onClick={() => { closeMobileNavigation(); setChangePassword(""); setConfirmNewPassword(""); void openProfile(); }}>Profile</button>
 <div className="mobile-navigation-links">
