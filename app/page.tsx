@@ -1670,7 +1670,7 @@ export default function Home() {
     let profileDataSaved = false;
     let accountNameSaved = false;
     try {
-      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, unit: profileUnit, designation, accountRole: accountRoleForEmail(user.email), address, taxIdentificationNo }, { merge: true });
+      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, designation, accountRole: accountRoleForEmail(user.email), address, taxIdentificationNo }, { merge: true });
       profileDataSaved = true;
       setProfileRevision((revision) => revision + 1);
       await updateProfile(user, { displayName: name });
@@ -2115,7 +2115,7 @@ export default function Home() {
   <label>Gender<select value={profileGender} onChange={(event) => setProfileGender(event.target.value)} required disabled={profileLoading || profileSaving}><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
   <label>Position<input autoComplete="organization-title" maxLength={120} value={profilePosition} onChange={(event) => setProfilePosition(event.target.value)} disabled={profileLoading || profileSaving} /></label>
   <label>Designation<input autoComplete="organization-title" maxLength={120} value={profileDesignation} onChange={(event) => setProfileDesignation(event.target.value)} disabled={profileLoading || profileSaving} /></label>
-  <label>Unit<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value as AccountUnit)} disabled={profileLoading || profileSaving}>{accountUnitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+  <label>Unit<input value={accountUnitOptions.find((option) => option.value === profileUnit)?.label ?? profileUnit} readOnly /></label>
   <label>Address<input autoComplete="street-address" maxLength={200} value={profileAddress} onChange={(event) => setProfileAddress(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
   <label>Tax Identification No.<input type="text" inputMode="numeric" autoComplete="off" maxLength={11} value={profileTaxIdentificationNo} onChange={(event) => updateTaxIdentificationNo(event, setProfileTaxIdentificationNo)} onKeyDown={(event) => handleTaxIdentificationNoKeyDown(event, setProfileTaxIdentificationNo)} required disabled={profileLoading || profileSaving} /></label>
   <div className="profile-security-fields">
