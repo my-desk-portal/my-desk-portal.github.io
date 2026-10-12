@@ -736,7 +736,7 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
         <span className="notification-status notification-status-pending">Travel Expense Voucher</span>
         <strong>You have been added to the TEV of {formatTravelMonth(notification.travelMonth)}, with total amount &#8369;{formatTevAmount(notification.totalAmount ?? 0)}.</strong>
         <small>{notification.read ? "Read" : "New - Select to mark as read"}</small>
-      </button></li>)}</ul></}
+      </button></li>)}</ul></>}
       {shownDocumentNotifications.some((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher") && <><p className="notification-section-title">Assigned Documents</p><ul>{shownDocumentNotifications.filter((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher").map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); }}>
         <span className="notification-status notification-status-pending">{notification.documentType}</span>
         {notification.activityTitle && <strong>{notification.activityTitle}</strong>}
