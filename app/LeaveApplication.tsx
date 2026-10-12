@@ -491,6 +491,7 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!db) { setError("Firebase is not configured."); return; }
+    const firestore = db;
     const normalizedFirstName = normalizeNamePart(firstName);
     const normalizedMiddleName = normalizeNamePart(middleName);
     const normalizedLastName = normalizeNamePart(lastName);
@@ -552,7 +553,7 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
       superadminSnapshot.docs
         .filter((account) => account.id !== user.uid)
         .forEach((account) => {
-          const notification = makeDocumentNotification(db, {
+          const notification = makeDocumentNotification(firestore, {
             recipientId: account.id,
             ownerId: user.uid,
             documentId: leaveRef.id,
