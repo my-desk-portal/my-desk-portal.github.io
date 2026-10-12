@@ -1,5 +1,5 @@
 import { unzipSync } from "fflate";
-import { isWithinImportTemplateDateRange, isWithinImportTemplateTimeRange } from "@/lib/import-template-rules";
+import { isWithinImportTemplateDateRange } from "@/lib/import-template-rules";
 
 export type ImportedCompletionRecord = {
   unit: "AMIA" | "DRRM";
@@ -7,15 +7,13 @@ export type ImportedCompletionRecord = {
   eventTitle: string;
   eventDateFrom: string;
   eventDateTo: string;
-  eventTimeFrom: string;
-  eventTimeTo: string;
   eventDestination: string;
   distributionSameAsDestination: boolean;
   distributionPlace: string;
 };
 
 const requiredColumns = [
-  "unit", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "name", "distributionplace",
+  "unit", "title", "destination", "datefrom", "dateto", "name", "distributionplace",
 ] as const;
 
 function normalizeHeader(value: string) {
@@ -46,26 +44,6 @@ function parseDate(value: string) {
   const date = new Date(trimmed);
   if (Number.isNaN(date.getTime())) return "";
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function parseTime(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
-    const fraction = Number(trimmed);
-    if (fraction >= 0 && fraction < 1) {
-      const minutes = Math.round(fraction * 1440) % 1440;
-      return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-    }
-  }
-  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?:\s*([ap]m))?$/i);
-  if (!match) return "";
-  let hour = Number(match[1]);
-  const minute = Number(match[2]);
-  const meridiem = match[3]?.toLowerCase();
-  if (minute > 59 || (meridiem ? hour < 1 || hour > 12 : hour > 23)) return "";
-  if (meridiem) hour = hour % 12 + (meridiem === "pm" ? 12 : 0);
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedCompletionRecord[] {
@@ -110,7 +88,7 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
   const headers = readRow(rows[0]);
   const columns = new Map([...headers].map(([index, value]) => [normalizeHeader(value), index] as const));
   if (requiredColumns.some((column) => !columns.has(column))) {
-    throw new Error("Use the Completion_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Time Start, Time End, Name, and Distribution Place.");
+    throw new Error("Use the Completion_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Name, and Distribution Place.");
   }
 
   const grouped = new Map<string, ImportedCompletionRecord>();
@@ -128,25 +106,20 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
     const eventDestination = valueFor(values, "destination");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
-    const eventTimeFrom = parseTime(valueFor(values, "timestart"));
-    const eventTimeTo = parseTime(valueFor(values, "timeend"));
     const name = valueFor(values, "name");
     const distributionPlace = valueFor(values, "distributionplace") || eventDestination;
-    if (!eventTitle || !eventDestination || !name || !eventDateFrom || !eventDateTo || !eventTimeFrom || !eventTimeTo) {
-      throw new Error(`Row ${rowNumber}: complete the Unit, event, date, time, destination, and Name fields.`);
+    if (!eventTitle || !eventDestination || !name || !eventDateFrom || !eventDateTo) {
+      throw new Error(`Row ${rowNumber}: complete the Unit, event, date, destination, and Name fields.`);
     }
     if (!isWithinImportTemplateDateRange(eventDateFrom) || !isWithinImportTemplateDateRange(eventDateTo)) {
       throw new Error(`Row ${rowNumber}: Date From and Date To must be between January 1, 2026 and December 31, 2027.`);
-    }
-    if (!isWithinImportTemplateTimeRange(eventTimeFrom) || !isWithinImportTemplateTimeRange(eventTimeTo)) {
-      throw new Error(`Row ${rowNumber}: Time Start and Time End must be between 5:00 AM and 8:00 PM.`);
     }
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
     if (!distributionPlace || distributionPlace.length > 240 || eventDestination.length > 240 || eventTitle.length > 240) {
       throw new Error(`Row ${rowNumber}: Title, Destination, and Distribution Place must be 240 characters or fewer.`);
     }
 
-    const eventKey = JSON.stringify([unit, eventTitle, eventDestination, eventDateFrom, eventDateTo, eventTimeFrom, eventTimeTo, distributionPlace]);
+    const eventKey = JSON.stringify([unit, eventTitle, eventDestination, eventDateFrom, eventDateTo, distributionPlace]);
     let groupKey = eventKey;
     let existing = grouped.get(groupKey);
     if (existing && existing.participantNames.length >= 100) {
@@ -164,8 +137,6 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
         eventTitle,
         eventDateFrom,
         eventDateTo,
-        eventTimeFrom,
-        eventTimeTo,
         eventDestination,
         distributionSameAsDestination: distributionPlace === eventDestination,
         distributionPlace,

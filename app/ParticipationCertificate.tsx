@@ -23,8 +23,6 @@ type ParticipationRecord = {
   eventTitle: string;
   eventDateFrom: string;
   eventDateTo: string;
-  eventTimeFrom: string;
-  eventTimeTo: string;
   eventDestination: string;
   distributionDate?: string;
   distributionSameAsDestination: boolean;
@@ -92,14 +90,6 @@ function displayDateRange(from: string, to: string) {
     return `${displayDate(from)} - ${endMonth} ${end.getDate()}, ${end.getFullYear()}`;
   }
   return `${displayDate(from)} - ${displayDate(to)}`;
-}
-
-function displayTime(value: string) {
-  const [hourText, minutes] = value.split(":");
-  const hourValue = Number(hourText);
-  if (!Number.isFinite(hourValue) || !minutes) return value;
-  const hour = hourValue % 12 || 12;
-  return `${hour}:${minutes} ${hourValue >= 12 ? "PM" : "AM"}`;
 }
 
 function ordinalDay(value: string) {
@@ -194,8 +184,6 @@ export default function ParticipationCertificate({ user }: { user: User }) {
       eventTitle: String(form.get("event-title") ?? "").trim(),
       eventDateFrom: String(form.get("event-date-from") ?? ""),
       eventDateTo: String(form.get("event-date-to") ?? ""),
-      eventTimeFrom: String(form.get("event-time-from") ?? ""),
-      eventTimeTo: String(form.get("event-time-to") ?? ""),
       eventDestination,
       distributionDate: String(form.get("event-date-to") || ""),
       distributionSameAsDestination: sameAsDestination,
@@ -430,7 +418,6 @@ function ParticipationForm({ onCancel, onSubmit, saving, error }: { onCancel: ()
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field participation-schedule">
         <div className="participation-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => { setEventDateFrom(event.target.value); if (eventDateTo && eventDateTo < event.target.value) setEventDateTo(""); }} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} value={eventDateTo} onChange={(event) => setEventDateTo(event.target.value)} required /></label></div>
-        <div className="participation-time-range"><label>Time Conducted (From)<input name="event-time-from" type="time" defaultValue="08:00" required /></label><span>to</span><label>Time Conducted (To)<input name="event-time-to" type="time" defaultValue="17:00" required /></label></div>
       </div>
       <label className="wide-field">Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
       <label className="wide-field participation-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event&apos;s Destination is the same as where the certificate will be awarded</label>
@@ -473,7 +460,7 @@ function ParticipationPaper({ record, participant }: { record: ParticipationReco
       <img className="participation-template participation-template-drrm" src={drrmBlankTemplate} alt="" />
       <h1 className="participation-participant participation-participant-drrm">{participant.name}</h1>
       <div className="participation-body participation-body-drrm">
-        <p>for {possessive} active participation in the <strong className="participation-event-title-drrm">{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " \u2013 ")}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong>, at {record.eventDestination}.</p>
+        <p>for {possessive} active participation during the <strong className="participation-event-title-drrm">{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " \u2013 ")}</strong> at {record.eventDestination}.</p>
         <p>Given this {ordinalDay(record.distributionDate || record.eventDateTo)} at <strong>{record.distributionPlace}</strong>, <strong>Philippines.</strong></p>
       </div>
       <footer className="participation-signatory participation-signatory-drrm"><strong>ENGR. RICARDO M. O{"\u00d1"}ATE JR.</strong><em>Regional Executive Director</em></footer>
@@ -497,7 +484,7 @@ function ParticipationPaper({ record, participant }: { record: ParticipationReco
       <p className="participation-amia-to">to</p>
       <h1 className="participation-participant participation-participant-amia">{participant.name}</h1>
       <div className="participation-body participation-body-amia">
-        <p>for {possessive} active participation in the <strong><em>{record.eventTitle}</em></strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " – ")}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at {record.eventDestination}.</p>
+        <p>for {possessive} active participation during the <strong><em>{record.eventTitle}</em></strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " – ")}</strong> at {record.eventDestination}.</p>
         <p>Given this {ordinalDay(record.distributionDate || record.eventDateTo)} in at <strong>{record.distributionPlace}</strong><strong>, Philippines.</strong></p>
       </div>
       <footer className="participation-signatory participation-signatory-amia"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>

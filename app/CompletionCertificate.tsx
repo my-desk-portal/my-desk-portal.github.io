@@ -18,8 +18,6 @@ type CompletionRecord = {
   eventTitle: string;
   eventDateFrom: string;
   eventDateTo: string;
-  eventTimeFrom: string;
-  eventTimeTo: string;
   eventDestination: string;
   distributionSameAsDestination: boolean;
   distributionPlace: string;
@@ -82,14 +80,6 @@ function displayDateRange(from: string, to: string) {
     return `${displayDate(from)} - ${endMonth} ${end.getDate()}, ${end.getFullYear()}`;
   }
   return `${displayDate(from)} - ${displayDate(to)}`;
-}
-
-function displayTime(value: string) {
-  const [hourText, minutes] = value.split(":");
-  const hourValue = Number(hourText);
-  if (!Number.isFinite(hourValue) || !minutes) return value;
-  const hour = hourValue % 12 || 12;
-  return `${hour}:${minutes} ${hourValue >= 12 ? "PM" : "AM"}`;
 }
 
 function ordinalDay(value: string) {
@@ -182,8 +172,6 @@ export default function CompletionCertificate({ user }: { user: User }) {
       eventTitle: String(form.get("event-title") ?? "").trim(),
       eventDateFrom: String(form.get("event-date-from") ?? ""),
       eventDateTo: String(form.get("event-date-to") ?? ""),
-      eventTimeFrom: String(form.get("event-time-from") ?? ""),
-      eventTimeTo: String(form.get("event-time-to") ?? ""),
       eventDestination,
       distributionSameAsDestination: sameAsDestination,
       distributionPlace: sameAsDestination ? eventDestination : String(form.get("distribution-place") ?? "").trim(),
@@ -421,7 +409,6 @@ function CompletionForm({ onCancel, onSubmit, saving, error }: { onCancel: () =>
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field completion-schedule">
         <div className="completion-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => { setEventDateFrom(event.target.value); if (eventDateTo && eventDateTo < event.target.value) setEventDateTo(""); }} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} value={eventDateTo} onChange={(event) => setEventDateTo(event.target.value)} required /></label></div>
-        <div className="completion-time-range"><label>Time Conducted (From)<input name="event-time-from" type="time" defaultValue="08:00" required /></label><span>to</span><label>Time Conducted (To)<input name="event-time-to" type="time" defaultValue="17:00" required /></label></div>
       </div>
       <label className="wide-field">Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
       <label className="wide-field completion-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event&apos;s Destination is the same as where the certificate will be awarded</label>
@@ -462,7 +449,7 @@ function CompletionPaper({ record, participantName }: { record: CompletionRecord
       <p className="completion-amia-to">to</p>
       <h1 className="completion-participant completion-participant-amia">{participantName}</h1>
       <div className="completion-body completion-body-amia">
-        <p>for having successfully completed the <strong className="completion-event-title">{record.eventTitle}</strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " – ")}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at <strong>{record.eventDestination}</strong>.</p>
+        <p>for having successfully completed the <strong className="completion-event-title">{record.eventTitle}</strong> during <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo).replace(" - ", " – ")}</strong> at <strong>{record.eventDestination}</strong>.</p>
         <p>Given this {ordinalDay(record.eventDateTo)} in at <strong>{record.distributionPlace}</strong>, <strong>Philippines.</strong></p>
       </div>
       <footer className="completion-signatory completion-signatory-amia"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
@@ -472,7 +459,7 @@ function CompletionPaper({ record, participantName }: { record: CompletionRecord
     <img className="completion-template" src={blankTemplate} alt="" />
     <h1 className="completion-participant">{participantName}</h1>
     <div className="completion-body">
-      <p>has completed the <strong className="completion-event-title">{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at {record.eventDestination}.</p>
+      <p>has completed the <strong className="completion-event-title">{record.eventTitle}</strong> during <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> at {record.eventDestination}.</p>
       <p>Given this {ordinalDay(record.eventDateTo)} at <strong>{record.distributionPlace}</strong>, <strong>Philippines.</strong></p>
     </div>
     <footer className="completion-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>

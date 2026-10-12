@@ -1,5 +1,5 @@
 import { unzipSync } from "fflate";
-import { isWithinImportTemplateDateRange, isWithinImportTemplateTimeRange } from "@/lib/import-template-rules";
+import { isWithinImportTemplateDateRange } from "@/lib/import-template-rules";
 
 export type ImportedAppreciationSpeaker = {
   name: string;
@@ -14,15 +14,13 @@ export type ImportedAppreciationRecord = {
   eventTitle: string;
   eventDateFrom: string;
   eventDateTo: string;
-  eventTimeFrom: string;
-  eventTimeTo: string;
   eventDestination: string;
   distributionSameAsDestination: boolean;
   distributionPlace: string;
 };
 
 const requiredColumns = [
-  "unit", "title", "destination", "datefrom", "dateto", "timestart", "timeend", "name", "gender", "position", "office", "distributionplace",
+  "unit", "title", "destination", "datefrom", "dateto", "name", "gender", "position", "office", "distributionplace",
 ] as const;
 const MAX_IMPORTED_SPEAKERS = 100;
 
@@ -54,26 +52,6 @@ function parseDate(value: string) {
   const date = new Date(trimmed);
   if (Number.isNaN(date.getTime())) return "";
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function parseTime(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
-    const fraction = Number(trimmed);
-    if (fraction >= 0 && fraction < 1) {
-      const minutes = Math.round(fraction * 1440) % 1440;
-      return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-    }
-  }
-  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?:\s*([ap]m))?$/i);
-  if (!match) return "";
-  let hour = Number(match[1]);
-  const minute = Number(match[2]);
-  const meridiem = match[3]?.toLowerCase();
-  if (minute > 59 || (meridiem ? hour < 1 || hour > 12 : hour > 23)) return "";
-  if (meridiem) hour = hour % 12 + (meridiem === "pm" ? 12 : 0);
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppreciationRecord[] {
@@ -118,7 +96,7 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
   const headers = readRow(rows[0]);
   const columns = new Map([...headers].map(([index, value]) => [normalizeHeader(value), index] as const));
   if (requiredColumns.some((column) => !columns.has(column))) {
-    throw new Error("Use the Appreciation_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Time Start, Time End, Name, Gender, Position, Office, and Distribution Place.");
+    throw new Error("Use the Appreciation_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Name, Gender, Position, Office, and Distribution Place.");
   }
 
   const valueFor = (values: Map<number, string>, column: typeof requiredColumns[number]) => values.get(columns.get(column)!)?.trim() ?? "";
@@ -141,25 +119,20 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
     const eventDestination = valueFor(values, "destination");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
-    const eventTimeFrom = parseTime(valueFor(values, "timestart"));
-    const eventTimeTo = parseTime(valueFor(values, "timeend"));
     const rawDistributionPlace = valueFor(values, "distributionplace");
     const distributionPlace = rawDistributionPlace || eventDestination;
-    if (!speakerName || !speakerGender || !speakerPosition || !speakerOffice || !eventTitle || !eventDestination || !eventDateFrom || !eventDateTo || !eventTimeFrom || !eventTimeTo) {
-      throw new Error(`Row ${rowNumber}: complete the Unit, speaker details, event, date, time, and destination fields.`);
+    if (!speakerName || !speakerGender || !speakerPosition || !speakerOffice || !eventTitle || !eventDestination || !eventDateFrom || !eventDateTo) {
+      throw new Error(`Row ${rowNumber}: complete the Unit, speaker details, event, date, and destination fields.`);
     }
     if (!isWithinImportTemplateDateRange(eventDateFrom) || !isWithinImportTemplateDateRange(eventDateTo)) {
       throw new Error(`Row ${rowNumber}: Date From and Date To must be between January 1, 2026 and December 31, 2027.`);
-    }
-    if (!isWithinImportTemplateTimeRange(eventTimeFrom) || !isWithinImportTemplateTimeRange(eventTimeTo)) {
-      throw new Error(`Row ${rowNumber}: Time Start and Time End must be between 5:00 AM and 8:00 PM.`);
     }
     if (eventDateTo < eventDateFrom) throw new Error(`Row ${rowNumber}: Date To must be on or after Date From.`);
     if (speakerName.length > 180 || speakerPosition.length > 180 || speakerOffice.length > 240 || eventTitle.length > 240 || eventDestination.length > 240 || distributionPlace.length > 240) {
       throw new Error(`Row ${rowNumber}: speaker, event, destination, and distribution fields exceed their allowed lengths.`);
     }
     const distributionSameAsDestination = rawDistributionPlace.trim().toLowerCase() === eventDestination.trim().toLowerCase() || !rawDistributionPlace;
-    const eventKey = JSON.stringify([unit, eventTitle, eventDateFrom, eventDateTo, eventTimeFrom, eventTimeTo, eventDestination, distributionPlace]);
+    const eventKey = JSON.stringify([unit, eventTitle, eventDateFrom, eventDateTo, eventDestination, distributionPlace]);
     let groupKey = lastGroupKeys.get(eventKey) ?? eventKey;
     let existing = grouped.get(groupKey);
     if (existing && existing.speakers.length >= MAX_IMPORTED_SPEAKERS) {
@@ -177,8 +150,6 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
         eventTitle,
         eventDateFrom,
         eventDateTo,
-        eventTimeFrom,
-        eventTimeTo,
         eventDestination,
         distributionSameAsDestination,
         distributionPlace: distributionSameAsDestination ? eventDestination : distributionPlace,

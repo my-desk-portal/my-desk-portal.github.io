@@ -17,10 +17,10 @@
 .appreciation-speaker-card input,.appreciation-speaker-card select{max-width:100%;min-width:0;width:100%}
 .appreciation-speaker-card>.remove-participant{justify-self:start}
 .appreciation-form label small{color:var(--muted);font-size:11px;font-weight:400;letter-spacing:0;line-height:1.45}
-.appreciation-schedule{display:grid;gap:18px;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
-.appreciation-date-range,.appreciation-time-range{align-items:end;display:grid;gap:9px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);min-width:0}
-.appreciation-date-range label,.appreciation-time-range label,.appreciation-date-range input,.appreciation-time-range input{max-width:100%;min-width:0}
-.appreciation-date-range>span,.appreciation-time-range>span{color:var(--muted);font-size:12px;padding-bottom:13px}
+.appreciation-schedule{display:grid;gap:18px;grid-template-columns:minmax(0,1fr);min-width:0}
+.appreciation-date-range{align-items:end;display:grid;gap:9px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);min-width:0}
+.appreciation-date-range label,.appreciation-date-range input{max-width:100%;min-width:0}
+.appreciation-date-range>span{color:var(--muted);font-size:12px;padding-bottom:13px}
 .appreciation-checkbox{align-items:center;display:flex;gap:10px;grid-column:1/-1;line-height:1.45}
 .appreciation-checkbox input{accent-color:var(--accent);flex:0 0 18px;height:18px;margin:0;padding:0;width:18px}
 .appreciation-import-input{display:none}
@@ -67,9 +67,9 @@
   .appreciation-form-section .appreciation-form .form-actions .primary-button{width:100%}
   .appreciation-speaker-card{grid-template-columns:minmax(0,1fr);padding:14px}
   .appreciation-speaker-card h3{grid-column:1}
-  .appreciation-schedule{grid-template-columns:minmax(0,1fr);gap:16px}
-  .appreciation-date-range,.appreciation-time-range{grid-template-columns:minmax(0,1fr);gap:8px}
-  .appreciation-date-range>span,.appreciation-time-range>span{padding:0;text-align:center}
+  .appreciation-schedule{gap:16px}
+  .appreciation-date-range{grid-template-columns:minmax(0,1fr);gap:8px}
+  .appreciation-date-range>span{padding:0;text-align:center}
   .appreciation-list-actions{align-items:stretch;flex-direction:column}
   .appreciation-empty-actions{align-items:center;flex-direction:column}
   .appreciation-record-head{display:none}

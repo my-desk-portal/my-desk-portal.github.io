@@ -24,10 +24,10 @@
 .participation-person-card{align-items:end;border:1px solid var(--line);display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(150px,.45fr) auto;min-width:0;padding:14px}
 .participation-person-card h3{color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;grid-column:1/-1;letter-spacing:.06em;margin:0;text-transform:uppercase}
 .participation-person-card label,.participation-person-card input,.participation-person-card select{min-width:0}
-.participation-schedule{display:grid;gap:18px;grid-template-columns:repeat(2,minmax(0,1fr))}
-.participation-date-range,.participation-time-range{align-items:end;display:grid;gap:9px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);min-width:0}
-.participation-date-range label,.participation-time-range label,.participation-date-range input,.participation-time-range input{max-width:100%;min-width:0}
-.participation-date-range>span,.participation-time-range>span{color:var(--muted);font-size:12px;padding-bottom:13px}
+.participation-schedule{display:grid;gap:18px;grid-template-columns:minmax(0,1fr)}
+.participation-date-range{align-items:end;display:grid;gap:9px;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);min-width:0}
+.participation-date-range label,.participation-date-range input{max-width:100%;min-width:0}
+.participation-date-range>span{color:var(--muted);font-size:12px;padding-bottom:13px}
 .participation-checkbox{align-items:center;display:flex;gap:10px;grid-column:1/-1;line-height:1.45}
 .participation-checkbox input{accent-color:var(--accent);flex:0 0 18px;height:18px;margin:0;padding:0;width:18px}
 .participation-hold-note{color:var(--muted);font-size:11px;margin:18px 0 0}
@@ -70,9 +70,8 @@
   .participation-form-section .participation-form{grid-template-columns:minmax(0,1fr)}
   .participation-form-section .participation-form>.wide-field,.participation-form-section .participation-form>.participation-checkbox,.participation-form-section .participation-form>.form-actions{grid-column:1/-1}
   .participation-form-section .participation-form .form-actions .primary-button{width:100%}
-  .participation-schedule{grid-template-columns:minmax(0,1fr);gap:18px}
-  .participation-date-range,.participation-time-range{grid-template-columns:minmax(0,1fr);gap:8px}
-  .participation-date-range>span,.participation-time-range>span{padding:0;text-align:center}
+  .participation-date-range{grid-template-columns:minmax(0,1fr);gap:8px}
+  .participation-date-range>span{padding:0;text-align:center}
   .participation-name-row{grid-template-columns:minmax(0,1fr) auto}
   .participation-person-card{grid-template-columns:minmax(0,1fr)}
   .participation-person-card h3{grid-column:1}
