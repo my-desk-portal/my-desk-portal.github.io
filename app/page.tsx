@@ -904,6 +904,7 @@ function PermitNotificationCenter({ isAdmin, isSuperAdmin, userId, notifications
         <span className="notification-detail"><span className="notification-detail-label">Title</span><strong>{notification.activityTitle || "Untitled certificate"}</strong></span>
         <span className="notification-detail"><span className="notification-detail-label">Schedule</span><span>{formatCertificateNotificationSchedule(notification.dateFrom, notification.dateTo)}</span></span>
         <span className="notification-detail"><span className="notification-detail-label">Destination</span><span>{notification.destination || "Not specified"}</span></span>
+        {notification.purpose && <span className="notification-detail"><span className="notification-detail-label">Purpose</span><strong>{notification.purpose}</strong></span>}
         <span className="notification-view-label">Open Certificate Approval</span>
         <small>{notification.read ? "Read" : "New · Select to review"}</small>
       </button></li>)}</ul></>}

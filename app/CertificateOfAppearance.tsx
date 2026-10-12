@@ -24,6 +24,7 @@ type CertificateRecord = CertificateWorkflowFields & {
   ownerOffice?: string;
   eventTitle: string;
   destination: string;
+  purpose?: string;
   eventDateFrom?: string;
   eventDateTo?: string;
   eventDate?: string;
@@ -526,8 +527,10 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
     return pdf.save();
   }
 
-  async function saveBlankCertificate(division: TevDivision) {
+  async function saveBlankCertificate(division: TevDivision, purpose: string) {
     if (!tevDivisions.includes(division)) return;
+    const normalizedPurpose = purpose.trim();
+    if (!normalizedPurpose) { setBlankError("Enter the purpose for this blank certificate request."); return; }
     setBlankError("");
     setImportMessage("");
     if (!db) { setBlankError("Certificate storage is unavailable."); return; }
@@ -539,6 +542,7 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
         recordType: "blank" as const,
         eventTitle: "Blank Certificate of Appearance",
         destination: normalizedOwnerOffice,
+        purpose: normalizedPurpose,
         ownerOffice: normalizedOwnerOffice,
         eventDateFrom: "",
         eventDateTo: "",
@@ -567,6 +571,7 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
             dateFrom: recordData.eventDateFrom,
             dateTo: recordData.eventDateTo,
             destination: recordData.destination,
+            purpose: recordData.purpose,
           });
           batch.set(notification.reference, notification.data);
         }
@@ -629,7 +634,7 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
 
   if (view === "new") return <CertificateForm onCancel={() => { setView("list"); setError(""); }} onSubmit={saveCertificate} saving={saving} error={error} />;
   if (view === "edit" && editingRecord) return <CertificateNamesForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveNameCorrections} saving={saving} error={error} />;
-  if (view === "blank-ca") return <BlankCertificateGenerator onCancel={() => { setView("list"); setBlankError(""); }} onSave={(division) => void saveBlankCertificate(division)} saving={savingBlank} error={blankError} />;
+  if (view === "blank-ca") return <BlankCertificateGenerator onCancel={() => { setView("list"); setBlankError(""); }} onSave={(division, purpose) => void saveBlankCertificate(division, purpose)} saving={savingBlank} error={blankError} />;
 
   if (blankPreview) return <div className="preview-backdrop coa-preview-backdrop">
     <div className="preview-toolbar coa-preview-toolbar"><span>Certificate of Appearance preview</span><button type="button" className="ghost-button" onClick={() => { setBlankPreview(null); setBlankPreviewUrl(""); setBlankPreviewError(""); setError(""); }}>Close</button><button type="button" className="pdf-button" disabled={!blankPreviewUrl || blankPreviewRendering || Boolean(blankPreviewError)} onClick={downloadBlankPreviewPdf}>Download PDF</button><button type="button" className="pdf-button" disabled={printing || blankPreviewRendering || Boolean(blankPreviewError)} onClick={() => void printCertificates()}>{printing ? "Preparing print..." : "Print"}</button></div>
@@ -650,12 +655,13 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
   </>;
 }
 
-function BlankCertificateGenerator({ onCancel, onSave, saving, error }: { onCancel: () => void; onSave: (division: TevDivision) => void; saving: boolean; error: string }) {
+function BlankCertificateGenerator({ onCancel, onSave, saving, error }: { onCancel: () => void; onSave: (division: TevDivision, purpose: string) => void; saving: boolean; error: string }) {
   const [division, setDivision] = useState<TevDivision | "">("");
+  const [purpose, setPurpose] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (division) onSave(division);
+    if (division) onSave(division, purpose);
   }
 
   return <section className="content-section form-section coa-form-section coa-blank-section">
@@ -663,6 +669,7 @@ function BlankCertificateGenerator({ onCancel, onSave, saving, error }: { onCanc
     {error && <p className="coa-error" role="alert">{error}</p>}
     <form className="permit-form coa-blank-form" onSubmit={submit}>
       <label className="wide-field">Select a Division<select value={division} onChange={(event) => setDivision(event.target.value as TevDivision | "")} required><option value="" disabled>Select a Division</option>{tevDivisions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+      <label className="wide-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} maxLength={500} rows={3} required /></label>
       <div className="wide-field form-actions"><button type="submit" className="primary-button" disabled={!division || saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;

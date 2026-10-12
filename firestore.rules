@@ -632,6 +632,7 @@ service cloud.firestore {
             && request.resource.data.dateFrom == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.eventDateFrom
             && request.resource.data.dateTo == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.eventDateTo
             && request.resource.data.destination == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.destination
+            && request.resource.data.get("purpose", "") == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.get("purpose", "")
             && isAppearanceChiefAdminRecipient(request.resource.data.recipientId, getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.division))
           || (request.resource.data.documentType == "Certificate Decision"
             && request.resource.data.keys().hasAll(["certificateType", "certificateCollection", "decisionStatus", "activityTitle"])
@@ -734,7 +735,7 @@ service cloud.firestore {
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.keys().hasAll(["eventTitle", "destination", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt"])
-        && request.resource.data.keys().hasOnly(["eventTitle", "destination", "ownerOffice", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt", "recordType", "status"])
+        && request.resource.data.keys().hasOnly(["eventTitle", "destination", "purpose", "ownerOffice", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt", "recordType", "status"])
         && request.resource.data.eventTitle is string
         && request.resource.data.destination is string
         && request.resource.data.eventDateFrom is string
@@ -743,6 +744,7 @@ service cloud.firestore {
         && request.resource.data.signatoryName is string
         && request.resource.data.designation is string
         && request.resource.data.division is string
+        && (!request.resource.data.keys().hasAny(["purpose"]) || (request.resource.data.purpose is string && request.resource.data.purpose.size() <= 500))
         && request.resource.data.createdAt is timestamp
         && request.resource.data.get("recordType", "appearance") in ["appearance", "blank"]
         && request.resource.data.get("status", "") == "Pending"
@@ -755,6 +757,10 @@ service cloud.firestore {
             && request.resource.data.ownerOffice.size() > 0
             && request.resource.data.ownerOffice == signedInOffice()
             && request.resource.data.destination == request.resource.data.ownerOffice
+            && request.resource.data.keys().hasAll(["purpose"])
+            && request.resource.data.purpose is string
+            && request.resource.data.purpose.size() > 0
+            && request.resource.data.purpose.size() <= 500
             && request.resource.data.eventDateFrom == ""
             && request.resource.data.eventDateTo == ""
           : request.resource.data.people.size() > 0);
