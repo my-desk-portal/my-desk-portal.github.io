@@ -7,6 +7,7 @@ import { db } from "@/lib/firebase";
 import { ADMIN_EMAIL, SUPERADMIN_EMAIL, normalizeAccountRole, type AccountRole } from "@/lib/user-roles";
 import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import { assignApprovedPermitNumbers, displayPermitNumber, highestApprovedPermitSequence, permitNumberYear } from "./permit-number";
+import RecordPagination, { recordPageSize, useRecordPagination } from "./RecordPagination";
 import "./permit-slip-admin.css";
 
 type PermitStatus = WorkflowStatus;
@@ -52,12 +53,6 @@ function personStatus(permit: AdminPermit, index: number): PermitStatus {
 
 function monthString(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthDateString(value: string) {
-  if (!/^\d{4}-\d{2}$/.test(value)) return "";
-  const [year, month] = value.split("-").map(Number);
-  return new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
 }
 
 function displayDate(value: string) {
@@ -112,17 +107,43 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
 
   const statusEntries = useMemo(() => entries
     .filter((entry) => unitFilter === "All" || entry.unit === unitFilter)
-    .sort((left, right) => right.permitNo.localeCompare(left.permitNo, "en", { numeric: true, sensitivity: "base" })
-      || right.permit.date.localeCompare(left.permit.date)), [entries, unitFilter]);
+    .sort((left, right) => {
+      if (left.status === "Pending" && right.status !== "Pending") return -1;
+      if (right.status === "Pending" && left.status !== "Pending") return 1;
+      const leftPsNo = left.status === "Approved"
+        ? (left.approvedPermitNo ?? approvedPermitNumbers[displayPermitNumber(left.permitNo)] ?? displayPermitNumber(left.permitNo))
+        : "";
+      const rightPsNo = right.status === "Approved"
+        ? (right.approvedPermitNo ?? approvedPermitNumbers[displayPermitNumber(right.permitNo)] ?? displayPermitNumber(right.permitNo))
+        : "";
+      if (leftPsNo && rightPsNo) return rightPsNo.localeCompare(leftPsNo, "en", { numeric: true, sensitivity: "base" });
+      if (leftPsNo) return -1;
+      if (rightPsNo) return 1;
+      return right.permit.date.localeCompare(left.permit.date)
+        || right.permitNo.localeCompare(left.permitNo, "en", { numeric: true, sensitivity: "base" });
+    }), [entries, approvedPermitNumbers, unitFilter]);
+  const { currentPage: currentStatusPage, pageCount: statusPageCount, visibleRecords: visibleStatusEntries, setPage: setStatusPage } = useRecordPagination(statusEntries);
 
   useEffect(() => {
     if (mode !== "status" || !focusNotificationKey || loading) return;
-    if (unitFilter !== "All") setUnitFilter("All");
+    if (unitFilter !== "All") {
+      setUnitFilter("All");
+      return;
+    }
+    const targetIndex = statusEntries.findIndex(({ permit, index }) => `${permit.id}:${decisionKey(permit, index)}` === focusNotificationKey);
+    if (targetIndex < 0) return;
+    setStatusPage(Math.floor(targetIndex / recordPageSize));
+  }, [focusNotificationKey, loading, mode, setStatusPage, statusEntries, unitFilter]);
+
+  useEffect(() => {
+    if (mode !== "status" || !focusNotificationKey || loading) return;
+    const targetIndex = statusEntries.findIndex(({ permit, index }) => `${permit.id}:${decisionKey(permit, index)}` === focusNotificationKey);
+    if (targetIndex < 0 || Math.floor(targetIndex / recordPageSize) !== currentStatusPage) return;
     const frame = window.requestAnimationFrame(() => {
       document.getElementById(`permit-status-${encodeURIComponent(focusNotificationKey)}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [focusNotificationKey, loading, mode, statusEntries.length, unitFilter]);
+  }, [currentStatusPage, focusNotificationKey, loading, mode, statusEntries]);
 
   const monthlyStats = useMemo(() => {
     const stats = new Map<string, { name: string; purposes: Set<string>; approved: number; disapproved: number }>();
@@ -139,6 +160,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
     }
     return [...stats.values()].sort((left, right) => left.name.localeCompare(right.name));
   }, [entries, month, unitFilter]);
+  const { currentPage: currentStatsPage, pageCount: statsPageCount, visibleRecords: visibleMonthlyStats, setPage: setStatsPage } = useRecordPagination(monthlyStats);
 
   async function changeStatus(permit: AdminPermit, personIndex: number, status: PermitStatus) {
     if (!db || !canManagePermits) return;
@@ -242,13 +264,12 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
   return <section className="content-section permit-admin-section">
     <div className="section-heading permit-admin-heading">
       <div><p className="eyebrow">{canManagePermits ? "Administrator access" : "Reports"}</p><h2>{title}</h2><p className="muted">{mode === "statistics" ? "Monthly approved and disapproved Permit Slips, grouped by person." : canManagePermits ? "Review and update each person’s Permit Slip independently." : "View the current status of Permit Slips."}</p></div>
-      <div className="permit-admin-filters">{mode === "statistics" && <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}<label>Assignment<select value={unitFilter} onChange={(event) => setUnitFilter(event.target.value as PermitUnitFilter)}><option value="All">All Assignments</option>{availableAssignments.map((assignment) => <option key={assignment} value={assignment}>{assignment}</option>)}</select></label></div>
+      <div className="permit-admin-filters">{mode === "statistics" && <label>Month<input type="month" value={month} onChange={(event) => { setMonth(event.target.value); setStatsPage(0); }} /></label>}<label>Assignment<select value={unitFilter} onChange={(event) => { setUnitFilter(event.target.value as PermitUnitFilter); setStatusPage(0); setStatsPage(0); }}><option value="All">All Assignments</option>{availableAssignments.map((assignment) => <option key={assignment} value={assignment}>{assignment}</option>)}</select></label></div>
     </div>
     {error && <div className="permit-admin-error" role="alert">{error}</div>}
     {loading ? <p className="permit-admin-empty">Loading Permit Slips…</p> : mode === "statistics" ? <>
-      <p className="permit-admin-period">{monthDateString(month)}</p>
-      {monthlyStats.length === 0 ? <p className="permit-admin-empty">No Permit Slips were created this month.</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table"><thead><tr><th>Name</th><th>Purpose</th><th>No. of Approved Permit Slips</th><th>No. of Disapproved Permit Slips</th></tr></thead><tbody>{monthlyStats.map((row) => <tr key={row.name}><td data-label="Name">{row.name}</td><td data-label="Purpose">{[...row.purposes].join("; ") || "—"}</td><td data-label="No. of Approved Permit Slips">{row.approved}</td><td data-label="No. of Disapproved Permit Slips">{row.disapproved}</td></tr>)}</tbody></table></div>}
-    </> : statusEntries.length === 0 ? <p className="permit-admin-empty">{permits.length === 0 ? "No Permit Slips have been submitted." : "No Permit Slips match this office."}</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table permit-status-table"><thead><tr><th>PS No.</th><th>Date</th><th>Name</th><th>Office</th><th>Purpose</th><th>Status</th></tr></thead><tbody>{statusEntries.map(({ permit, index, name, unit, permitNo, status, approvedPermitNo }) => {
+      {monthlyStats.length === 0 ? <p className="permit-admin-empty">No Permit Slips were created this month.</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table"><thead><tr><th>Name</th><th>Purpose</th><th>No. of Approved Permit Slips</th><th>No. of Disapproved Permit Slips</th></tr></thead><tbody>{visibleMonthlyStats.map((row) => <tr key={row.name}><td data-label="Name">{row.name}</td><td data-label="Purpose">{[...row.purposes].join("; ") || "—"}</td><td data-label="No. of Approved Permit Slips">{row.approved}</td><td data-label="No. of Disapproved Permit Slips">{row.disapproved}</td></tr>)}</tbody></table><RecordPagination totalRecords={monthlyStats.length} currentPage={currentStatsPage} pageCount={statsPageCount} onPageChange={setStatsPage} label="Permit Slip Statistics" /></div>}
+    </> : statusEntries.length === 0 ? <p className="permit-admin-empty">{permits.length === 0 ? "No Permit Slips have been submitted." : "No Permit Slips match this office."}</p> : <div className="permit-admin-table-wrap"><table className="permit-admin-table permit-status-table"><thead><tr><th>PS No.</th><th>Date</th><th>Name</th><th>Office</th><th>Purpose</th><th>Status</th></tr></thead><tbody>{visibleStatusEntries.map(({ permit, index, name, unit, permitNo, status, approvedPermitNo }) => {
       const key = `${permit.id}:${decisionKey(permit, index)}`;
       const originalNumber = displayPermitNumber(permitNo);
       const displayedNumber = status === "Approved" ? (approvedPermitNo ?? approvedPermitNumbers[originalNumber] ?? originalNumber) || "—" : "Pending";
@@ -286,6 +307,6 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
            </td>
          </tr>
        );
-    })}</tbody></table></div>}
+    })}</tbody></table><RecordPagination totalRecords={statusEntries.length} currentPage={currentStatusPage} pageCount={statusPageCount} onPageChange={setStatusPage} label="Permit Slip Status" /></div>}
   </section>;
 }

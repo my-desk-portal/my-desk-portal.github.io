@@ -78,6 +78,8 @@ type SelectedCalendarEntry = {
   statuses: string[];
   names: string[];
   date: string;
+  sortDate: string;
+  sortEndDate: string;
   purpose: string;
   destination: string;
   unit?: string;
@@ -233,6 +235,11 @@ function parseLeaveName(value: string) {
 
 function leaveApplicationPurpose(leave: ApprovedLeaveApplication) {
   return leave.leaveType;
+}
+
+function approvedPermitNumber(permit: Pick<ApprovedPermitSlip, "permitNo" | "approvedPermitNo">, assignedNumbers: Record<string, string>) {
+  const originalNumber = displayPermitNumber(permit.permitNo);
+  return displayPermitNumber(permit.approvedPermitNo ?? assignedNumbers[originalNumber] ?? originalNumber);
 }
 
 async function publishExistingApprovedPermits(firestore: Firestore) {
@@ -547,6 +554,8 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
         name: person.name || "Not specified",
         number: person.toNumber?.trim() ? `TO No. ${person.toNumber.trim()}` : "",
         date: formatCalendarDateRange(order.departureDate, order.returnDate),
+        sortDate: order.departureDate,
+        sortEndDate: order.returnDate,
         purpose: order.purpose || "—",
         destination: order.placeOfTravel || "—",
         unit: order.chargeTo || "",
@@ -559,6 +568,8 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
       name: permit.name,
       number: permit.approvedPermitNo || permit.permitNo ? `PS No. ${permit.approvedPermitNo ?? approvedPermitNumbers[displayPermitNumber(permit.permitNo)] ?? displayPermitNumber(permit.permitNo)}` : "",
       date: formatCalendarDate(permit.date),
+      sortDate: permit.date,
+      sortEndDate: permit.date,
       purpose: permit.purpose || "—",
       destination: "",
       unit: permit.unit || "",
@@ -570,6 +581,8 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
       name: leaveApplicantName(leave) || "Not specified",
       number: "",
       date: formatCalendarDateRange(leave.inclusiveDateFrom, leave.inclusiveDateTo),
+      sortDate: leave.inclusiveDateFrom,
+      sortEndDate: leave.inclusiveDateTo,
       purpose: leaveApplicationPurpose(leave),
       destination: "",
       unit: leave.office || "",
@@ -583,6 +596,8 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
       statuses: [person.status],
       names: [`${person.name}${person.number ? ` (${person.number})` : ""}`],
       date: person.date,
+      sortDate: person.sortDate,
+      sortEndDate: person.sortEndDate,
       purpose: person.purpose,
       destination: person.destination,
       unit: person.unit,
@@ -596,7 +611,10 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
       selectedPeopleByDetails.set(key, entry);
     }
   });
-  const selectedPeople = [...selectedPeopleByDetails.values()];
+  const selectedPeople = [...selectedPeopleByDetails.values()].sort((left, right) =>
+    left.sortDate.localeCompare(right.sortDate)
+    || left.sortEndDate.localeCompare(right.sortEndDate)
+    || left.type.localeCompare(right.type));
   const personnelNotInOfficeCount = new Set(selectedPeopleEntries.map((person) => person.name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase())).size;
   const [selectedYear, selectedMonth, selectedDay] = selectedDate.split("-").map(Number);
   const selectedDateWeekday = new Date(selectedYear, selectedMonth - 1, selectedDay).getDay();
@@ -618,21 +636,26 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
     .filter((permit) => recordMatchesAccountScope(permit.ownerId, permit.unit, undefined, permit.name))
     .filter((permit) => !normalizedSearch || (permit.name ?? "").toLocaleLowerCase().includes(normalizedSearch))
     .filter((permit) => assignmentMatchesFilter(recordAssignmentForFilter(permit.ownerId, permit.unit), unitFilter))
-    .sort((left, right) => right.date.localeCompare(left.date) || right.name.localeCompare(left.name));
+    .sort((left, right) => approvedPermitNumber(right, approvedPermitNumbers).localeCompare(approvedPermitNumber(left, approvedPermitNumbers), "en", { numeric: true, sensitivity: "base" }) || right.date.localeCompare(left.date) || left.name.localeCompare(right.name));
   const annualOrders = orders
     .filter((order) => order.status === "Approved")
     .filter((order) => order.departureDate <= yearEnd && order.returnDate >= yearStart)
     .filter((order) => recordMatchesAccountScope(order.ownerId, order.ownerUnit ?? order.chargeTo))
     .filter((order) => !normalizedSearch || (order.people ?? []).some((person) => (person.name ?? "").toLocaleLowerCase().includes(normalizedSearch)))
     .filter((order) => assignmentMatchesFilter(recordAssignmentForFilter(order.ownerId, order.ownerUnit ?? order.chargeTo), unitFilter))
-    .sort((left, right) => right.departureDate.localeCompare(left.departureDate) || right.returnDate.localeCompare(left.returnDate));
+    .sort((left, right) =>
+      right.departureDate.localeCompare(left.departureDate)
+      || right.returnDate.localeCompare(left.returnDate));
   const annualLeaveApplications = leaveApplications
     .filter((leave) => leave.status === "Approved")
     .filter((leave) => leave.inclusiveDateFrom <= yearEnd && leave.inclusiveDateTo >= yearStart)
     .filter((leave) => recordMatchesAccountScope(leave.ownerId, leave.office))
     .filter((leave) => !normalizedSearch || leaveApplicantName(leave).toLocaleLowerCase().includes(normalizedSearch))
     .filter((leave) => assignmentMatchesFilter(recordAssignmentForFilter(leave.ownerId, leave.office), unitFilter))
-    .sort((left, right) => right.inclusiveDateFrom.localeCompare(left.inclusiveDateFrom) || leaveApplicantName(left).localeCompare(leaveApplicantName(right)));
+    .sort((left, right) =>
+      right.inclusiveDateFrom.localeCompare(left.inclusiveDateFrom)
+      || right.inclusiveDateTo.localeCompare(left.inclusiveDateTo)
+      || leaveApplicantName(left).localeCompare(leaveApplicantName(right)));
   const permitPageCount = Math.max(1, Math.ceil(annualPermits.length / 10));
   const travelPageCount = Math.max(1, Math.ceil(annualOrders.length / 10));
   const leavePageCount = Math.max(1, Math.ceil(annualLeaveApplications.length / 10));
@@ -641,7 +664,9 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
     .filter((plan) => recordMatchesAccountScope(plan.ownerId, plan.unit))
     .filter((plan) => !normalizedSearch || plan.activities.some((activity) => (activity.responsiblePeople ?? []).some((person) => (person.name ?? "").toLocaleLowerCase().includes(normalizedSearch))))
     .filter((plan) => assignmentMatchesFilter(recordAssignmentForFilter(plan.ownerId, plan.unit), unitFilter))
-    .sort((left, right) => right.month.localeCompare(left.month) || (left.unit ?? "").localeCompare(right.unit ?? ""));
+    .sort((left, right) =>
+      right.month.localeCompare(left.month)
+      || (left.unit ?? "").localeCompare(right.unit ?? ""));
   const calendarsOfActivitiesPageCount = Math.max(1, Math.ceil(annualCalendarsOfActivities.length / 10));
   const currentCalendarsOfActivitiesPage = Math.min(calendarsOfActivitiesPage, calendarsOfActivitiesPageCount - 1);
   const visibleCalendarsOfActivities = annualCalendarsOfActivities.slice(currentCalendarsOfActivitiesPage * 10, currentCalendarsOfActivitiesPage * 10 + 10);

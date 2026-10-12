@@ -119,11 +119,16 @@ service cloud.firestore {
         || (exists(userPath)
           && get(userPath).data.get("accountRole", request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "regular") == "admin"));
     }
+    function hasChiefDesignation(profile) {
+      let designation = profile.get("designation", "");
+      return designation == "Chief"
+        || (designation is string && designation.matches("(^|; )Chief(; |$)"));
+    }
     function isChiefCertificateAdmin() {
       let userPath = currentUserPath();
       return isVerifiedUser() && exists(userPath)
         && get(userPath).data.get("accountRole", request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "regular") == "admin"
-        && get(userPath).data.get("designation", "") == "Chief";
+        && hasChiefDesignation(get(userPath).data);
     }
     function canReviewUnitCertificate(data) {
       let office = signedInOffice();
@@ -153,7 +158,7 @@ service cloud.firestore {
       return exists(profilePath)
         && get(profilePath).data.get("accountRole", "") == "admin"
         && get(profilePath).data.get("accountStatus", "") == "Approved"
-        && get(profilePath).data.get("designation", "") == "Chief"
+        && hasChiefDesignation(get(profilePath).data)
         && appearanceDivisionForProfile(get(profilePath).data) == division;
     }
     function canReviewAppearanceCertificate(data) {
@@ -209,7 +214,7 @@ service cloud.firestore {
     }
     function validUserProfile(data) {
       return data.keys().hasAll(["name", "position", "office", "assignment", "profileFieldsVersion", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin"])
-        && data.keys().hasOnly(["name", "position", "office", "assignment", "profileFieldsVersion", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole", "accountStatus", "isRootSuperAdmin", "emailVerified"])
+        && data.keys().hasOnly(["name", "position", "office", "assignment", "profileFieldsVersion", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole", "accountStatus", "isRootSuperAdmin", "emailVerified", "registrationStage", "welcomeNotificationSeenAt"])
         && data.emailVerified is bool
         && data.isRootSuperAdmin is bool
         && data.accountRole in ["superadmin", "admin", "regular"]
@@ -226,14 +231,26 @@ service cloud.firestore {
         && data.name.size() <= 120
         && data.position is string
         && data.position.size() <= 120
-        && (!data.keys().hasAny(["designation"]) || (data.designation is string && data.designation.size() <= 120))
+        && (!data.keys().hasAny(["designation"]) || (data.designation is string && data.designation.size() <= 2000))
+        && (!data.keys().hasAny(["welcomeNotificationSeenAt"]) || data.welcomeNotificationSeenAt is timestamp)
         && data.office is string
         && data.office.size() > 0
         && data.office.size() <= 120
         && data.assignment is string
         && data.assignment.size() > 0
         && data.assignment.size() <= 120
-        && data.profileFieldsVersion == 3;
+        && data.profileFieldsVersion == 3
+        && (!data.keys().hasAny(["registrationStage"]) || data.registrationStage == "complete");
+    }
+    function validRegistrationMarker(data) {
+      let isRoot = request.auth.token.email == "rjamescute2@gmail.com";
+      let isAdmin = request.auth.token.email == "gerlieantipaso27@gmail.com";
+      return data.keys().hasOnly(["registrationStage", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin"])
+        && data.registrationStage == "detailsRequired"
+        && data.emailVerified == false
+        && data.accountRole == (isRoot ? "superadmin" : isAdmin ? "admin" : "regular")
+        && data.accountStatus == "Pending"
+        && data.isRootSuperAdmin == isRoot;
     }
     function isAccomplishmentReportEditable(report) {
       let manilaNow = request.time + duration.value(8, "h");
@@ -258,20 +275,23 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.auth.uid == userId
         && request.auth.token.email_verified == false
-        && validUserProfile(request.resource.data)
-        && request.resource.data.emailVerified == false
-        && request.resource.data.isRootSuperAdmin == (request.auth.token.email == "rjamescute2@gmail.com")
-        && request.resource.data.accountRole == (request.auth.token.email == "rjamescute2@gmail.com"
-          ? "superadmin"
-          : request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "regular")
-        && request.resource.data.accountStatus == (request.auth.token.email == "rjamescute2@gmail.com" ? "Approved" : "Pending");
+        && !request.resource.data.keys().hasAny(["welcomeNotificationSeenAt"])
+        && (validRegistrationMarker(request.resource.data)
+          || (validUserProfile(request.resource.data)
+            && request.resource.data.emailVerified == false
+            && request.resource.data.isRootSuperAdmin == (request.auth.token.email == "rjamescute2@gmail.com")
+            && request.resource.data.accountRole == (request.auth.token.email == "rjamescute2@gmail.com"
+              ? "superadmin"
+              : request.auth.token.email == "gerlieantipaso27@gmail.com" ? "admin" : "regular")
+            && request.resource.data.accountStatus == (request.auth.token.email == "rjamescute2@gmail.com" ? "Approved" : "Pending")));
       // Users may edit their own profile and mark their email verified, but cannot approve themselves or change their role.
       allow update: if (isEmailVerified()
           && request.auth.uid == userId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name", "position", "office", "assignment", "projectProgram", "profileFieldsVersion", "unit", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin"])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name", "position", "office", "assignment", "projectProgram", "profileFieldsVersion", "unit", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin", "registrationStage", "welcomeNotificationSeenAt"])
           && request.resource.data.keys().hasAll(["name", "position", "office", "assignment", "profileFieldsVersion", "emailVerified"])
           && !request.resource.data.keys().hasAny(["unit", "projectProgram"])
           && request.resource.data.emailVerified == true
+          && request.resource.data.get("registrationStage", "complete") == "complete"
           && (request.resource.data.get("accountRole", "") == resource.data.get("accountRole", "")
             || (!resource.data.keys().hasAny(["accountRole"])
               && request.resource.data.accountRole == (request.auth.token.email == "rjamescute2@gmail.com"
@@ -282,6 +302,10 @@ service cloud.firestore {
             || (request.auth.token.email == "rjamescute2@gmail.com" && request.resource.data.accountStatus == "Approved"))
           && (request.resource.data.get("isRootSuperAdmin", false) == resource.data.get("isRootSuperAdmin", false)
             || (request.auth.token.email == "rjamescute2@gmail.com" && request.resource.data.isRootSuperAdmin == true))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["welcomeNotificationSeenAt"])
+            || (!resource.data.keys().hasAny(["welcomeNotificationSeenAt"])
+              && request.resource.data.accountStatus == "Approved"
+              && request.resource.data.welcomeNotificationSeenAt == request.time))
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
           && request.resource.data.name.size() <= 120
@@ -301,7 +325,7 @@ service cloud.firestore {
           && (!request.resource.data.keys().hasAny(["photoURL"]) || (request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 2048))
           && (!request.resource.data.keys().hasAny(["address"]) || (request.resource.data.address is string && request.resource.data.address.size() > 0 && request.resource.data.address.size() <= 200))
           && (!request.resource.data.keys().hasAny(["taxIdentificationNo"]) || (request.resource.data.taxIdentificationNo is string && request.resource.data.taxIdentificationNo.size() > 0 && request.resource.data.taxIdentificationNo.size() <= 30))
-          && (!request.resource.data.keys().hasAny(["designation"]) || (request.resource.data.designation is string && request.resource.data.designation.size() <= 120)))
+          && (!request.resource.data.keys().hasAny(["designation"]) || (request.resource.data.designation is string && request.resource.data.designation.size() <= 2000)))
         || (isSuperAdmin()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["office", "assignment", "projectProgram", "profileFieldsVersion", "unit"])
           && request.resource.data.office == profileOffice(resource.data)
@@ -640,7 +664,12 @@ service cloud.firestore {
     match /permits/{permitId} {
       allow read: if isVerifiedUser();
       allow create: if isVerifiedUser()
+        && request.resource.data.keys().hasAll(["ownerId", "ownerOffice", "ownerAssignment"])
         && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerOffice is string
+        && request.resource.data.ownerOffice == signedInOffice()
+        && request.resource.data.ownerAssignment is string
+        && request.resource.data.ownerAssignment == signedInUnit()
         && !request.resource.data.keys().hasAny(["personStatuses", "lastDecisionKey"]);
       allow update: if isVerifiedUser() && (
         (resource.data.ownerId == request.auth.uid

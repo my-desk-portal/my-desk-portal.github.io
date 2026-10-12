@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type QueryConstraint } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { accountDivisionForApproval, accountOffice } from "@/lib/account-profile";
+import { accountDivisionForApproval, accountOffice, hasAccountDesignation } from "@/lib/account-profile";
 import type { AccountRole } from "@/lib/user-roles";
 import { makeDocumentNotification } from "@/lib/document-notifications";
 import { CertificateStatusBadge, certificateWorkflowStatus, type CertificateWorkflowFields, type CertificateWorkflowStatus } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
+import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./certificate-approval.css";
 import "./certificate-workflow.css";
 
@@ -89,14 +90,14 @@ export default function CertificateApproval({ user, role, office, assignment, de
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<CertificateQueueRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const isChiefAdmin = role === "admin" && designation?.trim() === "Chief";
+  const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
+  const isChiefAdmin = role === "admin" && hasAccountDesignation(designation, "Chief");
   const reviewDivision = accountDivisionForApproval(office ?? "", assignment ?? "");
 
   const accessMessage = useMemo(() => {
-    if (role === "admin" && !isChiefAdmin) return "Certificate approval is available to Admin accounts with the Chief designation.";
     if (role === "admin" && (!office || !assignment || !reviewDivision)) return "Set your Office and Assignment in Profile to view certificates assigned to your division.";
     return "";
-  }, [assignment, isChiefAdmin, office, reviewDivision, role]);
+  }, [assignment, office, reviewDivision, role]);
 
   useEffect(() => {
     let active = true;
@@ -244,9 +245,9 @@ export default function CertificateApproval({ user, role, office, assignment, de
       {role === "regular" && <p className="certificate-approval-notice">Your certificates appear here with their current approval status. Only an authorized administrator can change a status.</p>}
       {error && <p className="certificate-approval-error" role="alert">{error}</p>}
       {message && <p className="certificate-approval-success" role="status">{message}</p>}
-      {loading ? <p className="muted">Loading certificates...</p> : !accessMessage && records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates to show</h3><p>Submitted certificates will appear here with their status.</p></div> : records.length > 0 && <div className="certificate-approval-table-wrap"><div className="certificate-approval-table">
+      {loading ? <p className="muted">Loading certificates...</p> : role === "admin" && !isChiefAdmin ? null : !accessMessage && records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates to show</h3><p>Submitted certificates will appear here with their status.</p></div> : records.length > 0 && <div className="certificate-approval-table-wrap"><div className="certificate-approval-table">
         <div className="certificate-approval-head"><span>Type of Certificate</span><span>Title</span><span>Schedule</span><span>Destination</span><span>Status</span><span>Action</span></div>
-        {records.map((record) => {
+        {visibleRecords.map((record) => {
           const status = certificateWorkflowStatus(record.status);
           const approved = status === "Approved";
           const rowKey = `${record.collectionName}:${record.id}`;
@@ -264,7 +265,7 @@ export default function CertificateApproval({ user, role, office, assignment, de
             </>}</div>
           </div>;
         })}
-      </div></div>}
+      </div><RecordPagination totalRecords={records.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Certificate Approval" /></div>}
     </section>
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Delete certificate?" description="This certificate will be permanently removed. This action cannot be undone." busy={deleting} onCancel={() => setPendingDelete(null)} onConfirm={() => void deleteRecord()} />
   </>;

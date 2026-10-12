@@ -5,7 +5,7 @@ import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc,
 import type { User } from "firebase/auth";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { db } from "@/lib/firebase";
-import { accountDivisionForApproval, accountOffice, accountAssignment } from "@/lib/account-profile";
+import { accountDivisionForApproval, accountOffice, accountAssignment, hasAccountDesignation } from "@/lib/account-profile";
 import { makeDocumentNotification } from "@/lib/document-notifications";
 import type { AccountRole } from "@/lib/user-roles";
 import { loadPdfTools } from "@/lib/pdf-tools";
@@ -102,7 +102,7 @@ async function findAppearanceApprovalAdmins(division: string) {
     const assignment = accountAssignment(data)?.trim();
     const isAssignedDivision = office
       && accountDivisionForApproval(office, assignment ?? "").toLocaleLowerCase("en") === targetDivision;
-    if (data.accountRole === "admin" && data.accountStatus === "Approved" && data.designation === "Chief" && isAssignedDivision) {
+    if (data.accountRole === "admin" && data.accountStatus === "Approved" && hasAccountDesignation(data.designation, "Chief") && isAssignedDivision) {
       admins.add(profile.id);
     }
   }
