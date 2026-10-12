@@ -59,6 +59,7 @@ type ApprovedCalendarOfActivities = {
 };
 type StoredPermit = {
   id: string;
+  ownerId?: string;
   permitNo: string;
   permitNos?: string[];
   date: string;
