@@ -315,3 +315,6 @@ img{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 
 button.remove-action{align-items:center;background:#fff;border:1px solid #f0bda9;border-radius:999px;color:var(--accent);display:inline-flex;font-size:13px;font-weight:500;justify-content:center;line-height:1.2;min-height:44px;min-width:0;padding:10px 20px;white-space:nowrap}button.remove-action:hover{background:#fff8f5;border-color:#e5a58d;color:var(--accent-dark)}button.remove-action:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .permit-table .table-row>strong{font-weight:400}
+.table-row,.table-row *,.mytev-table-row,.mytev-table-row *{font-family:'DM Sans',sans-serif;font-style:normal;font-weight:400}
+.table-row strong,.mytev-table-row strong{font-family:'DM Sans',sans-serif;font-style:normal;font-weight:400}
+.calendar-of-activities-list-row .calendar-of-activities-list-status select{font-family:'DM Sans',sans-serif;font-style:normal;font-weight:400}
