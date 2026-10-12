@@ -108,7 +108,12 @@ function MonthAwareDateInput({ value, month, label, minDate, required, onChange 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => formatDateInput(value));
-  const [viewMonth, setViewMonth] = useState(() => dateMonth(value) || dateMonthStart(month));
+  const earliestViewMonth = dateMonth(minDate ?? "");
+  const [viewMonth, setViewMonth] = useState(() => {
+    const selectedMonth = dateMonth(value) || dateMonthStart(month);
+    return earliestViewMonth && selectedMonth < earliestViewMonth ? earliestViewMonth : selectedMonth;
+  });
+  const visibleMonth = earliestViewMonth && viewMonth < earliestViewMonth ? earliestViewMonth : viewMonth;
 
   useEffect(() => {
     setDraft(formatDateInput(value));
@@ -116,8 +121,9 @@ function MonthAwareDateInput({ value, month, label, minDate, required, onChange 
 
   useEffect(() => {
     if (!open) return;
-    setViewMonth(dateMonth(value) || dateMonthStart(month));
-  }, [open, value, month]);
+    const selectedMonth = dateMonth(value) || dateMonthStart(month);
+    setViewMonth(earliestViewMonth && selectedMonth < earliestViewMonth ? earliestViewMonth : selectedMonth);
+  }, [open, value, month, earliestViewMonth]);
 
   useEffect(() => {
     if (!open) return;
@@ -128,7 +134,7 @@ function MonthAwareDateInput({ value, month, label, minDate, required, onChange 
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
   }, [open]);
 
-  const [year, monthNumber] = viewMonth.split("-").map(Number);
+  const [year, monthNumber] = visibleMonth.split("-").map(Number);
   const firstDayOffset = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay();
   const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
   const days = Array.from({ length: 42 }, (_, index) => {
@@ -139,7 +145,9 @@ function MonthAwareDateInput({ value, month, label, minDate, required, onChange 
 
   function changeViewMonth(offset: number) {
     const next = new Date(Date.UTC(year, monthNumber - 1 + offset, 1));
-    setViewMonth(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`);
+    const nextMonth = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
+    if (earliestViewMonth && nextMonth < earliestViewMonth) return;
+    setViewMonth(nextMonth);
   }
 
   function selectDate(date: string) {
@@ -165,11 +173,11 @@ function MonthAwareDateInput({ value, month, label, minDate, required, onChange 
       <button type="button" className="mytev-date-picker-trigger" aria-label={`Choose ${label.toLowerCase()}`} aria-expanded={open} onClick={() => setOpen(true)}>▦</button>
     </div>
     {open && <div className="mytev-date-picker-popover" role="dialog" aria-label={`Choose ${label.toLowerCase()}`}>
-      <div className="mytev-date-picker-toolbar"><button type="button" aria-label="Previous month" onClick={() => changeViewMonth(-1)}>‹</button><strong>{monthTitle}</strong><button type="button" aria-label="Next month" onClick={() => changeViewMonth(1)}>›</button></div>
+      <div className="mytev-date-picker-toolbar"><button type="button" aria-label="Previous month" disabled={Boolean(earliestViewMonth && visibleMonth <= earliestViewMonth)} onClick={() => changeViewMonth(-1)}>‹</button><strong>{monthTitle}</strong><button type="button" aria-label="Next month" onClick={() => changeViewMonth(1)}>›</button></div>
       <div className="mytev-date-picker-weekdays" aria-hidden="true">{["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => <span key={day}>{day}</span>)}</div>
       <div className="mytev-date-picker-days">{days.map((day, index) => {
         if (!day) return <span key={`empty-${index}`} aria-hidden="true" />;
-        const date = `${viewMonth}-${String(day).padStart(2, "0")}`;
+        const date = `${visibleMonth}-${String(day).padStart(2, "0")}`;
         const disabled = Boolean(minDate && date < minDate);
         return <button type="button" key={date} disabled={disabled} className={value === date ? "is-selected" : undefined} aria-label={new Intl.DateTimeFormat("en-PH", { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`))} aria-pressed={value === date} onClick={() => selectDate(date)}>{day}</button>;
       })}</div>
