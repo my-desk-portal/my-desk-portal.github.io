@@ -454,10 +454,15 @@
 .mytev-ctc-statement{margin:0 0 5mm}
 .mytev-ctc-conditions{display:grid;gap:1.1mm;margin-bottom:5mm}
 .mytev-ctc-conditions p{align-items:start;display:grid;gap:1.5mm;grid-template-columns:4mm minmax(0,1fr);margin:0}
+.mytev-ctc-conditions p>span{min-width:0}
+.mytev-ctc-conditions p.mytev-ctc-cut-short>span{font-size:var(--mytev-font-11);white-space:nowrap}
 .mytev-ctc-conditions i{border:var(--mytev-thin-line);height:3.2mm;margin-top:.5mm;width:3.2mm}
 .mytev-ctc-conditions i.is-checked{position:relative}
 .mytev-ctc-conditions i.is-checked:after{border-bottom:1mm solid #111;border-right:1mm solid #111;content:"";height:2mm;left:.8mm;position:absolute;top:.2mm;transform:rotate(45deg);width:1mm}
 .mytev-ctc-inline-value{border-bottom:var(--mytev-thin-line);display:inline-block;min-width:18mm;padding:0 .5mm;text-align:center;vertical-align:baseline}
+.mytev-ctc-inline-amount{min-width:12mm}
+.mytev-ctc-inline-or{min-width:15mm}
+.mytev-ctc-inline-date{min-width:18mm}
 .mytev-ctc-explanation{display:grid;gap:2mm;margin:3mm 0 2mm}
 .mytev-ctc-explanation span{border-bottom:var(--mytev-medium-line);height:4mm}
 .mytev-ctc-explanation span.has-value{height:auto;min-height:4mm;overflow-wrap:anywhere;padding:.5mm}
@@ -471,7 +476,7 @@
 .mytev-ctc-employee span,.mytev-ctc-signatory span{font-size:var(--mytev-font-11)}
 .mytev-ctc-signatory em{font-style:italic}
 .mytev-ctc-knowledge{margin:0 0 17mm}
-.mytev-ctc-noted{margin:0 0 18mm 50%;text-align:left}
+.mytev-ctc-noted{margin:0 0 13mm 50%;text-align:left}
 .mytev-ctc-signatory{display:grid;gap:1mm;margin-left:auto;text-align:right;width:100%}
 .mytev-ctc-signatory strong{justify-self:end}
 .mytev-ctc-document-dense>h1{margin:3mm 0 4mm}
@@ -485,7 +490,7 @@
 .mytev-ctc-document-dense .mytev-ctc-submitted{margin-top:4mm}
 .mytev-ctc-document-dense .mytev-ctc-employee{margin-bottom:6mm;margin-top:10mm}
 .mytev-ctc-document-dense .mytev-ctc-knowledge{margin-bottom:8mm}
-.mytev-ctc-document-dense .mytev-ctc-noted{margin:5mm 0 8mm 50%}
+.mytev-ctc-document-dense .mytev-ctc-noted{margin:5mm 0 3mm 50%}
 @page{size:A4 portrait;margin:0}
 @media print{
   .mytev-preview-backdrop{background:#fff!important;padding:0!important;position:static!important}
