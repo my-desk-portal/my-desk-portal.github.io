@@ -1218,7 +1218,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
 
     const pageLimit = (page: HTMLElement) => {
       const rect = page.getBoundingClientRect();
-      return rect.bottom - rect.width * 0.121;
+      return rect.bottom - rect.width * 0.0242;
     };
 
     const firstPage = pages.querySelector<HTMLElement>(".special-order-paper");

@@ -183,11 +183,11 @@
 @media(max-width:720px){.permit-sheets{padding:0}}
 @media print{.permit-sheet{aspect-ratio:auto;height:297mm;padding:.2in;width:210mm}.permit-document{height:100%;padding:.14in .16in;width:100%}}
 
-/* Paginate Special Orders while keeping the same one-inch bottom margin as NTA. */
+/* Paginate Special Orders with a 0.2-inch bottom margin. */
 .special-order-preview-pages{display:grid;gap:24px;justify-items:center;margin:0 auto;width:100%}
 .special-order-paper{aspect-ratio:210/297;container-type:inline-size;justify-self:center;margin-inline:auto;width:min(90vw,210mm)}
 .special-order-content{inset:0}
-.special-order-flow{bottom:12.1cqi}
+.special-order-flow{bottom:2.42cqi}
 .special-order-flow-continued{top:13.4%}
 .special-order-closing{break-inside:avoid}
 .special-order-obligations{margin:2.32cqi 0 .63cqi}
