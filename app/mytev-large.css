@@ -19,6 +19,24 @@
 .mytev-form label{min-width:0}
 .mytev-form input,.mytev-form select,.mytev-form textarea{min-width:0;width:100%}
 .mytev-form textarea{line-height:1.5;resize:vertical}
+.mytev-date-field{color:#4e5b55;display:grid;font-size:12px;font-weight:600;gap:7px;letter-spacing:.02em;min-width:0}
+.mytev-date-picker{min-width:0;position:relative;width:100%}
+.mytev-date-picker-field{display:grid;grid-template-columns:minmax(0,1fr) 42px;min-width:0}
+.mytev-date-picker-field input{border-right:0!important;min-width:0}
+.mytev-date-picker-trigger{align-items:center;background:#fff;border:1px solid var(--line);color:var(--muted);cursor:pointer;display:flex;font-size:19px;justify-content:center;min-height:42px;padding:0}
+.mytev-date-picker-trigger:hover{background:#f5f7f5;color:var(--ink)}
+.mytev-date-picker-trigger:focus-visible,.mytev-date-picker-popover button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;z-index:1}
+.mytev-date-picker-popover{background:#fff;border:1px solid var(--line);box-shadow:0 12px 32px #17241f26;min-width:276px;padding:10px;position:absolute;right:0;top:calc(100% + 5px);z-index:50}
+.mytev-date-picker-toolbar{align-items:center;display:grid;gap:8px;grid-template-columns:34px minmax(0,1fr) 34px;margin-bottom:8px}
+.mytev-date-picker-toolbar strong{color:var(--ink);font-size:12px;text-align:center}
+.mytev-date-picker-toolbar button{background:#fff;border:1px solid var(--line);color:var(--ink);font-size:21px;height:32px;line-height:1;padding:0}
+.mytev-date-picker-weekdays,.mytev-date-picker-days{display:grid;gap:3px;grid-template-columns:repeat(7,minmax(0,1fr));text-align:center}
+.mytev-date-picker-weekdays{color:var(--muted);font-size:10px;font-weight:700;margin-bottom:4px}
+.mytev-date-picker-days button,.mytev-date-picker-days>span{align-items:center;aspect-ratio:1;background:#fff;border:1px solid transparent;color:var(--ink);display:flex;font-size:11px;justify-content:center;min-width:0;padding:0}
+.mytev-date-picker-days button{cursor:pointer}
+.mytev-date-picker-days button:hover:not(:disabled){background:#fff0eb;border-color:#e5b2a2}
+.mytev-date-picker-days button.is-selected{background:var(--accent);color:#fff;font-weight:700}
+.mytev-date-picker-days button:disabled{color:#c5ccc7;cursor:not-allowed}
 .mytev-form-group{border-top:1px solid var(--line);display:grid;gap:16px;padding-top:20px}
 .mytev-form-group h3{color:var(--ink);font-size:14px;margin:0}
 .mytev-form-group-heading{align-items:center;display:flex;gap:18px;justify-content:space-between}

@@ -72,9 +72,107 @@ function monthDateBounds(value: string) {
   return { first: `${value}-01`, last: `${value}-${String(lastDay).padStart(2, "0")}` };
 }
 
-function isDateWithinMonth(value: string, month: string) {
-  const bounds = monthDateBounds(month);
-  return Boolean(bounds && value && value >= bounds.first && value <= bounds.last);
+function dateMonth(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value.slice(0, 7) : "";
+}
+
+function dateMonthStart(value: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
+  if (!match) return localMonthValue();
+  const monthNumber = Number(match[2]);
+  return monthNumber >= 1 && monthNumber <= 12 ? value : localMonthValue();
+}
+
+function formatDateInput(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return "";
+  const [year, month, day] = value.split("-").map(Number);
+  return `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/${year}`;
+}
+
+function parseDateInput(value: string) {
+  const normalized = value.trim();
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(normalized);
+  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(normalized);
+  const year = Number(iso?.[1] ?? us?.[3]);
+  const month = Number(iso?.[2] ?? us?.[1]);
+  const day = Number(iso?.[3] ?? us?.[2]);
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return "";
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return "";
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function MonthAwareDateInput({ value, month, label, minDate, required, onChange }: { value: string; month: string; label: string; minDate?: string; required?: boolean; onChange: (value: string) => void }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(() => formatDateInput(value));
+  const [viewMonth, setViewMonth] = useState(() => dateMonth(value) || dateMonthStart(month));
+
+  useEffect(() => {
+    setDraft(formatDateInput(value));
+  }, [value]);
+
+  useEffect(() => {
+    if (!open) return;
+    setViewMonth(dateMonth(value) || dateMonthStart(month));
+  }, [open, value, month]);
+
+  useEffect(() => {
+    if (!open) return;
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [open]);
+
+  const [year, monthNumber] = viewMonth.split("-").map(Number);
+  const firstDayOffset = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const day = index - firstDayOffset + 1;
+    return day >= 1 && day <= daysInMonth ? day : null;
+  });
+  const monthTitle = new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, monthNumber - 1, 1)));
+
+  function changeViewMonth(offset: number) {
+    const next = new Date(Date.UTC(year, monthNumber - 1 + offset, 1));
+    setViewMonth(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+
+  function selectDate(date: string) {
+    if (minDate && date < minDate) return;
+    setDraft(formatDateInput(date));
+    onChange(date);
+    setOpen(false);
+  }
+
+  function updateDraft(input: string) {
+    setDraft(input);
+    if (!input.trim()) {
+      onChange("");
+      return;
+    }
+    const parsed = parseDateInput(input);
+    if (parsed && (!minDate || parsed >= minDate)) onChange(parsed);
+  }
+
+  return <div className="mytev-date-picker" ref={wrapperRef}>
+    <div className="mytev-date-picker-field">
+      <input type="text" inputMode="numeric" placeholder="MM/DD/YYYY" value={draft} required={required} aria-label={label} aria-haspopup="dialog" aria-expanded={open} title="Enter a date as MM/DD/YYYY or choose it from the calendar" onFocus={() => setOpen(true)} onClick={() => setOpen(true)} onChange={(event) => updateDraft(event.target.value)} onBlur={() => setDraft(formatDateInput(value))} onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }} />
+      <button type="button" className="mytev-date-picker-trigger" aria-label={`Choose ${label.toLowerCase()}`} aria-expanded={open} onClick={() => setOpen(true)}>▦</button>
+    </div>
+    {open && <div className="mytev-date-picker-popover" role="dialog" aria-label={`Choose ${label.toLowerCase()}`}>
+      <div className="mytev-date-picker-toolbar"><button type="button" aria-label="Previous month" onClick={() => changeViewMonth(-1)}>‹</button><strong>{monthTitle}</strong><button type="button" aria-label="Next month" onClick={() => changeViewMonth(1)}>›</button></div>
+      <div className="mytev-date-picker-weekdays" aria-hidden="true">{["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="mytev-date-picker-days">{days.map((day, index) => {
+        if (!day) return <span key={`empty-${index}`} aria-hidden="true" />;
+        const date = `${viewMonth}-${String(day).padStart(2, "0")}`;
+        const disabled = Boolean(minDate && date < minDate);
+        return <button type="button" key={date} disabled={disabled} className={value === date ? "is-selected" : undefined} aria-label={new Intl.DateTimeFormat("en-PH", { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`))} aria-pressed={value === date} onClick={() => selectDate(date)}>{day}</button>;
+      })}</div>
+    </div>}
+  </div>;
 }
 
 function documentId() {
@@ -119,19 +217,6 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
 
   function updateMonth(value: string) {
     setMonth(value);
-    setReferences((current) => current.map((reference) => {
-      const dateFrom = isDateWithinMonth(reference.dateFrom, value) ? reference.dateFrom : "";
-      let dateTo = isDateWithinMonth(reference.dateTo, value) ? reference.dateTo : "";
-      if (dateFrom && dateTo && dateTo < dateFrom) dateTo = "";
-      return { ...reference, dateFrom, dateTo };
-    }));
-    setItineraries((current) => current.map((itinerary) => ({
-      ...itinerary,
-      rows: itinerary.rows.map((row) => {
-        if (isDateWithinMonth(row.dateFrom, value) && isDateWithinMonth(row.dateTo, value) && row.dateTo >= row.dateFrom) return row;
-        return { ...row, dateFrom: "", dateTo: "" };
-      }),
-    })));
     setMessage("");
   }
 
@@ -183,10 +268,6 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
       setMessage("Enter a Travel Order No. and date range for each travel reference.");
       return;
     }
-    if (references.some((reference) => !isDateWithinMonth(reference.dateFrom, month) || !isDateWithinMonth(reference.dateTo, month))) {
-      setMessage(`Travel Order dates must fall within ${monthLabel(month)}.`);
-      return;
-    }
     if (references.some((reference) => reference.dateTo < reference.dateFrom)) {
       setMessage("Each Travel Order end date must be on or after its start date.");
       return;
@@ -208,9 +289,6 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
         transportation: row.meansOfTransportation === "Not Applicable" ? "Not Applicable" : row.transportation.trim(),
       }));
       if (!rows.length) return { error: `Add at least one travel line to Itinerary ${itineraryIndex + 1}.` };
-      if (rows.some((row) => (row.dateFrom && !isDateWithinMonth(row.dateFrom, month)) || (row.dateTo && !isDateWithinMonth(row.dateTo, month)))) {
-        return { error: `Each date in Itinerary ${itineraryIndex + 1} must fall within ${monthLabel(month)}.` };
-      }
       for (const [rowIndex, row] of rows.entries()) {
         if (!row.dateFrom || !row.dateTo || !row.visitedPlaces || !row.departureTimeFrom || !row.departureTimeTo) {
           return { error: `Complete the date, destination, and times for Itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}.` };
@@ -281,16 +359,12 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
       <section className="mytev-form-group"><div className="mytev-form-group-heading"><div><h3>Travel Order references</h3><p>Enter the travel order number and approved date range for each trip.</p></div><button type="button" className="ghost-button mytev-add-reference" disabled={references.length >= maxTravelReferences} onClick={() => setReferences((current) => [...current, blankTevTravelReference()])}>Add reference</button></div>
         <div className="mytev-reference-list">{references.map((reference, index) => <fieldset className="mytev-reference-row" key={`travel-reference-${index}`}><legend>Travel reference {index + 1}</legend>
           <label>Travel No.<input value={reference.travelOrderNo} onChange={(event) => updateReference(index, { travelOrderNo: event.target.value })} maxLength={40} required /></label>
-          <label>TO Date (Records Unit)<input type="date" value={reference.toDateRecordsUnit} onChange={(event) => updateReference(index, { toDateRecordsUnit: event.target.value })} /></label>
-          <label>Date From<input type="date" min={monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={reference.dateFrom} onChange={(event) => {
-            const value = isDateWithinMonth(event.target.value, month) ? event.target.value : "";
-            const dateTo = isDateWithinMonth(reference.dateTo, month) && (!value || reference.dateTo >= value) ? reference.dateTo : "";
+          <div className="mytev-date-field"><span>TO Date (Records Unit)</span><MonthAwareDateInput label="TO Date (Records Unit)" month={month} value={reference.toDateRecordsUnit} onChange={(value) => updateReference(index, { toDateRecordsUnit: value })} /></div>
+          <div className="mytev-date-field"><span>Date From</span><MonthAwareDateInput label="Date From" month={month} value={reference.dateFrom} required onChange={(value) => {
+            const dateTo = reference.dateTo && (!value || reference.dateTo >= value) ? reference.dateTo : "";
             updateReference(index, { dateFrom: value, dateTo });
-          }} required /></label>
-          <label>Date To<input type="date" min={reference.dateFrom || monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={reference.dateTo} onChange={(event) => {
-            const value = isDateWithinMonth(event.target.value, month) && (!reference.dateFrom || event.target.value >= reference.dateFrom) ? event.target.value : "";
-            updateReference(index, { dateTo: value });
-          }} required /></label>
+          }} /></div>
+          <div className="mytev-date-field"><span>Date To</span><MonthAwareDateInput label="Date To" month={month} minDate={reference.dateFrom} value={reference.dateTo} required onChange={(value) => updateReference(index, { dateTo: value })} /></div>
           {references.length > 1 && <button type="button" className="mytev-remove-reference remove-action" aria-label={`Remove travel reference ${index + 1}`} onClick={() => setReferences((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
         </fieldset>)}</div>
         <fieldset className="mytev-evidence-picker"><legend>Evidence of Travel</legend><div className="mytev-evidence-options">{tevEvidenceOptions.map((option) => <label key={option.label}><input type="checkbox" checked={selectedEvidence.includes(option.label)} onChange={(event) => toggleEvidence(option.label, event.target.checked)} disabled={saving} /><span>{option.label}</span></label>)}</div></fieldset>
@@ -307,10 +381,9 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
               <legend>Row {String(rowIndex + 1).padStart(2, "0")}</legend>
               <div className="mytev-itinerary-line-actions"><button type="button" className="mytev-remove-row remove-action" aria-label={`Remove itinerary ${itineraryIndex + 1}, row ${rowIndex + 1}`} onClick={() => removeRow(itinerary.id, rowIndex)}>Remove row</button></div>
               <div className="mytev-itinerary-row-top">
-                <label>Date<input type="date" min={monthDateBounds(month)?.first} max={monthDateBounds(month)?.last} value={row.dateFrom} onChange={(event) => {
-                  const value = isDateWithinMonth(event.target.value, month) ? event.target.value : "";
+                <div className="mytev-date-field"><span>Date</span><MonthAwareDateInput label="Itinerary date" month={month} value={row.dateFrom} onChange={(value) => {
                   updateRow(itinerary.id, rowIndex, { dateFrom: value, dateTo: value });
-                }} /></label>
+                }} /></div>
                 <label className="mytev-row-places">Visited Places<input value={row.visitedPlaces} maxLength={180} onChange={(event) => updateRow(itinerary.id, rowIndex, { visitedPlaces: event.target.value })} /></label>
                 <label>Departure Time From<input type="time" value={row.departureTimeFrom} onChange={(event) => updateRow(itinerary.id, rowIndex, { departureTimeFrom: event.target.value })} /></label>
                 <label>Departure Time To<input type="time" value={row.departureTimeTo} onChange={(event) => updateRow(itinerary.id, rowIndex, { departureTimeTo: event.target.value })} /></label>
