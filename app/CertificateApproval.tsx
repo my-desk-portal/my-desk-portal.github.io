@@ -109,6 +109,7 @@ export default function CertificateApproval({ user, role, office, assignment, de
       return () => { active = false; };
     }
 
+    const firestore = db;
     setLoading(true);
     async function loadRecords() {
       try {
@@ -123,7 +124,7 @@ export default function CertificateApproval({ user, role, office, assignment, de
               constraints.push(units.length === 1 ? where("unit", "==", units[0]) : where("unit", "in", units));
             }
           }
-          const result = await getDocs(query(collection(db, name), ...constraints));
+          const result = await getDocs(query(collection(firestore, name), ...constraints));
           return result.docs.map((item) => ({
             ...item.data(),
             id: item.id,
@@ -139,7 +140,7 @@ export default function CertificateApproval({ user, role, office, assignment, de
         const ownerOffices = new Map<string, string>();
         await Promise.all(blankOwnerIds.map(async (ownerId) => {
           try {
-            const ownerProfile = await getDoc(doc(db, "users", ownerId));
+            const ownerProfile = await getDoc(doc(firestore, "users", ownerId));
             const ownerOffice = ownerProfile.exists() ? accountOffice(ownerProfile.data()) : null;
             if (typeof ownerOffice === "string" && ownerOffice.trim()) ownerOffices.set(ownerId, ownerOffice.trim());
           } catch {
