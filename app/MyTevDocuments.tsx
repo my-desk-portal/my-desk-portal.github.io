@@ -10,7 +10,6 @@ import {
   formatTevDateRange,
   formatTevTime,
   formatTevTravelDateRanges,
-  formatTevTravelOrderNumbers,
   formatTevTravelReferences,
   maxCenrrRows,
   maxItineraryRows,
@@ -216,8 +215,6 @@ function MyTevOrsPage({ record, rates }: { record: MyTevRecord; rates: TevRegion
   const signatory = divisionSignatory(record.divisionName);
   const [budgetTitle, budgetSection] = tevOrsBudgetSignatory.position.split(", ");
   const totals = totalsForRecord(record.itineraries, rates);
-  const travelDates = formatTevTravelDateRanges(record.travelReferences);
-  const orderNumbers = formatTevTravelOrderNumbers(record.travelReferences);
   return <div className="mytev-paper-frame"><article className="mytev-paper mytev-ors-paper">
     <div className="mytev-ors-document">
       <div className="mytev-ors-top"><MyTevLetterhead appendix="COA Circular 2015-002: Annex F" /></div>
@@ -229,7 +226,7 @@ function MyTevOrsPage({ record, rates }: { record: MyTevRecord; rates: TevRegion
       <div className="mytev-ors-payment"><b>FOR PAYMENT:</b><strong>{tevOrsOfficeAddress}</strong></div>
       <div className="mytev-ors-detail">
         <table><thead><tr><th>Responsibility Center</th><th>Particulars</th><th>MFO/PAP</th><th>UACS<br />Object<br />Code</th><th>Amount</th></tr></thead><tbody>
-          <tr><td /><td style={fitTextStyle(`${orderNumbers} ${travelDates}`, 250, "--mytev-font-10")}><b>TO OBLIGATE:</b><br /><br />Travel expenses incurred during official travel for the month of <b>{monthLabel(record.month)}</b>, pursuant to Travel Order Nos. <b>{orderNumbers}</b> dated <b>{travelDates}</b> with supporting documents hereto attached in the amount of ...<br /><br />Charged to: <b>{chargedToForUnit(profile.unit)}</b></td><td /><td /><td>{formatTevAmount(totals.grandTotal)}</td></tr>
+          <tr><td /><td><b>TO OBLIGATE:</b><br /><br />Travel expenses incurred during official travel for the month of <b>{monthLabel(record.month)}</b> with supporting documents hereto attached in the amount of ...<br /><br />Charged to: <b>{chargedToForUnit(profile.unit)}</b></td><td /><td /><td>{formatTevAmount(totals.grandTotal)}</td></tr>
         </tbody></table>
       </div>
       <div className="mytev-ors-total-row"><table className="mytev-ors-total"><colgroup><col /><col /><col /><col /><col /></colgroup><tbody><tr><td colSpan={4}><strong>Total</strong></td><td><strong>{formatTevAmount(totals.grandTotal)}</strong></td></tr></tbody></table></div>
@@ -248,8 +245,7 @@ function MyTevDisbursementPage({ record, rates }: { record: MyTevRecord; rates: 
   const profile = record.profile;
   const signatory = divisionSignatory(record.divisionName);
   const totals = totalsForRecord(record.itineraries, rates);
-  const travelDates = formatTevTravelDateRanges(record.travelReferences);
-  const orderNumbers = formatTevTravelOrderNumbers(record.travelReferences);
+  const monthAndYear = monthLabel(record.month);
   const [approvingPosition, ...approvingOfficeParts] = tevDvApprovingSignatory.position.split(", ");
   const approvingOffice = approvingOfficeParts.join(", ");
   return <div className="mytev-paper-frame"><article className="mytev-paper mytev-dv-paper">
@@ -260,7 +256,7 @@ function MyTevDisbursementPage({ record, rates }: { record: MyTevRecord; rates: 
         <div className="mytev-dv-payee-main"><b>Payee</b><span className="mytev-dv-payee-name" style={fitTextStyle(profile.name, 45, "--mytev-font-12", 1.1)}>{profile.name}</span><div className="mytev-dv-payee-field"><b>TIN/Employee No.:</b><span style={fitTextStyle(profile.taxIdentificationNo, 20, "--mytev-font-12", 1.1)}>{profile.taxIdentificationNo}</span></div><div className="mytev-dv-payee-field"><b>ORS/BURS No.:</b><span /></div></div>
         <div className="mytev-dv-address-row"><b>Address</b><span className="mytev-dv-address" style={fitTextStyle(profile.address, 90, "--mytev-font-12", 1.1)}>{profile.address}</span></div>
       </div>
-      <table className="mytev-dv-particulars"><thead><tr><th>Particulars</th><th>Responsibility Center</th><th>MFO/PAP</th><th>Amount</th></tr></thead><tbody><tr><td style={fitTextStyle(`${travelDates} ${orderNumbers}`, 190, "--mytev-font-12")}><b>FOR PAYMENT:</b><br /><br />For reimbursement of travel expenses incurred during official travel from <strong>{travelDates}</strong> per Travel Order Nos. <strong>{orderNumbers}</strong>, with supporting documents hereto attached in the amount of ...</td><td /><td /><td>{formatTevAmount(totals.grandTotal)}</td></tr></tbody><tfoot><tr className="mytev-dv-total"><th colSpan={3}>Amount Due</th><th>{formatTevAmount(totals.grandTotal)}</th></tr></tfoot></table>
+      <table className="mytev-dv-particulars"><thead><tr><th>Particulars</th><th>Responsibility Center</th><th>MFO/PAP</th><th>Amount</th></tr></thead><tbody><tr><td><b>FOR PAYMENT:</b><br /><br />For reimbursement of travel expenses incurred during official travels for the <strong>{monthAndYear}</strong> with supporting documents hereto attached in the amount of ...</td><td /><td /><td>{formatTevAmount(totals.grandTotal)}</td></tr></tbody><tfoot><tr className="mytev-dv-total"><th colSpan={3}>Amount Due</th><th>{formatTevAmount(totals.grandTotal)}</th></tr></tfoot></table>
       <div className="mytev-dv-certified">
         <div className="mytev-dv-certified-heading"><b>A.</b><strong>Certified: Expenses/Cash Advance necessary, lawful and incurred under my direct supervision.</strong></div>
         <div className="mytev-dv-certified-signatory"><strong>{signatory.name}</strong><span><i>{signatory.position}</i>, {tevDivisionLabel(record.divisionName)}</span></div>
