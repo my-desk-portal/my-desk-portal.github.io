@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import { isSuperadminRole } from "@/lib/user-roles";
 import { loadPdfTools } from "@/lib/pdf-tools";
+import { makeDocumentNotification } from "@/lib/document-notifications";
 import {
   blankTevItinerary,
   blankTevItineraryRow,
@@ -41,6 +43,8 @@ import "./mytev-mobile.css";
 
 const maxTravelReferences = 8;
 const maxItineraries = 8;
+const maxTevPersonnel = 18;
+type TevPersonnel = { userId: string; profile: TevProfile; profileComplete: boolean };
 const tevEvidenceOptions = [
   { label: "Approved Itinerary of Travel", pattern: /\bapproved itinerary of travel\b/i },
   { label: "Approved Travel Orders", pattern: /\bapproved travel orders?\b/i },
@@ -204,7 +208,7 @@ function initialItinerary() {
   return blankTevItinerary(documentId());
 }
 
-function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }: { profile: TevProfile; ownerId: string; initialRecord?: MyTevRecord; rates: TevRegionRate[]; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
+function MyTevForm({ profile, ownerId, initialRecord, personnel, rates, onCancel, onSaved }: { profile: TevProfile; ownerId: string; initialRecord?: MyTevRecord; personnel: TevPersonnel[]; rates: TevRegionRate[]; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
   const [step, setStep] = useState<"details" | "itineraries">("details");
   const [month, setMonth] = useState(() => initialRecord?.month ?? localMonthValue());
   const [officialStation, setOfficialStation] = useState<TevOfficialStation>(() => initialRecord?.officialStation ?? tevOfficialStations[0]);
@@ -218,6 +222,7 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
   const [itineraries, setItineraries] = useState<TevItinerary[]>(() => initialRecord
     ? initialRecord.itineraries.map((itinerary) => ({ ...itinerary, rows: itinerary.rows.map((row) => ({ ...row, meansOfTransportation: normalizeTevTransportationMeansForEditor(row.meansOfTransportation), claims: [...row.claims] })) }))
     : [initialItinerary()]);
+  const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>(() => initialRecord ? [] : [""]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -233,6 +238,19 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
   function updateMonth(value: string) {
     setMonth(value);
     setMessage("");
+  }
+
+  function updateSelectedPersonnel(index: number, userId: string) {
+    setSelectedPersonnelIds((current) => current.map((selectedId, itemIndex) => itemIndex === index ? userId : selectedId));
+    setMessage("");
+  }
+
+  function addPersonnelSlot() {
+    setSelectedPersonnelIds((current) => current.length >= maxTevPersonnel ? current : [...current, ""]);
+  }
+
+  function removePersonnelSlot(index: number) {
+    setSelectedPersonnelIds((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
   function updateItinerary(itineraryId: string, changes: Partial<Pick<TevItinerary, "dateFrom" | "dateTo">>) {
@@ -328,8 +346,19 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
     event.preventDefault();
     setMessage("");
     if (!db) { setMessage("myTEV storage is unavailable."); return; }
+    const firestore = db;
+    const selectedPersonnel = [...new Set(selectedPersonnelIds.filter(Boolean))].map((userId) => personnel.find((person) => person.userId === userId));
+    if (selectedPersonnel.some((person) => !person)) {
+      setMessage("A selected person is no longer available. Refresh and select them again.");
+      return;
+    }
+    if (selectedPersonnel.some((person) => !person?.profileComplete)) {
+      setMessage("Each selected person must complete their name, address, Tax Identification No., and position in Profile first.");
+      return;
+    }
     const result = normalizedItineraries();
     if (result.error || !result.itineraries?.length) { setMessage(result.error ?? "Add at least one itinerary."); return; }
+    const totalAmount = totalsForRecord(result.itineraries, rates).grandTotal;
     const recordData = {
       ownerId,
       profile,
@@ -341,16 +370,42 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
       certificationOfTravel: certification,
       divisionName,
       itineraries: result.itineraries,
+      ...(initialRecord?.sharedWith?.length ? { sharedWith: initialRecord.sharedWith } : {}),
+      ...(initialRecord?.createdById && initialRecord.sourceRecordId ? { createdById: initialRecord.createdById, sourceRecordId: initialRecord.sourceRecordId } : {}),
     };
     setSaving(true);
     try {
-      const firestore = db;
       if (initialRecord) {
         await updateDoc(doc(firestore, "myTevRecords", initialRecord.id), recordData);
         onSaved({ ...initialRecord, ...recordData });
       } else {
-        const reference = await addDoc(collection(firestore, "myTevRecords"), { ...recordData, createdAt: serverTimestamp() });
-        onSaved({ ...recordData, id: reference.id, createdAt: undefined });
+        const reference = doc(collection(firestore, "myTevRecords"));
+        const selectedUserIds = selectedPersonnel.map((person) => person!.userId);
+        const batch = writeBatch(firestore);
+        batch.set(reference, { ...recordData, ...(selectedUserIds.length ? { sharedWith: selectedUserIds } : {}), createdAt: serverTimestamp() });
+        selectedPersonnel.forEach((person) => {
+          if (!person) return;
+          const personnelRecord = doc(collection(firestore, "myTevRecords"));
+          batch.set(personnelRecord, {
+            ...recordData,
+            ownerId: person.userId,
+            profile: person.profile,
+            createdById: ownerId,
+            sourceRecordId: reference.id,
+            createdAt: serverTimestamp(),
+          });
+          const notification = makeDocumentNotification(firestore, {
+            recipientId: person.userId,
+            ownerId,
+            documentId: reference.id,
+            documentType: "Travel Expense Voucher",
+            travelMonth: month,
+            totalAmount,
+          });
+          batch.set(notification.reference, notification.data);
+        });
+        await batch.commit();
+        onSaved({ ...recordData, ...(selectedUserIds.length ? { sharedWith: selectedUserIds } : {}), id: reference.id, createdAt: undefined });
       }
     } catch (cause) {
       const code = (cause as { code?: string }).code;
@@ -372,6 +427,17 @@ function MyTevForm({ profile, ownerId, initialRecord, rates, onCancel, onSaved }
         <label>Month and Year<input type="month" value={month} onChange={(event) => updateMonth(event.target.value)} disabled={Boolean(initialRecord)} required /></label>
         <label>Division<select value={divisionName} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division}>{division}</option>)}</select></label>
       </div></section>
+      {!initialRecord && <section className="mytev-form-group mytev-personnel-group">
+        <div className="mytev-form-group-heading"><div><h3>Personnel for this TEV</h3><p>Add personnel from any Unit. Each person receives the same travel details with their own profile information on the TEV.</p></div><button type="button" className="ghost-button" disabled={selectedPersonnelIds.length >= maxTevPersonnel} onClick={addPersonnelSlot}>+ Add another personnel</button></div>
+        {selectedPersonnelIds.length > 0 && <div className="mytev-personnel-list">{selectedPersonnelIds.map((selectedId, index) => <div className="mytev-personnel-entry" key={`tev-personnel-${index}`}>
+          <label>Add a Personnel for this TEV<select aria-label={`Personnel for this TEV ${index + 1}`} value={selectedId} onChange={(event) => updateSelectedPersonnel(index, event.target.value)} disabled={saving}>
+            <option value="">Select a personnel</option>
+            {personnel.filter((person) => person.userId === selectedId || !selectedPersonnelIds.includes(person.userId)).map((person) => <option key={person.userId} value={person.userId} disabled={!person.profileComplete}>{person.profile.name} ({person.profile.unit}){person.profile.position ? ` - ${person.profile.position}` : ""}{person.profileComplete ? "" : " - Complete Profile first"}</option>)}
+          </select></label>
+          <button type="button" className="mytev-remove-personnel remove-action" aria-label={`Remove personnel ${index + 1}`} disabled={saving} onClick={() => removePersonnelSlot(index)}>Remove</button>
+        </div>)}</div>}
+        {personnel.length === 0 && <p className="mytev-personnel-empty">No other personnel accounts with a Unit are available.</p>}
+      </section>}
       <section className="mytev-form-group"><div className="mytev-form-group-heading"><div><h3>Travel Order references</h3><p>Enter the travel order number and approved date range for each trip.</p></div><button type="button" className="ghost-button mytev-add-reference" disabled={references.length >= maxTravelReferences} onClick={() => setReferences((current) => [...current, blankTevTravelReference()])}>Add reference</button></div>
         <div className="mytev-reference-list">{references.map((reference, index) => <fieldset className="mytev-reference-row" key={`travel-reference-${index}`}><legend>Travel reference {index + 1}</legend>
           <label>Travel No.<input value={reference.travelOrderNo} onChange={(event) => updateReference(index, { travelOrderNo: event.target.value })} maxLength={40} required /></label>
@@ -456,6 +522,7 @@ function MyTevList({ records, loading, deletingId, rates, rateError, onNew, onEd
 export default function MyTevModule({ user }: { user: User }) {
   const [records, setRecords] = useState<MyTevRecord[]>([]);
   const [profile, setProfile] = useState<TevProfile | null>(null);
+  const [personnel, setPersonnel] = useState<TevPersonnel[]>([]);
   const [view, setView] = useState<"list" | "new" | "edit">("list");
   const [editingRecord, setEditingRecord] = useState<MyTevRecord | null>(null);
   const [preview, setPreview] = useState<MyTevRecord | null>(null);
@@ -527,16 +594,33 @@ export default function MyTevModule({ user }: { user: User }) {
     Promise.all([
       getDoc(doc(firestore, "users", user.uid)),
       getDocs(query(collection(firestore, "myTevRecords"), where("ownerId", "==", user.uid))),
-    ]).then(([profileSnapshot, recordsSnapshot]) => {
+      getDocs(collection(firestore, "users")),
+    ]).then(([profileSnapshot, recordsSnapshot, accountsSnapshot]) => {
       if (!active) return;
       const data = profileSnapshot.exists() ? profileSnapshot.data() : {};
+      const accountUnit = typeof data.unit === "string" ? data.unit.trim() : "";
       setProfile({
         name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : user.displayName ?? "",
         address: typeof data.address === "string" ? data.address.trim() : "",
         taxIdentificationNo: typeof data.taxIdentificationNo === "string" ? formatTaxIdentificationNo(data.taxIdentificationNo) : "",
         position: typeof data.position === "string" ? data.position.trim() : "",
-        unit: typeof data.unit === "string" ? data.unit : "",
+        unit: accountUnit,
       });
+      const allUnitPersonnel = accountsSnapshot.docs.flatMap((account) => {
+        const accountData = account.data();
+        if (account.id === user.uid || isSuperadminRole(accountData.accountRole)) return [];
+        const accountProfile: TevProfile = {
+          name: typeof accountData.name === "string" ? accountData.name.trim() : "",
+          address: typeof accountData.address === "string" ? accountData.address.trim() : "",
+          taxIdentificationNo: typeof accountData.taxIdentificationNo === "string" ? formatTaxIdentificationNo(accountData.taxIdentificationNo) : "",
+          position: typeof accountData.position === "string" ? accountData.position.trim() : "",
+          unit: typeof accountData.unit === "string" ? accountData.unit.trim() : "",
+        };
+        if (!accountProfile.name || !accountProfile.unit) return [];
+        const profileComplete = Boolean(accountProfile.address && accountProfile.taxIdentificationNo && accountProfile.position);
+        return [{ userId: account.id, profile: accountProfile, profileComplete }];
+      }).sort((first, second) => first.profile.unit.localeCompare(second.profile.unit) || first.profile.name.localeCompare(second.profile.name));
+      setPersonnel(allUnitPersonnel);
       const loaded = recordsSnapshot.docs.map((item) => {
         const record = { id: item.id, ...item.data() } as MyTevRecord;
         return {
@@ -623,7 +707,7 @@ export default function MyTevModule({ user }: { user: User }) {
   return <div className="mytev-module">
     {loadError && <p className="error-message mytev-error" role="alert">{loadError}</p>}
     {regionRateError && <p className="error-message mytev-error" role="alert">{regionRateError}</p>}
-    {(view === "new" || view === "edit") && formProfile ? regionRates ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} rates={regionRates} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <section className="content-section mytev-form-section"><p className="muted">{regionRateError || "Loading regional per diem rates..."}</p><button type="button" className="ghost-button" onClick={() => { setEditingRecord(null); setView("list"); }}>Back</button></section> : <>
+    {(view === "new" || view === "edit") && formProfile ? regionRates ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} personnel={personnel} rates={regionRates} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <section className="content-section mytev-form-section"><p className="muted">{regionRateError || "Loading regional per diem rates..."}</p><button type="button" className="ghost-button" onClick={() => { setEditingRecord(null); setView("list"); }}>Back</button></section> : <>
       {!profileComplete && !loading && <div className="mytev-profile-warning" role="status"><strong>Complete your Profile before creating myTEV records.</strong><span>Address, Tax Identification No., position, and name are used to prepare these forms.</span></div>}
       <MyTevList records={records} loading={loading} deletingId={deletingId} rates={regionRates} rateError={regionRateError} onNew={() => { setLoadError(""); setEditingRecord(null); setView("new"); }} onEdit={(record) => { setLoadError(""); setEditingRecord(record); setView("edit"); }} onView={(record) => { if (!regionRates) { setRegionRateError(regionRateError || "Regional rates are still loading. Wait a moment, then open the record again."); return; } setPreview(record); setPreviewError(""); }} onDelete={setPendingDelete} />
     </>}

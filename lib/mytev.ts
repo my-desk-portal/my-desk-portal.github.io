@@ -107,6 +107,9 @@ export type TevCertificationOfTravel = {
 export type MyTevRecord = {
   id: string;
   ownerId: string;
+  sharedWith?: string[];
+  createdById?: string;
+  sourceRecordId?: string;
   createdAt?: unknown;
   profile: TevProfile;
   month: string;
@@ -163,7 +166,7 @@ export function blankTevItinerary(id: string): TevItinerary {
 
 export function defaultTevCertificationOfTravel(): TevCertificationOfTravel {
   return {
-    strictlyInAccordance: true,
+    strictlyInAccordance: false,
     cutShort: false,
     cutShortAmount: "",
     cutShortOrNo: "",

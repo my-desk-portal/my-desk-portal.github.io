@@ -356,6 +356,14 @@ service cloud.firestore {
             && request.resource.data.leaveType == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.leaveType
             && request.resource.data.inclusiveDateFrom == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.inclusiveDateFrom
             && request.resource.data.inclusiveDateTo == getAfter(documentPath("leaveApplications", request.resource.data.documentId)).data.inclusiveDateTo)
+          || (request.resource.data.documentType == "Travel Expense Voucher"
+            && existsAfter(documentPath("myTevRecords", request.resource.data.documentId))
+            && getAfter(documentPath("myTevRecords", request.resource.data.documentId)).data.ownerId == request.auth.uid
+            && getAfter(documentPath("myTevRecords", request.resource.data.documentId)).data.sharedWith is list
+            && request.resource.data.recipientId in getAfter(documentPath("myTevRecords", request.resource.data.documentId)).data.sharedWith
+            && request.resource.data.travelMonth == getAfter(documentPath("myTevRecords", request.resource.data.documentId)).data.month
+            && request.resource.data.totalAmount is number
+            && request.resource.data.totalAmount >= 0)
         );
       allow update: if isVerifiedUser()
         && resource.data.recipientId == request.auth.uid
@@ -815,9 +823,46 @@ service cloud.firestore {
             && recordData.certificationOfTravel.otherExplanation is string
             && recordData.certificationOfTravel.otherExplanation.size() <= 500);
       }
+      function hasValidTevSharingMetadata(recordData) {
+        return (!recordData.keys().hasAny(["sharedWith"])
+            || (recordData.sharedWith is list && recordData.sharedWith.size() <= 18))
+          && ((!recordData.keys().hasAny(["createdById", "sourceRecordId"]))
+            || (recordData.keys().hasAll(["createdById", "sourceRecordId"])
+              && recordData.createdById is string
+              && recordData.sourceRecordId is string));
+      }
+      function isAuthorizedSharedMyTevCopy(recordData) {
+        let sourcePath = /databases/$(database)/documents/myTevRecords/$(recordData.sourceRecordId);
+        let ownerPath = /databases/$(database)/documents/users/$(recordData.ownerId);
+        return recordData.ownerId is string
+          && recordData.ownerId != request.auth.uid
+          && recordData.createdById == request.auth.uid
+          && recordData.sourceRecordId is string
+          && existsAfter(sourcePath)
+          && exists(ownerPath)
+          && getAfter(sourcePath).data.ownerId == request.auth.uid
+          && getAfter(sourcePath).data.sharedWith is list
+          && recordData.ownerId in getAfter(sourcePath).data.sharedWith
+          && get(ownerPath).data.unit is string
+          && get(ownerPath).data.unit.size() > 0
+          && recordData.profile.name == get(ownerPath).data.name
+          && recordData.profile.address == get(ownerPath).data.address
+          && recordData.profile.taxIdentificationNo == get(ownerPath).data.taxIdentificationNo
+          && recordData.profile.position == get(ownerPath).data.position
+          && recordData.profile.unit == get(ownerPath).data.unit
+          && recordData.month == getAfter(sourcePath).data.month
+          && recordData.officialStation == getAfter(sourcePath).data.officialStation
+          && recordData.travelReferences == getAfter(sourcePath).data.travelReferences
+          && recordData.evidenceOfTravel == getAfter(sourcePath).data.evidenceOfTravel
+          && recordData.evidenceOfTravelOptions == getAfter(sourcePath).data.evidenceOfTravelOptions
+          && recordData.certificationOfTravel == getAfter(sourcePath).data.certificationOfTravel
+          && recordData.divisionName == getAfter(sourcePath).data.divisionName
+          && recordData.itineraries == getAfter(sourcePath).data.itineraries;
+      }
       function isValidMyTevRecord(recordData) {
         return recordData.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
-          && recordData.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "certificationOfTravel", "divisionName", "itineraries", "createdAt"])
+          && recordData.keys().hasOnly(["ownerId", "sharedWith", "createdById", "sourceRecordId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "certificationOfTravel", "divisionName", "itineraries", "createdAt"])
+          && hasValidTevSharingMetadata(recordData)
           && hasValidEvidenceOptions(recordData)
           && hasValidCertificationOfTravel(recordData)
           && recordData.ownerId == request.auth.uid
@@ -854,10 +899,11 @@ service cloud.firestore {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
       allow create: if isVerifiedUser()
         && request.resource.data.keys().hasAll(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "divisionName", "itineraries", "createdAt"])
-        && request.resource.data.keys().hasOnly(["ownerId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "certificationOfTravel", "divisionName", "itineraries", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "sharedWith", "createdById", "sourceRecordId", "profile", "month", "officialStation", "travelReferences", "evidenceOfTravel", "evidenceOfTravelOptions", "certificationOfTravel", "divisionName", "itineraries", "createdAt"])
+        && hasValidTevSharingMetadata(request.resource.data)
         && hasValidEvidenceOptions(request.resource.data)
         && hasValidCertificationOfTravel(request.resource.data)
-        && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.ownerId == request.auth.uid || isAuthorizedSharedMyTevCopy(request.resource.data))
         && request.resource.data.profile is map
         && request.resource.data.profile.keys().hasOnly(["name", "address", "taxIdentificationNo", "position", "unit"])
         && request.resource.data.profile.name is string

@@ -46,7 +46,7 @@ import type { AdminPermit } from "./PermitSlipAdmin";
 import { normalizeWorkflowStatus } from "./workflow-status";
 import "./special-order.css";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
-import { divisionSignatory, formatTaxIdentificationNo, tevDivisions } from "@/lib/mytev";
+import { divisionSignatory, formatTaxIdentificationNo, formatTevAmount, tevDivisions } from "@/lib/mytev";
 import { getDocumentNotificationReferences, makeDocumentNotification, type DocumentNotification } from "@/lib/document-notifications";
 import { documentRemindersCollection, type DocumentReminder } from "@/lib/document-reminders";
 import { loadPdfTools } from "@/lib/pdf-tools";
@@ -191,6 +191,11 @@ function permitUnitForPersonnel(person?: PersonnelEntry): Unit | "" {
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${date}T00:00:00`));
+}
+
+function formatTravelMonth(value?: string) {
+  if (!value || !/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return value || "the selected month";
+  return new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}-01T00:00:00Z`));
 }
 
 function formatPhilippineDateTime(date: Date) {
@@ -727,7 +732,12 @@ function PermitNotificationCenter({ isAdmin, userId, count, notifications, pendi
         <span className="notification-detail"><span className="notification-detail-label">Inclusive Dates</span><span>{formatDate(notification.inclusiveDateFrom ?? "")}{notification.inclusiveDateTo !== notification.inclusiveDateFrom && ` – ${formatDate(notification.inclusiveDateTo ?? "")}`}</span></span>
         <small>{notification.read ? "Read" : "New · Select to mark as read"}</small>
       </button></li>)}</ul></>}
-      {shownDocumentNotifications.some((notification) => notification.documentType !== "Leave Application") && <><p className="notification-section-title">Assigned Documents</p><ul>{shownDocumentNotifications.filter((notification) => notification.documentType !== "Leave Application").map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); }}>
+      {shownDocumentNotifications.some((notification) => notification.documentType === "Travel Expense Voucher") && <><p className="notification-section-title">TEV Assignments</p><ul>{shownDocumentNotifications.filter((notification) => notification.documentType === "Travel Expense Voucher").map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); }}>
+        <span className="notification-status notification-status-pending">Travel Expense Voucher</span>
+        <strong>You have been added to the TEV of {formatTravelMonth(notification.travelMonth)}, with total amount &#8369;{formatTevAmount(notification.totalAmount ?? 0)}.</strong>
+        <small>{notification.read ? "Read" : "New - Select to mark as read"}</small>
+      </button></li>)}</ul></}
+      {shownDocumentNotifications.some((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher") && <><p className="notification-section-title">Assigned Documents</p><ul>{shownDocumentNotifications.filter((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher").map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); }}>
         <span className="notification-status notification-status-pending">{notification.documentType}</span>
         {notification.activityTitle && <strong>{notification.activityTitle}</strong>}
         {notification.documentType === "Special Order" && <><span className="notification-detail"><span className="notification-detail-label">Date</span><span>{notification.dateFrom === notification.dateTo ? formatDate(notification.dateFrom ?? "") : `${formatDate(notification.dateFrom ?? "")} – ${formatDate(notification.dateTo ?? "")}`}</span></span><span className="notification-detail"><span className="notification-detail-label">Venue</span><span>{notification.venue}</span></span></>}
