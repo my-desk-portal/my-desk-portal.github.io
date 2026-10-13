@@ -208,7 +208,7 @@ function TravelOrderForm({ user, office, unit, initialOrder, onSaved, onCancel, 
   </section>;
 }
 
-function TravelOrderList({ orders, ownerId, onNew, onEdit, onPreview, onCopy, onDelete, onStatusChange, updatingId, deletingId, copyingId }: { orders: TravelOrder[]; ownerId: string; onNew: () => void; onEdit: (order: TravelOrder) => void; onPreview: (order: TravelOrder) => void; onCopy: (order: TravelOrder) => void; onDelete: (order: TravelOrder) => void; onStatusChange: (order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]) => Promise<boolean>; updatingId: string | null; deletingId: string | null; copyingId: string | null }) {
+function TravelOrderList({ orders, ownerId, preparedByNames, fallbackPreparedBy, onNew, onEdit, onPreview, onCopy, onDelete, onStatusChange, updatingId, deletingId, copyingId }: { orders: TravelOrder[]; ownerId: string; preparedByNames: Record<string, string>; fallbackPreparedBy: string; onNew: () => void; onEdit: (order: TravelOrder) => void; onPreview: (order: TravelOrder) => void; onCopy: (order: TravelOrder) => void; onDelete: (order: TravelOrder) => void; onStatusChange: (order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]) => Promise<boolean>; updatingId: string | null; deletingId: string | null; copyingId: string | null }) {
   const pageSize = 5;
   const [currentPage, setCurrentPage] = useState(0);
   const [approvalOrderId, setApprovalOrderId] = useState<string | null>(null);
@@ -250,13 +250,13 @@ function TravelOrderList({ orders, ownerId, onNew, onEdit, onPreview, onCopy, on
     <div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Travel Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "Travel Order" : "Travel Orders"} available to your account.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>
     {orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Travel Orders yet</h3><p>Create a Travel Order for one or more personnel.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Travel Order</button></div> : <div className="permit-table">
       {orders.length > pageSize && <nav className="travel-order-pagination" aria-label="Travel Order pages"><span>Showing {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, orders.length)} of {orders.length}</span><div className="travel-order-pagination-controls"><button type="button" className="ghost-button" onClick={() => setCurrentPage((page) => page - 1)} disabled={currentPage === 0}>Previous</button><span aria-live="polite">Page {currentPage + 1} of {pageCount}</span><button type="button" className="ghost-button" onClick={() => setCurrentPage((page) => page + 1)} disabled={currentPage === pageCount - 1}>Next</button></div></nav>}
-      <div className="table-head travel-order-list-head"><span>Date</span><span>Personnel</span><span>Place of Travel</span><span>Status</span></div>
+      <div className="table-head travel-order-list-head"><span>Date</span><span>Personnel</span><span>Prepared By</span><span>Place of Travel</span><span>Status</span></div>
       {visibleOrders.map((order) => {
         const isOwner = order.ownerId === ownerId;
         const isRecipient = order.recipientId === ownerId && order.people.length === 1 && order.people[0].userId === ownerId;
         return <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">
-          <strong>{order.date ? formatTravelDate(order.date) : order.status === "Pending" ? "Pending approval" : "—"}</strong><span className="travel-order-list-people">{order.people.map((person) => person.name).join(", ")}</span><span>{order.placeOfTravel}</span>
+          <strong>{order.date ? formatTravelDate(order.date) : order.status === "Pending" ? "Pending approval" : "—"}</strong><span className="travel-order-list-people">{order.people.map((person) => person.name).join(", ")}</span><span>{preparedByNames[order.ownerId] || (order.ownerId === ownerId ? fallbackPreparedBy : "") || "—"}</span><span>{order.placeOfTravel}</span>
           {isRecipient ? <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people[0].name}`} value={order.status} disabled={order.status !== "Pending" || updatingId === order.id || deletingId !== null || copyingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label> : <span className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}>{order.status}</span>}
           <span className="travel-order-row-actions">{isOwner && order.status === "Pending" && <button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onPreview(order)}>View</button><button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null || approvalOrderId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && order.status === "Pending" && <button type="button" className="delete-button" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span>
         </div>
@@ -367,6 +367,7 @@ function TravelOrderPreview({ order, onClose }: { order: TravelOrder; onClose: (
 
 export default function TravelOrderModule({ user, office, unit }: { user: User; office: string; unit: string | null }) {
   const [orders, setOrders] = useState<TravelOrder[]>([]);
+  const [preparedByNames, setPreparedByNames] = useState<Record<string, string>>({});
   const [view, setView] = useState<"list" | "new">("list");
   const [editingOrder, setEditingOrder] = useState<TravelOrder | null>(null);
   const [preview, setPreview] = useState<TravelOrder | null>(null);
@@ -441,6 +442,17 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
       visibleRows.forEach((order) => byId.set(order.id, order));
       const rows = [...byId.values()].map((row) => ({ ...row, status: normalizeWorkflowStatus(row.status) }));
       rows.sort((left, right) => ((right.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0) - ((left.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0));
+      const ownerIds = [...new Set([user.uid, ...rows.map((row) => row.ownerId)])];
+      const ownerProfiles = await Promise.all(ownerIds.map(async (ownerId) => {
+        try {
+          const profile = await getDoc(doc(firestore, "users", ownerId));
+          const name = profile.exists() && typeof profile.data().name === "string" ? profile.data().name.trim() : "";
+          return [ownerId, name] as const;
+        } catch {
+          return [ownerId, ""] as const;
+        }
+      }));
+      setPreparedByNames(Object.fromEntries(ownerProfiles));
       setOrders(rows);
     }
     loadOrders().catch((cause) => {
@@ -602,7 +614,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
 
   return <>
     {error && <div className="error-message travel-order-error">{error}</div>}
-    {editingOrder ? <TravelOrderForm key={editingOrder.id} user={user} office={office} unit={unit} initialOrder={editingOrder} onSaved={(savedOrders, replacedOrderId) => { setOrders((current) => [...savedOrders, ...current.filter((order) => order.id !== replacedOrderId)]); setEditingOrder(null); }} onCancel={() => setEditingOrder(null)} onError={setError} /> : view === "new" ? <TravelOrderForm user={user} office={office} unit={unit} onSaved={(savedOrders) => { setOrders((current) => [...savedOrders, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} ownerId={user.uid} onNew={() => { setError(""); setView("new"); }} onEdit={(order) => { setError(""); setEditingOrder(order); }} onPreview={setPreview} onCopy={(order) => void copyOrder(order)} onDelete={setPendingDelete} onStatusChange={changeStatus} updatingId={updatingId} deletingId={deletingId} copyingId={copyingId} />}
+    {editingOrder ? <TravelOrderForm key={editingOrder.id} user={user} office={office} unit={unit} initialOrder={editingOrder} onSaved={(savedOrders, replacedOrderId) => { setOrders((current) => [...savedOrders, ...current.filter((order) => order.id !== replacedOrderId)]); setEditingOrder(null); }} onCancel={() => setEditingOrder(null)} onError={setError} /> : view === "new" ? <TravelOrderForm user={user} office={office} unit={unit} onSaved={(savedOrders) => { setOrders((current) => [...savedOrders, ...current]); setView("list"); }} onCancel={() => setView("list")} onError={setError} /> : loading ? <section className="content-section"><p className="muted">Loading Travel Orders...</p></section> : <TravelOrderList orders={orders} ownerId={user.uid} preparedByNames={preparedByNames} fallbackPreparedBy={user.displayName ?? ""} onNew={() => { setError(""); setView("new"); }} onEdit={(order) => { setError(""); setEditingOrder(order); }} onPreview={setPreview} onCopy={(order) => void copyOrder(order)} onDelete={setPendingDelete} onStatusChange={changeStatus} updatingId={updatingId} deletingId={deletingId} copyingId={copyingId} />}
     <DeleteConfirmation open={Boolean(pendingDelete && pendingDelete.ownerId === user.uid)} title="Confirm Travel Order Deletion?" description="Are you sure you want to delete this Travel Order? This action cannot be undone. Its assigned TO No. values will be released." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteOrder(pendingDelete); }} />
     {preview && <TravelOrderPreview order={preview} onClose={() => setPreview(null)} />}
   </>;
