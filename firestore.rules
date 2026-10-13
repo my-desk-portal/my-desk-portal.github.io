@@ -139,6 +139,18 @@ service cloud.firestore {
           && request.resource.data.keys().hasAny(["ownerUnit"])
           && request.resource.data.ownerUnit == signedInUnit());
     }
+    function isPersonalTravelOrder(order, recipientId) {
+      return recipientId is string
+        && recipientId.size() > 0
+        && order.get("recipientId", "") == recipientId
+        && order.get("recipientIds", []) is list
+        && order.recipientIds.size() == 1
+        && order.recipientIds[0] == recipientId
+        && order.get("people", []) is list
+        && order.people.size() == 1
+        && order.people[0] is map
+        && order.people[0].get("userId", "") == recipientId;
+    }
     function isPermitAdmin() {
       let userPath = currentUserPath();
       return isVerifiedUser() && (isSuperAdmin()
@@ -1097,16 +1109,30 @@ service cloud.firestore {
     }
     match /travelOrders/{travelOrderId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
-        || (resource.data.ownerUnit is string && resource.data.ownerUnit == signedInUnit())
-        || request.auth.uid in resource.data.get("recipientIds", [])
-        || resource.data.status in ["Approved", "Pending", "Processing"]);
+        || resource.data.get("recipientId", "") == request.auth.uid);
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.ownerUnit == signedInUnit();
+        && request.resource.data.ownerUnit == signedInUnit()
+        && isPersonalTravelOrder(request.resource.data, request.resource.data.get("recipientId", ""));
       allow update: if isVerifiedUser()
-        && resource.data.ownerId == request.auth.uid
-        && request.resource.data.ownerId == resource.data.ownerId
-        && ownerUnitCanBeUpdated()
-        && resource.data.status == "Pending";
+        && resource.data.status == "Pending"
+        && ((resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == resource.data.ownerId
+          && ownerUnitCanBeUpdated()
+          && request.resource.data.status == resource.data.status
+          && isPersonalTravelOrder(request.resource.data, request.resource.data.get("recipientId", "")))
+          || (isPersonalTravelOrder(resource.data, request.auth.uid)
+            && isPersonalTravelOrder(request.resource.data, request.auth.uid)
+            && request.resource.data.ownerId == resource.data.ownerId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "date", "people", "updatedAt"])
+            && request.resource.data.status in ["Approved", "Disapproved"]
+            && (request.resource.data.status == "Approved"
+              ? request.resource.data.get("date", "") is string
+                && request.resource.data.date.size() == 10
+                && request.resource.data.people[0].get("toNumber", "") is string
+                && request.resource.data.people[0].get("toNumber", "").size() > 0
+                && request.resource.data.people[0].diff(resource.data.people[0]).affectedKeys().hasOnly(["toNumber"])
+              : request.resource.data.get("date", "") == resource.data.get("date", "")
+                && request.resource.data.people == resource.data.people)));
       allow delete: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
         && resource.data.status == "Pending";
@@ -1119,7 +1145,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(["ownerId", "travelOrderId"])
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.travelOrderId is string
-        && get(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.ownerId == request.auth.uid
+        && (get(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.ownerId == request.auth.uid
+          || isPersonalTravelOrder(get(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data, request.auth.uid))
         && getAfter(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.status == "Approved";
       allow delete: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
