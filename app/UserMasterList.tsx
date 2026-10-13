@@ -111,7 +111,12 @@ export default function UserMasterList({ user }: { user: User }) {
           <td data-label="Office">{accountOffice(account) || "—"}</td>
           <td data-label="Assignment">{accountAssignment(account) || "—"}</td>
           <td data-label="Role"><select aria-label={`Role for ${account.name || "account"}`} value={role} disabled={busy || protectedAccount} onChange={(event) => void updateAccount(account, { accountRole: event.target.value as AccountRole })}>{roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
-          <td data-label="Status / Action"><div className="user-master-list-status-actions"><span className={`user-master-list-status is-${status.toLowerCase()}`}>{status}</span><div className="user-master-list-actions"><button type="button" className="row-action" disabled={busy || protectedAccount || status === "Approved"} onClick={() => void updateAccount(account, { accountStatus: "Approved" })}>{busy ? "Saving..." : "Approve"}</button><button type="button" className="row-action" disabled={busy || protectedAccount || status === "Disapproved"} onClick={() => void updateAccount(account, { accountStatus: "Disapproved" })}>{busy ? "Saving..." : "Disapprove"}</button><button type="button" className="delete-button" disabled={busy || protectedAccount} onClick={() => setPendingDelete(account)}>{busy ? "Deleting..." : "Delete"}</button></div></div></td>
+          <td data-label="Status / Action"><select className="user-master-list-action-select" aria-label={`Status and actions for ${account.name || "account"}`} value="" disabled={busy || protectedAccount} onChange={(event) => {
+            const action = event.target.value;
+            if (action === "approve") void updateAccount(account, { accountStatus: "Approved" });
+            else if (action === "disapprove") void updateAccount(account, { accountStatus: "Disapproved" });
+            else if (action === "delete") setPendingDelete(account);
+          }}><option value="" disabled>{status}</option>{status !== "Approved" && <option value="approve">Approve</option>}{status !== "Disapproved" && <option value="disapprove">Disapprove</option>}<option value="delete">Delete</option></select></td>
         </tr>;
       })}
       </tbody></table></div>

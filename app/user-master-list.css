@@ -10,12 +10,5 @@
 .user-master-list-table td strong{color:var(--ink)}
 .user-master-list-table select{background:#fff;border:1px solid var(--line);border-radius:6px;color:var(--ink);font:inherit;max-width:130px;padding:7px}
 .user-master-list-table select:disabled{background:#f2f5f3;color:var(--muted)}
-.user-master-list-status-actions{align-items:start;display:grid;gap:8px;justify-items:start}
-.user-master-list-status{border:1px solid var(--line);display:inline-block;font-size:11px;font-weight:700;padding:5px 8px;white-space:nowrap}
-.user-master-list-status.is-pending{background:#fff6d8;border-color:#edcf67;color:#755800}
-.user-master-list-status.is-approved{background:#eaf5ed;border-color:#c4dfcb;color:#21603a}
-.user-master-list-status.is-disapproved{background:#fff1ef;border-color:#e5b8ae;color:#9d321f}
-.user-master-list-actions{align-items:center;display:flex;flex-wrap:wrap;gap:6px 9px;white-space:normal}
-.user-master-list-actions button{font-size:12px;padding:0;white-space:nowrap}
-.user-master-list-actions button:disabled{cursor:not-allowed;opacity:.45}
+.user-master-list-table .user-master-list-action-select{max-width:140px}
 @media(max-width:720px){.user-master-list-section .section-heading{align-items:flex-start}.user-master-list-count{font-size:10px;padding:6px 8px}.user-master-list-table{min-width:880px}}
