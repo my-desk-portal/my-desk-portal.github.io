@@ -493,6 +493,7 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
       if (!firestore) { setError("Firebase is not configured."); setLoading(false); return; }
       setLoading(true);
       setError("");
+      setProfile(null);
       try {
         if (mode === "approved-records") {
           const plansSnapshot = await getDocs(query(collection(firestore, calendarOfActivitiesCollection), where("status", "==", "Approved")));
@@ -508,6 +509,7 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
         const office = accountOffice(profileData) ?? "";
         if (!assignment || !office) throw new Error("Set your Office and Assignment in Profile to view its Calendar of Activities.");
         const loadedProfile: Profile = { name: typeof profileData.name === "string" ? profileData.name : "", position: typeof profileData.position === "string" ? profileData.position : "", office, unit: assignment };
+        if (!cancelled) setProfile(loadedProfile);
         const [allAccountsSnapshot, unitPlansSnapshot, ownedPlansSnapshot] = await Promise.all([
           getDocs(collection(firestore, "users")),
           getDocs(query(collection(firestore, calendarOfActivitiesCollection), where("unit", "==", loadedProfile.unit))),
@@ -516,9 +518,13 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
         const receivedNotifications = await getDocs(query(collection(firestore, calendarOfActivitiesNotificationsCollection), where("recipientId", "==", user.uid)));
         const receivedPlans = await Promise.all(receivedNotifications.docs.map((notification) => {
           const calendarId = notification.data().calendarId;
-          return typeof calendarId === "string" && calendarId
-            ? getDoc(doc(firestore, calendarOfActivitiesCollection, calendarId))
-            : Promise.resolve(null);
+          if (typeof calendarId !== "string" || !calendarId) return Promise.resolve(null);
+          return getDoc(doc(firestore, calendarOfActivitiesCollection, calendarId)).catch((cause) => {
+            // A notification may outlive the recipient's assignment. Keep loading calendars
+            // they can still access instead of failing the entire screen on this old link.
+            if ((cause as { code?: string }).code === "permission-denied") return null;
+            throw cause;
+          });
         }));
         const admins = allAccountsSnapshot.docs.filter((item) => isApprovedAdminAccount(item.data().accountRole, item.data().accountStatus)).map((item) => {
           const data = item.data();
@@ -542,7 +548,7 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
         });
         const rows = [...rowsById.values()];
         rows.sort((first, second) => timestampMillis(second.createdAt) - timestampMillis(first.createdAt));
-        if (!cancelled) { setProfile(loadedProfile); setAccounts(colleagues); setAdminAccounts(admins); setPlans(rows); }
+        if (!cancelled) { setAccounts(colleagues); setAdminAccounts(admins); setPlans(rows); }
       } catch (cause) {
         if (!cancelled) {
           const code = (cause as { code?: string }).code;
