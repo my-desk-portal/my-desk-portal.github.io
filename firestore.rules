@@ -151,6 +151,20 @@ service cloud.firestore {
         && order.people[0] is map
         && order.people[0].get("userId", "") == recipientId;
     }
+    function isNamedTravelOrderRecipient(order) {
+      let userPath = currentUserPath();
+      return exists(userPath)
+        && order.get("people", []) is list
+        && order.people.size() == 1
+        && order.people[0] is map
+        && order.people[0].get("name", "") is string
+        && order.people[0].get("name", "").size() > 0
+        && order.people[0].get("name", "") == get(userPath).data.get("name", "");
+    }
+    function canUpdateTravelOrderAsRecipient(order) {
+      return isPersonalTravelOrder(order, request.auth.uid)
+        || isNamedTravelOrderRecipient(order);
+    }
     function isPermitAdmin() {
       let userPath = currentUserPath();
       return isVerifiedUser() && (isSuperAdmin()
@@ -1121,8 +1135,10 @@ service cloud.firestore {
           && ownerUnitCanBeUpdated()
           && request.resource.data.status == resource.data.status
           && isPersonalTravelOrder(request.resource.data, request.resource.data.get("recipientId", "")))
-          || (isPersonalTravelOrder(resource.data, request.auth.uid)
-            && isPersonalTravelOrder(request.resource.data, request.auth.uid)
+          || ((resource.data.ownerId == request.auth.uid
+              || canUpdateTravelOrderAsRecipient(resource.data))
+            && (resource.data.ownerId == request.auth.uid
+              || canUpdateTravelOrderAsRecipient(request.resource.data))
             && request.resource.data.ownerId == resource.data.ownerId
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "date", "people", "updatedAt"])
             && request.resource.data.status in ["Approved", "Disapproved"]
@@ -1147,7 +1163,7 @@ service cloud.firestore {
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.travelOrderId is string
         && (get(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.ownerId == request.auth.uid
-          || isPersonalTravelOrder(get(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data, request.auth.uid))
+          || canUpdateTravelOrderAsRecipient(get(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data))
         && getAfter(/databases/$(database)/documents/travelOrders/$(request.resource.data.travelOrderId)).data.status == "Approved";
       allow delete: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid
