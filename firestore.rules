@@ -91,7 +91,9 @@ service cloud.firestore {
       return existsAfter(calendarRef)
         && exists(ownerPath)
         && exists(recipientPath)
-        && samePersonnelScope(get(ownerPath).data, get(recipientPath).data);
+        && (samePersonnelScope(get(ownerPath).data, get(recipientPath).data)
+          || (get(recipientPath).data.get("accountRole", "") == "admin"
+            && get(recipientPath).data.get("accountStatus", "Approved") == "Approved"));
     }
     function isCalendarOwnerOrSameUnit(calendarId) {
       let calendarRef = /databases/$(database)/documents/calendarOfActivities/$(calendarId);
@@ -417,6 +419,7 @@ service cloud.firestore {
         && (resource.data.get("ownerId", "") == request.auth.uid
           || resource.data.get("unit", "") == signedInUnit()
           || resource.data.get("status", "") == "Approved"
+          || isPermitAdmin()
           || isCalendarOwnerOrSameUnit(calendarId));
       allow create: if isVerifiedUser()
         && request.resource.data.keys().hasAll(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])

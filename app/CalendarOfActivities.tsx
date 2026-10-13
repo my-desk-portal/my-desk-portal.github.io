@@ -5,7 +5,7 @@ import { collection, deleteField, doc, getDoc, getDocs, query, serverTimestamp, 
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { accountAssignment, accountOffice } from "@/lib/account-profile";
-import { personnelMatchesAccountScope } from "@/lib/personnel";
+import { isApprovedAdminAccount, personnelMatchesAccountScope } from "@/lib/personnel";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { isSuperadminRole } from "@/lib/user-roles";
 import { calendarOfActivitiesApprovalNotificationsCollection, calendarOfActivitiesCollection, calendarOfActivitiesNotificationsCollection } from "@/lib/calendar-of-activities-storage";
@@ -61,7 +61,7 @@ type CalendarOfActivities = {
   createdAt?: unknown;
 };
 type Profile = { name: string; position: string; office: string; unit: Unit };
-type Account = { id: string; name: string };
+type Account = { id: string; name: string; adminAccount: boolean };
 
 const unitLabel = (unit: Unit) => unit === "Field Operations Division" || unit.startsWith("FOD-") ? unit : `FOD-${unit}`;
 const calendarOfActivitiesStatus = (plan: CalendarOfActivities): CalendarOfActivitiesStatus => plan.status === "Approved" || plan.status === "Disapproved" ? plan.status : "Pending";
@@ -403,7 +403,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
           }} required /></label></div>
           <label className="calendar-of-activities-entry">Activity<textarea rows={1} maxLength={400} value={activity.activity} onChange={(event) => updateActivity(index, { activity: event.target.value })} required /></label>
           <label className="calendar-of-activities-entry calendar-of-activities-location">Location<input maxLength={180} value={activity.location} onChange={(event) => updateActivity(index, { location: event.target.value })} required /></label>
-          <div className="calendar-of-activities-responsible-field"><span className="calendar-of-activities-responsible-label">Responsible Personnel</span><div className="calendar-of-activities-responsible-add"><select aria-label={`Choose responsible personnel for activity ${index + 1}`} value={activity.nextResponsibleId} onChange={(event) => updateActivity(index, { nextResponsibleId: event.target.value })} disabled={!accounts.length}><option value="">{accounts.length ? "Select a personnel" : "No other accounts listed under this office"}</option>{accounts.filter((account) => !activity.responsiblePeople.some((person) => person.userId === account.id)).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select><button type="button" className="ghost-button" onClick={() => addResponsiblePerson(index)} disabled={!activity.nextResponsibleId}>Add personnel</button></div>
+          <div className="calendar-of-activities-responsible-field"><span className="calendar-of-activities-responsible-label">Responsible Personnel</span><div className="calendar-of-activities-responsible-add"><select aria-label={`Choose responsible personnel for activity ${index + 1}`} value={activity.nextResponsibleId} onChange={(event) => updateActivity(index, { nextResponsibleId: event.target.value })} disabled={!accounts.length}><option value="">{accounts.length ? "Select a personnel" : "No other accounts listed under this office"}</option>{accounts.filter((account) => !activity.responsiblePeople.some((person) => person.userId === account.id)).map((account) => <option key={account.id} value={account.id}>{account.name}{account.adminAccount ? " (Admin account)" : ""}</option>)}</select><button type="button" className="ghost-button" onClick={() => addResponsiblePerson(index)} disabled={!activity.nextResponsibleId}>Add personnel</button></div>
             {activity.responsiblePeople.length > 0 && <ul className="calendar-of-activities-responsible-list">{activity.responsiblePeople.map((person) => <li key={person.userId}><span>{person.name}</span><button type="button" className="remove-action" aria-label={`Remove ${person.name}`} onClick={() => removeResponsiblePerson(index, person.userId)}>Remove</button></li>)}</ul>}
           </div>
           {activities.length > 1 && <button type="button" className="remove-participant remove-action" onClick={() => setActivities((current) => current.filter((_, row) => row !== index))}>Remove activity</button>}
@@ -487,8 +487,12 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
         const colleagues = allAccountsSnapshot.docs.filter((item) => {
           if (item.id === user.uid || isSuperadminRole(item.data().accountRole)) return false;
           const person = item.data();
-          return personnelMatchesAccountScope(accountOffice(person) ?? "", accountAssignment(person), loadedProfile.office, loadedProfile.unit);
-        }).map((item) => ({ id: item.id, name: String(item.data().name ?? "") })).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
+          return personnelMatchesAccountScope(accountOffice(person) ?? "", accountAssignment(person), loadedProfile.office, loadedProfile.unit, {
+            includeAdminAccounts: true,
+            accountRole: person.accountRole,
+            accountStatus: person.accountStatus,
+          });
+        }).map((item) => ({ id: item.id, name: String(item.data().name ?? ""), adminAccount: isApprovedAdminAccount(item.data().accountRole, item.data().accountStatus) })).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
         const rowsById = new Map<string, CalendarOfActivities>([...unitPlansSnapshot.docs, ...ownedPlansSnapshot.docs].map((item): [string, CalendarOfActivities] => [item.id, { id: item.id, ...item.data() } as CalendarOfActivities]));
         receivedPlans.forEach((item) => {
           if (item?.exists()) rowsById.set(item.id, { id: item.id, ...item.data() } as CalendarOfActivities);

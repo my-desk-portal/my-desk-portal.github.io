@@ -5,7 +5,7 @@ import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, up
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { accountOffice, accountAssignment } from "@/lib/account-profile";
-import { personnelMatchesAccountScope } from "@/lib/personnel";
+import { isApprovedAdminAccount, personnelMatchesAccountScope } from "@/lib/personnel";
 import { isSuperadminRole } from "@/lib/user-roles";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { makeDocumentNotification } from "@/lib/document-notifications";
@@ -46,7 +46,7 @@ import "./mytev-mobile.css";
 const maxTravelReferences = 8;
 const maxItineraries = 8;
 const maxTevPersonnel = 18;
-type TevPersonnel = { userId: string; profile: TevProfile; office: string; profileComplete: boolean };
+type TevPersonnel = { userId: string; profile: TevProfile; office: string; profileComplete: boolean; adminAccount: boolean };
 const tevEvidenceOptions = [
   { label: "Approved Itinerary of Travel", pattern: /\bapproved itinerary of travel\b/i },
   { label: "Approved Travel Orders", pattern: /\bapproved travel orders?\b/i },
@@ -427,14 +427,14 @@ function MyTevForm({ profile, ownerId, initialRecord, personnel, rates, onCancel
       <section className="mytev-form-group"><h3>Official travel</h3><div className="mytev-trip-fields">
         <label>Official Station<select value={officialStation} onChange={(event) => setOfficialStation(event.target.value as TevOfficialStation)} required>{tevOfficialStations.map((station) => <option key={station} value={station}>{station}</option>)}</select></label>
         <label>Month and Year<input type="month" value={month} onChange={(event) => updateMonth(event.target.value)} disabled={Boolean(initialRecord)} required /></label>
-        <label>Division<select value={divisionName} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division}>{division}</option>)}</select></label>
+        <label className="mytev-division-field">Division<select value={divisionName} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division}>{division}</option>)}</select></label>
       </div></section>
       {!initialRecord && <section className="mytev-form-group mytev-personnel-group">
         <div className="mytev-form-group-heading"><div><h3>Personnel for this TEV</h3><p>Add personnel from your Office and Assignment; Field Operations Division (ILD) includes AGRISTAT, AMIA, and DRRM. Each person receives the same travel details with their own profile information on the TEV.</p></div><button type="button" className="ghost-button" disabled={selectedPersonnelIds.length >= maxTevPersonnel} onClick={addPersonnelSlot}>+ Add another personnel</button></div>
         {selectedPersonnelIds.length > 0 && <div className="mytev-personnel-list">{selectedPersonnelIds.map((selectedId, index) => <div className="mytev-personnel-entry" key={`tev-personnel-${index}`}>
           <label>Add a Personnel for this TEV<select aria-label={`Personnel for this TEV ${index + 1}`} value={selectedId} onChange={(event) => updateSelectedPersonnel(index, event.target.value)} disabled={saving}>
             <option value="">Select a personnel</option>
-            {personnel.filter((person) => person.userId === selectedId || !selectedPersonnelIds.includes(person.userId)).map((person) => <option key={person.userId} value={person.userId} disabled={!person.profileComplete}>{person.profile.name} ({person.office || person.profile.unit}){person.profile.position ? ` - ${person.profile.position}` : ""}{person.profileComplete ? "" : " - Complete Profile first"}</option>)}
+            {personnel.filter((person) => person.userId === selectedId || !selectedPersonnelIds.includes(person.userId)).map((person) => <option key={person.userId} value={person.userId} disabled={!person.profileComplete}>{person.profile.name}{person.adminAccount ? " (Admin account)" : ""} ({person.office || person.profile.unit}){person.profile.position ? ` - ${person.profile.position}` : ""}{person.profileComplete ? "" : " - Complete Profile first"}</option>)}
           </select></label>
           <button type="button" className="mytev-remove-personnel remove-action" aria-label={`Remove personnel ${index + 1}`} disabled={saving} onClick={() => removePersonnelSlot(index)}>Remove</button>
         </div>)}</div>}
@@ -443,7 +443,7 @@ function MyTevForm({ profile, ownerId, initialRecord, personnel, rates, onCancel
       <section className="mytev-form-group"><div className="mytev-form-group-heading"><div><h3>Travel Order references</h3><p>Enter the travel order number and approved date range for each trip.</p></div><button type="button" className="ghost-button mytev-add-reference" disabled={references.length >= maxTravelReferences} onClick={() => setReferences((current) => [...current, blankTevTravelReference()])}>Add reference</button></div>
         <div className="mytev-reference-list">{references.map((reference, index) => <fieldset className="mytev-reference-row" key={`travel-reference-${index}`}><legend>Travel reference {index + 1}</legend>
           <label>Travel No.<input value={reference.travelOrderNo} onChange={(event) => updateReference(index, { travelOrderNo: event.target.value })} maxLength={40} required /></label>
-          <div className="mytev-date-field"><span>TO Date (Records Unit)</span><MonthAwareDateInput label="TO Date (Records Unit)" month={month} value={reference.toDateRecordsUnit} onChange={(value) => updateReference(index, { toDateRecordsUnit: value })} /></div>
+          <div className="mytev-date-field mytev-reference-to-date"><span>TO Date (Records Unit)</span><MonthAwareDateInput label="TO Date (Records Unit)" month={month} value={reference.toDateRecordsUnit} onChange={(value) => updateReference(index, { toDateRecordsUnit: value })} /></div>
           <div className="mytev-date-field"><span>Date From</span><MonthAwareDateInput label="Date From" month={month} value={reference.dateFrom} required onChange={(value) => {
             const dateTo = reference.dateTo && (!value || reference.dateTo >= value) ? reference.dateTo : "";
             updateReference(index, { dateFrom: value, dateTo });
@@ -612,6 +612,7 @@ export default function MyTevModule({ user }: { user: User }) {
       const allUnitPersonnel = accountsSnapshot.docs.flatMap((account) => {
         const accountData = account.data();
         if (account.id === user.uid || isSuperadminRole(accountData.accountRole)) return [];
+        const adminAccount = isApprovedAdminAccount(accountData.accountRole, accountData.accountStatus);
         const accountProfile: TevProfile = {
           name: typeof accountData.name === "string" ? accountData.name.trim() : "",
           address: typeof accountData.address === "string" ? accountData.address.trim() : "",
@@ -620,10 +621,14 @@ export default function MyTevModule({ user }: { user: User }) {
           unit: accountAssignment(accountData),
         };
         const office = accountOffice(accountData) ?? "";
-        if (!accountProfile.name || !accountProfile.unit) return [];
-        if (!personnelMatchesAccountScope(office, accountProfile.unit, currentOffice, accountUnit)) return [];
+        if (!accountProfile.name || (!accountProfile.unit && !adminAccount)) return [];
+        if (!personnelMatchesAccountScope(office, accountProfile.unit, currentOffice, accountUnit, {
+          includeAdminAccounts: true,
+          accountRole: accountData.accountRole,
+          accountStatus: accountData.accountStatus,
+        })) return [];
         const profileComplete = Boolean(office && accountProfile.address && accountProfile.taxIdentificationNo && accountProfile.position);
-        return [{ userId: account.id, profile: accountProfile, office, profileComplete }];
+        return [{ userId: account.id, profile: accountProfile, office, profileComplete, adminAccount }];
       }).sort((first, second) => first.office.localeCompare(second.office) || first.profile.name.localeCompare(second.profile.name));
       setPersonnel(allUnitPersonnel);
       const loaded = recordsSnapshot.docs.map((item) => {

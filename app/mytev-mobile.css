@@ -12,8 +12,10 @@
   .mytev-form-section .section-heading>.ghost-button{grid-column:1;grid-row:2;justify-self:start}
   .mytev-list-section .section-heading>.primary-button{align-self:start;grid-column:2;grid-row:1;justify-self:end}
   .mytev-profile-summary,.mytev-trip-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mytev-division-field{grid-column:1/-1}
   .mytev-reference-row{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px}
   .mytev-reference-row>label:first-of-type{grid-column:1/-1}
+  .mytev-reference-to-date{grid-column:1/-1}
   .mytev-remove-reference{grid-column:2;justify-self:end}
   .mytev-certification-picker{padding:13px}
   .mytev-certification-options{grid-template-columns:1fr}

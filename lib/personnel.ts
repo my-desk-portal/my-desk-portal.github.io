@@ -3,15 +3,25 @@ import { db } from "@/lib/firebase";
 import { isSuperadminRole } from "@/lib/user-roles";
 import { accountOffice, accountAssignment, accountDesignation, accountProfileSelection, fieldOperationsIldAssignments } from "@/lib/account-profile";
 
-export type PersonnelEntry = { userId: string; name: string; position: string; office: string; unit: string };
+export type PersonnelEntry = { userId: string; name: string; position: string; office: string; unit: string; accountRole?: string; accountStatus?: string };
 export type PermitAdminSignatory = { userId: string; name: string; position: string; office: string; assignment: string; designation: string };
+
+export function isApprovedAdminAccount(accountRole: unknown, accountStatus: unknown) {
+  return accountRole === "admin" && (accountStatus === undefined || accountStatus === null || accountStatus === "Approved");
+}
+
+export function personnelDisplayName(person: Pick<PersonnelEntry, "name" | "accountRole">) {
+  return person.accountRole === "admin" ? `${person.name} (Admin account)` : person.name;
+}
 
 export function personnelMatchesAccountScope(
   candidateOffice: string,
   candidateAssignment: string,
   office: string,
   assignment: string,
+  options: { includeAdminAccounts?: boolean; accountRole?: unknown; accountStatus?: unknown } = {},
 ) {
+  if (options.includeAdminAccounts && isApprovedAdminAccount(options.accountRole, options.accountStatus)) return true;
   const scope = accountProfileSelection({ office, assignment, profileFieldsVersion: 3 });
   const candidate = accountProfileSelection({ office: candidateOffice, assignment: candidateAssignment, profileFieldsVersion: 3 });
   if (!scope.office || candidate.office !== scope.office) return false;
@@ -21,8 +31,12 @@ export function personnelMatchesAccountScope(
   return Boolean(scope.assignment && candidate.assignment === scope.assignment);
 }
 
-export function filterPersonnelForAccount(entries: PersonnelEntry[], office: string, assignment: string) {
-  return entries.filter((person) => personnelMatchesAccountScope(person.office, person.unit, office, assignment));
+export function filterPersonnelForAccount(entries: PersonnelEntry[], office: string, assignment: string, options: { includeAdminAccounts?: boolean } = {}) {
+  return entries.filter((person) => personnelMatchesAccountScope(person.office, person.unit, office, assignment, {
+    ...options,
+    accountRole: person.accountRole,
+    accountStatus: person.accountStatus,
+  }));
 }
 
 const personnelCacheDurationMs = 60_000;
@@ -83,15 +97,23 @@ export async function loadPersonnel(options: { includeAllAccounts?: boolean } = 
           position: typeof data.position === "string" ? data.position.trim() : "",
           office: accountOffice(data) ?? "",
           unit: accountAssignment(data),
+          accountRole: typeof data.accountRole === "string" ? data.accountRole : undefined,
+          accountStatus: typeof data.accountStatus === "string" ? data.accountStatus : undefined,
         };
       }).filter((person) => person.name);
       const unique = new Map<string, PersonnelEntry>();
+      const adminAccounts: PersonnelEntry[] = [];
       for (const entry of entries) {
+        if (isApprovedAdminAccount(entry.accountRole, entry.accountStatus)) {
+          adminAccounts.push(entry);
+          continue;
+        }
         const key = entry.name.toLowerCase().replace(/\s+/g, " ");
         const existing = unique.get(key);
         if (!existing || (!existing.position && entry.position) || (!existing.office && entry.office) || (!existing.unit && entry.unit)) unique.set(key, entry);
       }
-      const result = [...unique.values()].sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
+      const result = [...unique.values(), ...adminAccounts].sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" })
+        || first.userId.localeCompare(second.userId));
       cachedPersonnel.set(includeAllAccounts, { entries: result, expiresAt: Date.now() + personnelCacheDurationMs });
       return result;
     }).finally(() => {
