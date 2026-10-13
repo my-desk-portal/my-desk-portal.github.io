@@ -376,7 +376,7 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
   </article></div>;
 }
 
-export default function MyTevDocuments({ record, rates }: { record: MyTevRecord; rates: TevRegionRate[] }) {
+export default function MyTevDocuments({ record, rates, order = "preview" }: { record: MyTevRecord; rates: TevRegionRate[]; order?: "preview" | "print" }) {
   const itineraryPages = record.itineraries.flatMap((itinerary) => {
     const pages = paginateRows(itinerary.rows, maxItineraryRows, 134, 7, itineraryRowHeight);
     return pages.map((page, index) => ({ itinerary, page, pageNumber: index + 1 }));
@@ -385,11 +385,12 @@ export default function MyTevDocuments({ record, rates }: { record: MyTevRecord;
   const cenrrList = cenrrRows(record.itineraries);
   const cenrrPages = paginateRows(cenrrList, maxCenrrRows, 123, 4.2, cenrrRowHeight);
   const cenrrGrandTotal = cenrrList.reduce((sum, row) => sum + row.amount, 0);
+  const itineraryDocuments = itineraryPages.map(({ itinerary, page, pageNumber, documentPageNumber }, index) => <MyTevItineraryPage key={`${itinerary.id}-${pageNumber - 1}`} record={record} itinerary={itinerary} page={page} pageNumber={pageNumber} documentPageNumber={documentPageNumber} isLastDocumentPage={index === itineraryPages.length - 1} recordTotals={itineraryTotals} rates={rates} />);
+  const orsDocument = <MyTevOrsPage record={record} rates={rates} />;
+  const disbursementDocument = <MyTevDisbursementPage record={record} rates={rates} />;
+  const cenrrDocuments = cenrrPages.map((page, index) => <MyTevCenrrPage key={`cenrr-${index}`} record={record} page={page} pageNumber={index + 1} pageCount={cenrrPages.length} grandTotal={cenrrGrandTotal} />);
+  const ctcDocument = <MyTevCtcPage record={record} />;
   return <div className="mytev-preview-pages">
-    {itineraryPages.map(({ itinerary, page, pageNumber, documentPageNumber }, index) => <MyTevItineraryPage key={`${itinerary.id}-${pageNumber - 1}`} record={record} itinerary={itinerary} page={page} pageNumber={pageNumber} documentPageNumber={documentPageNumber} isLastDocumentPage={index === itineraryPages.length - 1} recordTotals={itineraryTotals} rates={rates} />)}
-    <MyTevOrsPage record={record} rates={rates} />
-    <MyTevDisbursementPage record={record} rates={rates} />
-    {cenrrPages.map((page, index) => <MyTevCenrrPage key={`cenrr-${index}`} record={record} page={page} pageNumber={index + 1} pageCount={cenrrPages.length} grandTotal={cenrrGrandTotal} />)}
-    <MyTevCtcPage record={record} />
+    {order === "print" ? <>{disbursementDocument}{orsDocument}{itineraryDocuments}{cenrrDocuments}{ctcDocument}</> : <>{itineraryDocuments}{orsDocument}{disbursementDocument}{cenrrDocuments}{ctcDocument}</>}
   </div>;
 }

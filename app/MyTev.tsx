@@ -540,6 +540,7 @@ export default function MyTevModule({ user }: { user: User }) {
   const [regionRates, setRegionRates] = useState<TevRegionRate[] | null>(null);
   const [regionRateError, setRegionRateError] = useState("");
   const pagesRef = useRef<HTMLDivElement>(null);
+  const printPagesRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [previewError, setPreviewError] = useState("");
@@ -670,9 +671,9 @@ export default function MyTevModule({ user }: { user: User }) {
     } finally { setDeletingId(null); }
   }
 
-  async function preparePages() {
-    if (!pagesRef.current) throw new Error("The myTEV pages are not ready.");
-    await Promise.all(Array.from(pagesRef.current.querySelectorAll("img")).map(async (image) => {
+  async function preparePages(container: HTMLDivElement | null = pagesRef.current) {
+    if (!container) throw new Error("The myTEV pages are not ready.");
+    await Promise.all(Array.from(container.querySelectorAll("img")).map(async (image) => {
       if (!image.complete) await new Promise<void>((resolve, reject) => {
         image.onload = () => resolve();
         image.onerror = () => reject(new Error("The DA Caraga logo could not be loaded."));
@@ -682,7 +683,7 @@ export default function MyTevModule({ user }: { user: User }) {
     }));
     if (document.fonts?.ready) await document.fonts.ready;
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    return Array.from(pagesRef.current.querySelectorAll<HTMLElement>(".mytev-paper"));
+    return Array.from(container.querySelectorAll<HTMLElement>(".mytev-paper"));
   }
 
   async function downloadPdf() {
@@ -711,7 +712,7 @@ export default function MyTevModule({ user }: { user: User }) {
     setPrinting(true);
     setPreviewError("");
     try {
-      await preparePages();
+      await preparePages(printPagesRef.current);
       window.print();
     } catch (cause) {
       setPreviewError(cause instanceof Error ? cause.message : "Unable to prepare the myTEV pages for printing.");
@@ -729,6 +730,6 @@ export default function MyTevModule({ user }: { user: User }) {
       <MyTevList records={records} loading={loading} deletingId={deletingId} rates={regionRates} rateError={regionRateError} onNew={() => { setLoadError(""); setEditingRecord(null); setView("new"); }} onEdit={(record) => { setLoadError(""); setEditingRecord(record); setView("edit"); }} onView={(record) => { if (!regionRates) { setRegionRateError(regionRateError || "Regional rates are still loading. Wait a moment, then open the record again."); return; } setPreview(record); setPreviewError(""); }} onDelete={setPendingDelete} />
     </>}
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Delete this myTEV record?" description="This removes the record and its generated document set permanently." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
-    {preview && regionRates && <div className="preview-backdrop mytev-preview-backdrop"><div className="preview-toolbar"><span>myTEV preview · A4 document set</span><button type="button" className="ghost-button" onClick={() => { setPreview(null); setPreviewError(""); }}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={() => void downloadPdf()}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={() => void printPages()}>{printing ? "Preparing print..." : "Print"}</button>{previewError && <small className="download-error" role="alert">{previewError}</small>}</div><div ref={pagesRef} className="mytev-document-pages"><MyTevDocuments record={preview} rates={regionRates} /></div></div>}
+    {preview && regionRates && <div className="preview-backdrop mytev-preview-backdrop"><div className="preview-toolbar"><span>myTEV preview · A4 document set</span><button type="button" className="ghost-button" onClick={() => { setPreview(null); setPreviewError(""); }}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={() => void downloadPdf()}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={() => void printPages()}>{printing ? "Preparing print..." : "Print"}</button>{previewError && <small className="download-error" role="alert">{previewError}</small>}</div><div ref={pagesRef} className="mytev-document-pages mytev-screen-document-pages"><MyTevDocuments record={preview} rates={regionRates} /></div><div ref={printPagesRef} className="mytev-document-pages mytev-print-document-pages"><MyTevDocuments record={preview} rates={regionRates} order="print" /></div></div>}
   </div>;
 }
