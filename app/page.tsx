@@ -468,6 +468,7 @@ function RegistrationDetails({ user, onSubmitted }: { user: User; onSubmitted: (
         accountRole: accountRoleForEmail(user.email),
         accountStatus: isRootSuperAdmin ? "Approved" : "Pending",
         isRootSuperAdmin,
+        createdAt: serverTimestamp(),
       }, { merge: true });
       onSubmitted(user);
     } catch (cause) {

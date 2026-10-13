@@ -214,7 +214,7 @@ service cloud.firestore {
     }
     function validUserProfile(data) {
       return data.keys().hasAll(["name", "position", "office", "assignment", "profileFieldsVersion", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin"])
-        && data.keys().hasOnly(["name", "position", "office", "assignment", "profileFieldsVersion", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole", "accountStatus", "isRootSuperAdmin", "emailVerified", "registrationStage", "welcomeNotificationSeenAt"])
+        && data.keys().hasOnly(["name", "position", "office", "assignment", "profileFieldsVersion", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole", "accountStatus", "isRootSuperAdmin", "emailVerified", "registrationStage", "welcomeNotificationSeenAt", "createdAt"])
         && data.emailVerified is bool
         && data.isRootSuperAdmin is bool
         && data.accountRole in ["superadmin", "admin", "regular"]
@@ -233,6 +233,7 @@ service cloud.firestore {
         && data.position.size() <= 120
         && (!data.keys().hasAny(["designation"]) || (data.designation is string && data.designation.size() <= 2000))
         && (!data.keys().hasAny(["welcomeNotificationSeenAt"]) || data.welcomeNotificationSeenAt is timestamp)
+        && (!data.keys().hasAny(["createdAt"]) || data.createdAt is timestamp)
         && data.office is string
         && data.office.size() > 0
         && data.office.size() <= 120
@@ -287,7 +288,7 @@ service cloud.firestore {
       // Users may edit their own profile and mark their email verified, but cannot approve themselves or change their role.
       allow update: if (isEmailVerified()
           && request.auth.uid == userId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name", "position", "office", "assignment", "projectProgram", "profileFieldsVersion", "unit", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin", "registrationStage", "welcomeNotificationSeenAt"])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name", "position", "office", "assignment", "projectProgram", "profileFieldsVersion", "unit", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin", "registrationStage", "welcomeNotificationSeenAt", "createdAt"])
           && request.resource.data.keys().hasAll(["name", "position", "office", "assignment", "profileFieldsVersion", "emailVerified"])
           && !request.resource.data.keys().hasAny(["unit", "projectProgram"])
           && request.resource.data.emailVerified == true
@@ -306,6 +307,9 @@ service cloud.firestore {
             || (!resource.data.keys().hasAny(["welcomeNotificationSeenAt"])
               && request.resource.data.accountStatus == "Approved"
               && request.resource.data.welcomeNotificationSeenAt == request.time))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["createdAt"])
+            || (!resource.data.keys().hasAny(["createdAt"])
+              && request.resource.data.createdAt == request.time))
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
           && request.resource.data.name.size() <= 120

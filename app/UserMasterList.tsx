@@ -5,13 +5,14 @@ import type { User } from "firebase/auth";
 import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { normalizeAccountRole, normalizeAccountStatus, type AccountRole, type AccountStatus } from "@/lib/user-roles";
-import { accountOffice, accountAssignment } from "@/lib/account-profile";
+import { accountOffice } from "@/lib/account-profile";
 import DeleteConfirmation from "./DeleteConfirmation";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./user-master-list.css";
 
 type MasterListAccount = {
   id: string;
+  createdAt?: unknown;
   name?: string;
   position?: string;
   designation?: string;
@@ -24,6 +25,17 @@ type MasterListAccount = {
   accountStatus?: AccountStatus;
   accountRole?: AccountRole | "user";
 };
+
+function accountCreatedAtMillis(value: unknown) {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  if (value && typeof value === "object") {
+    const timestamp = value as { toMillis?: () => number; seconds?: number };
+    if (typeof timestamp.toMillis === "function") return timestamp.toMillis();
+    if (typeof timestamp.seconds === "number") return timestamp.seconds * 1000;
+  }
+  return 0;
+}
 
 const roleOptions: { value: AccountRole; label: string }[] = [
   { value: "superadmin", label: "Super Admin" },
@@ -45,8 +57,9 @@ export default function UserMasterList({ user }: { user: User }) {
     return onSnapshot(query(collection(db, "users"), where("emailVerified", "==", true)), (snapshot) => {
       const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as MasterListAccount));
       rows.sort((first, second) => {
+        const newestFirst = accountCreatedAtMillis(second.createdAt) - accountCreatedAtMillis(first.createdAt);
         const statusOrder = (normalizeAccountStatus(first.accountStatus) === "Pending" ? 0 : 1) - (normalizeAccountStatus(second.accountStatus) === "Pending" ? 0 : 1);
-        return statusOrder || String(first.name ?? "").localeCompare(String(second.name ?? ""), "en", { sensitivity: "base" });
+        return newestFirst || statusOrder || String(first.name ?? "").localeCompare(String(second.name ?? ""), "en", { sensitivity: "base" });
       });
       setAccounts(rows);
       setError("");
@@ -98,7 +111,7 @@ export default function UserMasterList({ user }: { user: User }) {
     {error && <p className="user-master-list-message is-error" role="alert">{error}</p>}
     {message && <p className="user-master-list-message" role="status">{message}</p>}
     {loading ? <p className="muted">Loading verified accounts...</p> : accounts.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No verified accounts yet</h3><p>Accounts appear here after their owners verify their email address and sign in.</p></div> : <>
-      <div className="user-master-list-table-wrap"><table className="user-master-list-table"><thead><tr><th>Name</th><th>Position</th><th>Designation</th><th>Office</th><th>Assignment</th><th>Role</th><th>Status / Action</th></tr></thead><tbody>
+      <div className="user-master-list-table-wrap"><table className="user-master-list-table"><thead><tr><th>Name</th><th>Position</th><th>Designation</th><th>Office</th><th>Role</th><th>Status / Action</th></tr></thead><tbody>
       {visibleRecords.map((account) => {
         const status = normalizeAccountStatus(account.accountStatus);
         const role = normalizeAccountRole(account.accountRole);
@@ -109,7 +122,6 @@ export default function UserMasterList({ user }: { user: User }) {
           <td data-label="Position">{account.position || "—"}</td>
           <td data-label="Designation">{account.designation || "—"}</td>
           <td data-label="Office">{accountOffice(account) || "—"}</td>
-          <td data-label="Assignment">{accountAssignment(account) || "—"}</td>
           <td data-label="Role"><select aria-label={`Role for ${account.name || "account"}`} value={role} disabled={busy || protectedAccount} onChange={(event) => void updateAccount(account, { accountRole: event.target.value as AccountRole })}>{roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>
           <td data-label="Status / Action"><select className="user-master-list-action-select" aria-label={`Status and actions for ${account.name || "account"}`} value="" disabled={busy || protectedAccount} onChange={(event) => {
             const action = event.target.value;
