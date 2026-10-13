@@ -1110,7 +1110,7 @@ service cloud.firestore {
     match /travelOrders/{travelOrderId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid
         || resource.data.get("recipientId", "") == request.auth.uid
-        || resource.data.get("status", "") in ["Approved", "Pending", "Processing"]);
+        || resource.data.get("status", "") in ["Approved", "Pending", "Processing", "Disapproved"]);
       allow create: if isVerifiedUser() && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerUnit == signedInUnit()
         && isPersonalTravelOrder(request.resource.data, request.resource.data.get("recipientId", ""));

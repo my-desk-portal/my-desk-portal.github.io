@@ -40,8 +40,8 @@ export function filterPersonnelForAccount(entries: PersonnelEntry[], office: str
 }
 
 const personnelCacheDurationMs = 60_000;
-const cachedPersonnel = new Map<boolean, { entries: PersonnelEntry[]; expiresAt: number }>();
-const personnelRequests = new Map<boolean, Promise<PersonnelEntry[]>>();
+const cachedPersonnel = new Map<string, { entries: PersonnelEntry[]; expiresAt: number }>();
+const personnelRequests = new Map<string, Promise<PersonnelEntry[]>>();
 let cachedPermitAdminSignatories: { entries: PermitAdminSignatory[]; expiresAt: number } | null = null;
 let permitAdminSignatoriesRequest: Promise<PermitAdminSignatory[]> | null = null;
 
@@ -80,12 +80,14 @@ export async function loadPermitAdminSignatories(): Promise<PermitAdminSignatory
 }
 
 // Personnel dropdowns are built from registered user accounts (users collection).
-export async function loadPersonnel(options: { includeAllAccounts?: boolean } = {}): Promise<PersonnelEntry[]> {
+export async function loadPersonnel(options: { includeAllAccounts?: boolean; deduplicateByName?: boolean } = {}): Promise<PersonnelEntry[]> {
   if (!db) throw new Error("Firebase is not configured.");
   const includeAllAccounts = options.includeAllAccounts ?? false;
-  const cached = cachedPersonnel.get(includeAllAccounts);
+  const deduplicateByName = options.deduplicateByName ?? true;
+  const cacheKey = `${includeAllAccounts}:${deduplicateByName}`;
+  const cached = cachedPersonnel.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.entries;
-  let personnelRequest = personnelRequests.get(includeAllAccounts);
+  let personnelRequest = personnelRequests.get(cacheKey);
   if (!personnelRequest) {
     const firestore = db;
     personnelRequest = getDocs(collection(firestore, "users")).then((snapshot) => {
@@ -112,14 +114,14 @@ export async function loadPersonnel(options: { includeAllAccounts?: boolean } = 
         const existing = unique.get(key);
         if (!existing || (!existing.position && entry.position) || (!existing.office && entry.office) || (!existing.unit && entry.unit)) unique.set(key, entry);
       }
-      const result = [...unique.values(), ...adminAccounts].sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" })
+      const result = (deduplicateByName ? [...unique.values(), ...adminAccounts] : entries).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" })
         || first.userId.localeCompare(second.userId));
-      cachedPersonnel.set(includeAllAccounts, { entries: result, expiresAt: Date.now() + personnelCacheDurationMs });
+      cachedPersonnel.set(cacheKey, { entries: result, expiresAt: Date.now() + personnelCacheDurationMs });
       return result;
     }).finally(() => {
-      personnelRequests.delete(includeAllAccounts);
+      personnelRequests.delete(cacheKey);
     });
-    personnelRequests.set(includeAllAccounts, personnelRequest);
+    personnelRequests.set(cacheKey, personnelRequest);
   }
   return personnelRequest;
 }
