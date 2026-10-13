@@ -25,7 +25,7 @@ const profileOfficeFilterValue = (office?: string | null, assignment?: string | 
 };
 const profileAssignmentFilterValue = (office?: string | null, assignment?: string | null) => {
   const profile = accountProfileSelection({ office: office ?? "", assignment: assignment ?? "", profileFieldsVersion: 3 });
-  return profile.office === "Field Operations Division (ILD)" || !profile.assignment ? allAssignmentsFilter : profile.assignment;
+  return profile.assignment || allAssignmentsFilter;
 };
 const emojis = ["😀", "😁", "😂", "🤣", "😊", "😍", "😘", "😎", "🤔", "😅", "😢", "😭", "😡", "🥳", "😴", "🙄", "👍", "👎", "👏", "🙏", "💪", "🤝", "👌", "✌️", "❤️", "💔", "🔥", "✨", "🎉", "✅", "❌", "⭐"];
 const stickers = ["👍", "❤️", "😂", "🎉", "🙏", "😍", "🔥", "👏", "😢", "😎", "🥳", "💯", "🤝", "🙌", "😴", "🤔"];
