@@ -188,10 +188,11 @@ function formatDate(date: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${date}T00:00:00`));
 }
 
-async function migrateAccountProfileFieldsForSuperAdmin() {
+async function migrateAccountProfileFieldsForSuperAdmin(excludedUserId?: string) {
   if (!db) return;
   const snapshot = await getDocs(collection(db, "users"));
   const legacyProfiles = snapshot.docs.filter((item) => {
+    if (item.id === excludedUserId) return false;
     const data = item.data();
     return data.profileFieldsVersion !== 3 || !data.office || !data.assignment
       || Object.prototype.hasOwnProperty.call(data, "unit")
@@ -2040,7 +2041,11 @@ export default function Home() {
             return;
           }
           const isBootstrapSuperAdmin = verifiedUser.email?.trim().toLowerCase() === SUPERADMIN_EMAIL;
-          if (isBootstrapSuperAdmin) await migrateAccountProfileFieldsForSuperAdmin();
+          if (isBootstrapSuperAdmin) {
+            void migrateAccountProfileFieldsForSuperAdmin(verifiedUser.uid).catch((cause) => {
+              console.warn("Could not migrate account profile fields during Super Admin sign-in.", cause);
+            });
+          }
           const accountRole = normalizeAccountRole(profileData.accountRole, verifiedUser.email);
           const accountStatus = isBootstrapSuperAdmin ? "Approved" : normalizeAccountStatus(profileData.accountStatus);
           if (thisAuthChange !== authChange) return;
@@ -2056,7 +2061,17 @@ export default function Home() {
           if ((isBootstrapSuperAdmin && profileData.accountRole !== "superadmin") || (!profileData.accountRole && accountRole)) accountPatch.accountRole = accountRole;
           if (isBootstrapSuperAdmin && profileData.accountStatus !== "Approved") accountPatch.accountStatus = "Approved";
           if (isBootstrapSuperAdmin && profileData.isRootSuperAdmin !== true) accountPatch.isRootSuperAdmin = true;
-          if (Object.keys(accountPatch).length) await setDoc(profileRef, accountPatch, { merge: true });
+          if (Object.keys(accountPatch).length) {
+            if (isBootstrapSuperAdmin) {
+              try {
+                await setDoc(profileRef, accountPatch, { merge: true });
+              } catch (cause) {
+                console.warn("Could not normalize the Super Admin profile during sign-in.", cause);
+              }
+            } else {
+              await setDoc(profileRef, accountPatch, { merge: true });
+            }
+          }
           if (thisAuthChange !== authChange) return;
            setAccountProfile({
             userId: verifiedUser.uid,
@@ -2122,6 +2137,8 @@ export default function Home() {
       const isBootstrapSuperAdmin = approvalUser.email?.trim().toLowerCase() === SUPERADMIN_EMAIL;
       const status = isBootstrapSuperAdmin ? "Approved" : normalizeAccountStatus(snapshot.data().accountStatus);
       if (status === "Approved") {
+        setError("");
+        setApprovalError("");
         setApprovalStatus(null);
         setApprovalUser(null);
         setUser(approvalUser);

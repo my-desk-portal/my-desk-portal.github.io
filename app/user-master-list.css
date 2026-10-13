@@ -3,18 +3,19 @@
 .user-master-list-message{background:#edf7f0;border-left:4px solid #4b9f69;color:#26633b;margin:0 0 18px;padding:12px 14px}
 .user-master-list-message.is-error{background:#fff1ef;border-color:var(--accent);color:#9d321f}
 .user-master-list-table-wrap{overflow-x:auto;width:100%}
-.user-master-list-table{border-collapse:collapse;min-width:1120px;width:100%}
+.user-master-list-table{border-collapse:collapse;min-width:980px;width:100%}
 .user-master-list-table th,.user-master-list-table td{border-bottom:1px solid var(--line);padding:13px 10px;text-align:left;vertical-align:middle}
 .user-master-list-table th{color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .user-master-list-table td{font-size:13px}
 .user-master-list-table td strong{color:var(--ink)}
-.user-master-list-table select{background:#fff;border:1px solid var(--line);border-radius:6px;color:var(--ink);font:inherit;max-width:150px;padding:7px}
+.user-master-list-table select{background:#fff;border:1px solid var(--line);border-radius:6px;color:var(--ink);font:inherit;max-width:130px;padding:7px}
 .user-master-list-table select:disabled{background:#f2f5f3;color:var(--muted)}
+.user-master-list-status-actions{align-items:start;display:grid;gap:8px;justify-items:start}
 .user-master-list-status{border:1px solid var(--line);display:inline-block;font-size:11px;font-weight:700;padding:5px 8px;white-space:nowrap}
 .user-master-list-status.is-pending{background:#fff6d8;border-color:#edcf67;color:#755800}
 .user-master-list-status.is-approved{background:#eaf5ed;border-color:#c4dfcb;color:#21603a}
 .user-master-list-status.is-disapproved{background:#fff1ef;border-color:#e5b8ae;color:#9d321f}
-.user-master-list-actions{align-items:center;display:flex;gap:9px;white-space:nowrap}
-.user-master-list-actions button{font-size:12px;padding:0}
+.user-master-list-actions{align-items:center;display:flex;flex-wrap:wrap;gap:6px 9px;white-space:normal}
+.user-master-list-actions button{font-size:12px;padding:0;white-space:nowrap}
 .user-master-list-actions button:disabled{cursor:not-allowed;opacity:.45}
-@media(max-width:720px){.user-master-list-section .section-heading{align-items:flex-start}.user-master-list-count{font-size:10px;padding:6px 8px}.user-master-list-table{min-width:1040px}}
+@media(max-width:720px){.user-master-list-section .section-heading{align-items:flex-start}.user-master-list-count{font-size:10px;padding:6px 8px}.user-master-list-table{min-width:880px}}
