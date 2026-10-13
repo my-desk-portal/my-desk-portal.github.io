@@ -452,9 +452,9 @@ service cloud.firestore {
     }
     match /calendarOfActivities/{calendarId} {
       allow read: if isVerifiedUser()
-        && (resource.data.get("ownerId", "") == request.auth.uid
-          || resource.data.get("unit", "") == signedInUnit()
-          || resource.data.get("status", "") == "Approved"
+        && (resource.data.ownerId == request.auth.uid
+          || resource.data.unit == signedInUnit()
+          || resource.data.status == "Approved"
           || isPermitAdmin()
           || isCalendarOwnerOrSameUnit(calendarId));
       allow create: if isVerifiedUser()
