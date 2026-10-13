@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { accountOffice, accountAssignment } from "@/lib/account-profile";
+import { accountOffice, accountAssignment, accountTevDivision } from "@/lib/account-profile";
 import { isApprovedAdminAccount, personnelMatchesAccountScope } from "@/lib/personnel";
 import { isSuperadminRole } from "@/lib/user-roles";
 import { loadPdfTools } from "@/lib/pdf-tools";
@@ -210,7 +210,7 @@ function initialItinerary() {
   return blankTevItinerary(documentId());
 }
 
-function MyTevForm({ profile, ownerId, initialRecord, personnel, rates, onCancel, onSaved }: { profile: TevProfile; ownerId: string; initialRecord?: MyTevRecord; personnel: TevPersonnel[]; rates: TevRegionRate[]; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
+function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel, rates, onCancel, onSaved }: { profile: TevProfile; profileDivision: TevDivision | null; ownerId: string; initialRecord?: MyTevRecord; personnel: TevPersonnel[]; rates: TevRegionRate[]; onCancel: () => void; onSaved: (record: MyTevRecord) => void }) {
   const [step, setStep] = useState<"details" | "itineraries">("details");
   const [month, setMonth] = useState(() => initialRecord?.month ?? localMonthValue());
   const [officialStation, setOfficialStation] = useState<TevOfficialStation>(() => initialRecord?.officialStation ?? tevOfficialStations[0]);
@@ -220,13 +220,17 @@ function MyTevForm({ profile, ownerId, initialRecord, personnel, rates, onCancel
     : []);
   const [certification, setCertification] = useState<TevCertificationOfTravel>(() => ({ ...defaultTevCertificationOfTravel(), ...initialRecord?.certificationOfTravel }));
   const evidenceOfTravel = selectedEvidence.join(", ");
-  const [divisionName, setDivisionName] = useState<TevDivision>(() => initialRecord?.divisionName ?? tevDivisions[0]);
+  const [divisionName, setDivisionName] = useState<TevDivision>(() => initialRecord?.divisionName ?? profileDivision ?? tevDivisions[0]);
   const [itineraries, setItineraries] = useState<TevItinerary[]>(() => initialRecord
     ? initialRecord.itineraries.map((itinerary) => ({ ...itinerary, rows: itinerary.rows.map((row) => ({ ...row, meansOfTransportation: normalizeTevTransportationMeansForEditor(row.meansOfTransportation), claims: [...row.claims] })) }))
     : [initialItinerary()]);
   const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>(() => initialRecord ? [] : [""]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!initialRecord && profileDivision) setDivisionName(profileDivision);
+  }, [initialRecord, profileDivision]);
 
   function updateReference(index: number, changes: Partial<TevTravelReference>) {
     setReferences((current) => current.map((reference, itemIndex) => itemIndex === index ? { ...reference, ...changes } : reference));
@@ -427,7 +431,7 @@ function MyTevForm({ profile, ownerId, initialRecord, personnel, rates, onCancel
       <section className="mytev-form-group"><h3>Official travel</h3><div className="mytev-trip-fields">
         <label>Official Station<select value={officialStation} onChange={(event) => setOfficialStation(event.target.value as TevOfficialStation)} required>{tevOfficialStations.map((station) => <option key={station} value={station}>{station}</option>)}</select></label>
         <label>Month and Year<input type="month" value={month} onChange={(event) => updateMonth(event.target.value)} disabled={Boolean(initialRecord)} required /></label>
-        <label className="mytev-division-field">Division<select value={divisionName} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division}>{division}</option>)}</select></label>
+        <label className="mytev-division-field">Division<select value={divisionName} disabled={Boolean(initialRecord) || profileDivision !== null} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division}>{division}</option>)}</select></label>
       </div></section>
       {!initialRecord && <section className="mytev-form-group mytev-personnel-group">
         <div className="mytev-form-group-heading"><div><h3>Personnel for this TEV</h3><p>Add personnel from your Office and Assignment; Field Operations Division (ILD) includes AGRISTAT, AMIA, and DRRM. Each person receives the same travel details with their own profile information on the TEV.</p></div><button type="button" className="ghost-button" disabled={selectedPersonnelIds.length >= maxTevPersonnel} onClick={addPersonnelSlot}>+ Add another personnel</button></div>
@@ -524,6 +528,7 @@ function MyTevList({ records, loading, deletingId, rates, rateError, onNew, onEd
 export default function MyTevModule({ user }: { user: User }) {
   const [records, setRecords] = useState<MyTevRecord[]>([]);
   const [profile, setProfile] = useState<TevProfile | null>(null);
+  const [profileDivision, setProfileDivision] = useState<TevDivision | null>(null);
   const [personnel, setPersonnel] = useState<TevPersonnel[]>([]);
   const [view, setView] = useState<"list" | "new" | "edit">("list");
   const [editingRecord, setEditingRecord] = useState<MyTevRecord | null>(null);
@@ -587,6 +592,7 @@ export default function MyTevModule({ user }: { user: User }) {
 
   useEffect(() => {
     let active = true;
+    setProfileDivision(null);
     const firestore = db;
     if (!firestore) {
       setLoadError("myTEV storage is unavailable.");
@@ -602,6 +608,7 @@ export default function MyTevModule({ user }: { user: User }) {
       const data = profileSnapshot.exists() ? profileSnapshot.data() : {};
       const accountUnit = accountAssignment(data);
       const currentOffice = accountOffice(data) ?? "";
+      setProfileDivision(accountTevDivision(currentOffice, accountUnit));
       setProfile({
         name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : user.displayName ?? "",
         address: typeof data.address === "string" ? data.address.trim() : "",
@@ -717,7 +724,7 @@ export default function MyTevModule({ user }: { user: User }) {
   return <div className="mytev-module">
     {loadError && <p className="error-message mytev-error" role="alert">{loadError}</p>}
     {regionRateError && <p className="error-message mytev-error" role="alert">{regionRateError}</p>}
-    {(view === "new" || view === "edit") && formProfile ? regionRates ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} personnel={personnel} rates={regionRates} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <section className="content-section mytev-form-section"><p className="muted">{regionRateError || "Loading regional per diem rates..."}</p><button type="button" className="ghost-button" onClick={() => { setEditingRecord(null); setView("list"); }}>Back</button></section> : <>
+    {(view === "new" || view === "edit") && formProfile ? regionRates ? <MyTevForm key={editingRecord?.id ?? "new"} profile={formProfile} profileDivision={profileDivision} ownerId={user.uid} initialRecord={view === "edit" ? editingRecord ?? undefined : undefined} personnel={personnel} rates={regionRates} onCancel={() => { setEditingRecord(null); setView("list"); }} onSaved={(record) => { setRecords((current) => current.some((item) => item.id === record.id) ? current.map((item) => item.id === record.id ? record : item) : [record, ...current]); setEditingRecord(null); setView("list"); }} /> : <section className="content-section mytev-form-section"><p className="muted">{regionRateError || "Loading regional per diem rates..."}</p><button type="button" className="ghost-button" onClick={() => { setEditingRecord(null); setView("list"); }}>Back</button></section> : <>
       {!profileComplete && !loading && <div className="mytev-profile-warning" role="status"><strong>Complete your Profile before creating myTEV records.</strong><span>Address, Tax Identification No., position, and name are used to prepare these forms.</span></div>}
       <MyTevList records={records} loading={loading} deletingId={deletingId} rates={regionRates} rateError={regionRateError} onNew={() => { setLoadError(""); setEditingRecord(null); setView("new"); }} onEdit={(record) => { setLoadError(""); setEditingRecord(record); setView("edit"); }} onView={(record) => { if (!regionRates) { setRegionRateError(regionRateError || "Regional rates are still loading. Wait a moment, then open the record again."); return; } setPreview(record); setPreviewError(""); }} onDelete={setPendingDelete} />
     </>}

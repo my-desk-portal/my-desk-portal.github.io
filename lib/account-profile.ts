@@ -1,4 +1,4 @@
-import { tevDivisions } from "@/lib/mytev";
+import { tevDivisions, type TevDivision } from "@/lib/mytev";
 
 export type AccountProfileFields = {
   office?: unknown;
@@ -207,6 +207,23 @@ export function accountDivisionForApproval(office: string, assignment: string) {
     return divisionByLegacyAssignment[normalizedAssignment] ?? "";
   }
   return divisionByLegacyAssignment[normalizedOffice.replace(/^FOD-/i, "").toUpperCase()] ?? normalizedOffice;
+}
+
+export function accountTevDivision(office: string, assignment: string): TevDivision | null {
+  const normalizedOffice = office.trim();
+  const normalizedAssignment = assignment.trim();
+  if (normalizedOffice === "Regional Field Office" && tevDivisions.includes(normalizedAssignment as TevDivision)) {
+    return normalizedAssignment as TevDivision;
+  }
+  if (
+    normalizedOffice === "Field Operations Division"
+    || normalizedOffice === "Field Operations Division (ILD)"
+    || /^FOD-/i.test(normalizedOffice)
+    || ["AGRISTAT", "AMIA", "DRRM"].includes(normalizedOffice.toUpperCase())
+  ) {
+    return "Field Operations Division";
+  }
+  return tevDivisions.includes(normalizedAssignment as TevDivision) ? normalizedAssignment as TevDivision : null;
 }
 
 export function accountProfileSelection(profile: AccountProfileFields) {
