@@ -1331,7 +1331,7 @@ service cloud.firestore {
         && request.resource.data.activities is list
         && request.resource.data.activities.size() > 0
         && request.resource.data.activities.size() <= 30
-        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM"]
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "AGRISTAT-AMIA-DRRM", "4K", "APCO - ADN", "APCO - ADS", "APCO - PDI", "APCO - SDN", "APCO - SDS", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "GAD", "HVCDP Program", "Livestock Program", "NUPAP", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Administrative Division", "Agribusiness and Marketing Assistance Division", "Field Operations Division", "Finance Division", "Integrated Laboratories Division", "Planning, Monitoring and Evaluation Division", "Regional Agricultural Engineering Division", "Regulatory Division", "Research Division", "Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"]
         && request.resource.data.preparedName is string
         && request.resource.data.preparedName.size() > 0
         && request.resource.data.preparedName.size() <= 120
@@ -1341,8 +1341,8 @@ service cloud.firestore {
         && request.resource.data.signatoryName is string
         && request.resource.data.signatoryName.size() > 0
         && request.resource.data.signatoryName.size() <= 120
-        && request.resource.data.signatoryPosition in ["Chief", "OIC"]
-        && request.resource.data.signatoryDivision in ["Administrative Division", "Agribusiness and Marketing Assistance Division", "Field Operations Division", "Finance Division", "Integrated Laboratories Division", "Planning, Monitoring and Evaluation Division", "Regional Agricultural Engineering Division", "Regulatory Division", "Research Division"]
+        && request.resource.data.signatoryPosition in ["Chief", "OIC", "Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"]
+        && request.resource.data.signatoryDivision in ["", "Administrative Division", "Agribusiness and Marketing Assistance Division", "Field Operations Division", "Finance Division", "Integrated Laboratories Division", "Planning, Monitoring and Evaluation Division", "Regional Agricultural Engineering Division", "Regulatory Division", "Research Division"]
         && request.resource.data.createdAt is timestamp;
       allow update: if isVerifiedUser()
         && resource.data.ownerId == request.auth.uid

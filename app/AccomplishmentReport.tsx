@@ -4,14 +4,15 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import type { User } from "firebase/auth";
 import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { accountAssignment } from "@/lib/account-profile";
+import { accountAssignment, accountOffice, fieldOperationsAssignments } from "@/lib/account-profile";
 import { divisionSignatory, tevDivisions } from "@/lib/mytev";
 import { loadPdfTools } from "@/lib/pdf-tools";
+import { normalizeAccountRole, type AccountRole } from "@/lib/user-roles";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./myar.css";
 
-type Unit = "AMIA" | "AGRISTAT" | "DRRM";
-type Profile = { name: string; position: string; unit: Unit };
+type Unit = "AMIA" | "AGRISTAT" | "DRRM" | (typeof fieldOperationsAssignments)[number] | (typeof tevDivisions)[number] | "Regional Executive Director" | "RTD for Operations" | "RTD for Research and Regulations";
+type Profile = { name: string; position: string; unit: Unit; immediateSupervisor: string };
 type Report = {
   id: string;
   ownerId: string;
@@ -31,19 +32,62 @@ type Report = {
 
 const MAX_ACTIVITIES = 30;
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
+const arDivisionSignatoryNameOverrides: Partial<Record<(typeof tevDivisions)[number], string>> = {
+  "Agribusiness and Marketing Assistance Division": "Lynn A. Pare\u00f1as",
+  "Integrated Laboratories Division": "Esther B. Carde\u00f1o, DVM",
+  "Regional Agricultural Engineering Division": "Rene Q. Morales, RPAE",
+};
 const arSignatoryOptions = [
   ...tevDivisions.map((division) => {
     const signatory = divisionSignatory(division);
     return {
       value: `division:${division}`,
       label: division,
-      name: signatory.name,
+      name: arDivisionSignatoryNameOverrides[division] ?? signatory.name,
       position: signatory.position,
       division,
     };
   }),
+  ...[
+    { designation: "Regional Executive Director", name: "ENGR. RICARDO M. O\u00d1ATE JR." },
+    { designation: "RTD for Operations", name: "REBECCA R. ATEGA" },
+    { designation: "RTD for Research and Regulations", name: "MARCO ANTONIO C. MORIDO" },
+  ].map((signatory) => ({
+    value: `role:${signatory.designation}`,
+    label: signatory.designation,
+    name: signatory.name,
+    position: signatory.designation,
+    division: "",
+  })),
 ].sort((first, second) => first.label.localeCompare(second.label));
 const legacyNotedSignatory = { name: "MELODY M. GUIMARY", position: "Chief", division: "Field Operations Division" };
+const isReportUnit = (value: string): value is Unit => ["AMIA", "AGRISTAT", "DRRM", ...fieldOperationsAssignments, ...tevDivisions, "Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"].includes(value);
+
+function defaultImmediateSupervisor(office: string, assignment: string, accountRole: AccountRole) {
+  const isAdmin = accountRole !== "regular";
+  if (office === "Field Operations Division (ILD)" && ["AGRISTAT", "AMIA", "DRRM"].includes(assignment)) return "division:Field Operations Division";
+  if (office === "Field Operations Division" && fieldOperationsAssignments.includes(assignment as (typeof fieldOperationsAssignments)[number])) return "division:Field Operations Division";
+
+  if (office === "Regional Field Office") {
+    if (assignment === "Field Operations Division") return isAdmin ? "role:RTD for Operations" : "division:Field Operations Division";
+    if (assignment === "Agribusiness and Marketing Assistance Division" || assignment === "Regional Agricultural Engineering Division") {
+      return isAdmin ? "role:RTD for Operations" : `division:${assignment}`;
+    }
+    if (assignment === "RTD for Operations") return isAdmin ? "role:Regional Executive Director" : "role:RTD for Operations";
+    if (assignment === "RTD for Research and Regulations") return isAdmin ? "role:Regional Executive Director" : "role:RTD for Research and Regulations";
+    if (["Research Division", "Integrated Laboratories Division", "Regulatory Division"].includes(assignment)) {
+      return isAdmin ? "role:RTD for Research and Regulations" : `division:${assignment}`;
+    }
+    if (["Planning, Monitoring and Evaluation Division", "Administrative Division", "Finance Division"].includes(assignment)) {
+      return isAdmin ? "role:Regional Executive Director" : `division:${assignment}`;
+    }
+    if (assignment === "Regional Executive Director") return "role:Regional Executive Director";
+  }
+
+  if (tevDivisions.includes(assignment as (typeof tevDivisions)[number])) return `division:${assignment}`;
+  if (["Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"].includes(assignment)) return `role:${assignment}`;
+  return "division:Field Operations Division";
+}
 
 function currentMonth() {
   const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit" }).formatToParts(new Date());
@@ -93,12 +137,13 @@ function reportMonth(month: string) {
 }
 
 function reportUnit(unit: Unit) {
-  const unitNames: Record<Unit, string> = {
+  const unitNames: Partial<Record<Unit, string>> = {
     AMIA: "Adaptation Initiative and Mitigation in Agriculture - Caraga",
     AGRISTAT: "Agricultural Statistics - Caraga",
     DRRM: "Disaster Risk Reduction and Management - Caraga",
   };
-  return unitNames[unit];
+  if (fieldOperationsAssignments.includes(unit as (typeof fieldOperationsAssignments)[number])) return "Field Operations Division";
+  return unitNames[unit as keyof typeof unitNames] ?? unit;
 }
 
 function applyCurrentProfile(report: Report, profile: Profile | null): Report {
@@ -108,6 +153,14 @@ function applyCurrentProfile(report: Report, profile: Profile | null): Report {
     preparedName: profile.name,
     preparedPosition: profile.position,
   } : report;
+}
+
+function supervisorSelectionForReport(report: Report) {
+  if (report.signatoryDivision) return `division:${report.signatoryDivision}`;
+  if (["Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"].includes(report.signatoryPosition ?? "")) {
+    return `role:${report.signatoryPosition}`;
+  }
+  return "division:Field Operations Division";
 }
 
 function createdTime(value: unknown) {
@@ -122,7 +175,7 @@ function AccomplishmentReportNotedSignatory({ report }: { report: Report }) {
     position: report.signatoryPosition || legacyNotedSignatory.position,
     division: report.signatoryName ? report.signatoryDivision ?? "" : legacyNotedSignatory.division,
   };
-  return <div><strong>{signatory.name.toLocaleUpperCase("en-PH")}</strong><span><em>{signatory.position}{signatory.division ? "," : ""}</em>{signatory.division ? ` ${signatory.division}` : ""}</span></div>;
+  return <div><strong>{signatory.name.toLocaleUpperCase("en-PH")}</strong><span><em>{signatory.position}</em>{signatory.division ? `, ${signatory.division}` : ""}</span></div>;
 }
 
 function AccomplishmentReportDocument({ report, pageRef }: { report: Report; pageRef?: Ref<HTMLElement> }) {
@@ -216,6 +269,12 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   const duplicateReport = !editingReport && reports.some((report) => report.month === month && report.cycle === cycle);
 
   useEffect(() => {
+    if (showForm && !editingReport && profile?.immediateSupervisor && signatorySelection !== profile.immediateSupervisor) {
+      setSignatorySelection(profile.immediateSupervisor);
+    }
+  }, [showForm, editingReport, profile, signatorySelection]);
+
+  useEffect(() => {
     const refreshDate = () => setToday(manilaDateKey());
     const interval = window.setInterval(refreshDate, 60_000);
     return () => window.clearInterval(interval);
@@ -223,7 +282,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
 
   function startNewReport() {
     setEditingReport(null);
-    setSignatorySelection("");
+    setSignatorySelection(profile?.immediateSupervisor ?? "");
     setMonth(currentMonth());
     setCycle(1);
     setActivities([""]);
@@ -238,6 +297,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       return;
     }
     setEditingReport(report);
+    setSignatorySelection(supervisorSelectionForReport(report));
     setMonth(report.month);
     setCycle(report.cycle);
     setActivities([...report.activities]);
@@ -285,8 +345,10 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
         if (!current) return;
         const data = profileSnapshot.data();
         const assignment = data ? accountAssignment(data) : "";
-        if (profileSnapshot.exists() && data && typeof data.name === "string" && typeof data.position === "string" && ["AMIA", "AGRISTAT", "DRRM"].includes(assignment)) {
-          setProfile({ name: data.name, position: data.position, unit: assignment as Unit });
+        const office = data ? accountOffice(data) ?? "" : "";
+        const accountRole = normalizeAccountRole(data?.accountRole, user.email);
+        if (profileSnapshot.exists() && data && typeof data.name === "string" && typeof data.position === "string" && isReportUnit(assignment)) {
+          setProfile({ name: data.name, position: data.position, unit: assignment, immediateSupervisor: defaultImmediateSupervisor(office, assignment, accountRole) });
         } else {
           setProfile(null);
         }
@@ -362,7 +424,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
         return;
       }
       if (!selectedSignatory) {
-        setMessage({ kind: "error", text: "Select a division for the Noted signatory." });
+        setMessage({ kind: "error", text: "Select an immediate supervisor." });
         return;
       }
       const data = {
@@ -404,8 +466,8 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
           <div className="ar-form-fields">
             <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} required disabled={!!editingReport} /></label>
             <label>Half-month Cycle<select value={cycle} onChange={(event) => setCycle(Number(event.target.value) as 1 | 2)} disabled={!!editingReport}><option value={1}>1–15</option><option value={2}>16–{lastDay}</option></select></label>
+            <label>Immediate Supervisor<select value={signatorySelection} disabled><option value="" disabled>Selecting from Profile…</option><optgroup label="Divisions">{arSignatoryOptions.filter((option) => option.value.startsWith("division:")).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup><optgroup label="Regional Officials">{arSignatoryOptions.filter((option) => option.value.startsWith("role:")).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup></select></label>
           </div>
-          {!editingReport && <label className="ar-division-field">Division<select value={signatorySelection} onChange={(event) => setSignatorySelection(event.target.value)} required><option value="" disabled>Select a division</option>{arSignatoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
           {duplicateReport && <p className="auth-message auth-message-error" role="status">A report for {reportPeriod({ month, startDay, endDay })} is already saved. Edit it from Saved Reports.</p>}
           <fieldset className="ar-activities-entry"><legend>Activities</legend><p id="ar-reorder-hint" className="ar-reorder-hint">Drag the grip to rearrange activities, or focus a grip and press Alt + Up or Alt + Down.</p><div className="ar-activity-list">{activities.map((activity, index) => <div className={`ar-activity-entry${draggedActivityIndex === index ? " is-dragging" : ""}${dropActivityIndex === index ? " is-drop-target" : ""}`} key={index} onDragOver={(event) => { event.preventDefault(); setDropActivityIndex(index); }} onDragLeave={() => setDropActivityIndex((current) => current === index ? null : current)} onDrop={(event) => { event.preventDefault(); const draggedValue = event.dataTransfer.getData("text/plain"); setDraggedActivityIndex(null); setDropActivityIndex(null); if (!/^\d+$/.test(draggedValue)) return; const draggedIndex = Number(draggedValue); const bounds = event.currentTarget.getBoundingClientRect(); const insertAfter = event.clientY >= bounds.top + bounds.height / 2; const insertionIndex = index + (insertAfter ? 1 : 0); reorderActivity(draggedIndex, draggedIndex < insertionIndex ? insertionIndex - 1 : insertionIndex); }}><button type="button" className="ar-drag-activity" draggable aria-label={`Reorder activity ${index + 1}`} aria-describedby="ar-reorder-hint" onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", String(index)); setDraggedActivityIndex(index); }} onDragEnd={() => { setDraggedActivityIndex(null); setDropActivityIndex(null); }} onKeyDown={(event) => { if (event.altKey && event.key === "ArrowUp" && index > 0) { event.preventDefault(); reorderActivity(index, index - 1); } else if (event.altKey && event.key === "ArrowDown" && index < activities.length - 1) { event.preventDefault(); reorderActivity(index, index + 1); } }}><svg className="ar-drag-grip" viewBox="0 0 12 20" aria-hidden="true"><circle cx="3" cy="3" r="1.7"/><circle cx="9" cy="3" r="1.7"/><circle cx="3" cy="10" r="1.7"/><circle cx="9" cy="10" r="1.7"/><circle cx="3" cy="17" r="1.7"/><circle cx="9" cy="17" r="1.7"/></svg></button><label htmlFor={`ar-activity-${index}`}>Activity {index + 1}<textarea id={`ar-activity-${index}`} value={activity} maxLength={1200} rows={2} onChange={(event) => setActivities((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder="Describe the activity or accomplishment" required /></label><div className="ar-activity-actions">{activities.length > 1 && <button type="button" className="ar-remove-activity" aria-label={`Delete activity ${index + 1}`} onClick={() => setActivities((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div></div>)}</div>{activities.length < MAX_ACTIVITIES && <button type="button" className="text-button plain-action add-item-text-button ar-add-activity" onClick={() => setActivities((current) => [...current, ""])}>+ Add activity</button>}</fieldset>
           <div className="form-actions ar-form-actions"><button className="primary-button" disabled={saving || duplicateReport}>{saving ? "Saving..." : editingReport ? "Update" : "Save"}</button></div>

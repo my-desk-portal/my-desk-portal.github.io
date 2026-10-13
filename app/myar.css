@@ -6,7 +6,7 @@
 .ar-profile-notice strong{color:var(--ink);font-size:14px}
 .ar-profile-notice p{color:var(--muted);font-size:13px;margin:6px 0 0}
 .ar-form{display:grid;gap:22px}
-.ar-form-fields{display:grid;gap:16px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.ar-form-fields{display:grid;gap:16px;grid-template-columns:minmax(0,.85fr) minmax(0,.85fr) minmax(0,1.3fr)}
 .ar-form-fields label{min-width:0}
 .ar-form-fields input,.ar-form-fields select{min-width:0;min-height:46px}
 .ar-auto-details{background:#f6f8f6;border:1px solid var(--line);display:grid;gap:10px 24px;grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr);padding:16px 18px}
@@ -65,7 +65,7 @@
   .ar-document{aspect-ratio:210/297;height:auto;width:min(90vw,210mm)}
 }
 @media(min-width:721px){
-  .ar-form-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ar-form-fields{grid-template-columns:minmax(0,.85fr) minmax(0,.85fr) minmax(0,1.3fr)}
   .ar-auto-details{grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr)}
   .ar-activity-entry{grid-template-columns:38px minmax(0,1fr) auto}
 }

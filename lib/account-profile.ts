@@ -178,7 +178,12 @@ export const fieldOperationsAssignments = [
 
 export const fieldOperationsIldAssignments = ["AGRISTAT", "AMIA", "DRRM"] as const;
 
-export const regionalFieldOfficeAssignments = [...tevDivisions].sort((first, second) => first.localeCompare(second));
+export const regionalFieldOfficeAssignments = [
+  ...tevDivisions,
+  "Regional Executive Director",
+  "RTD for Operations",
+  "RTD for Research and Regulations",
+].sort((first, second) => first.localeCompare(second));
 
 export function assignmentsForOffice(office: string) {
   if (office === "Field Operations Division") return fieldOperationsAssignments;
