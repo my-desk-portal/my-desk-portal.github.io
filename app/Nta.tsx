@@ -40,6 +40,8 @@ type NtaRecord = {
   signatoryDesignation?: string;
   dateFrom?: string;
   dateTo?: string;
+  timeFrom?: string;
+  timeTo?: string;
   venueType?: "physical" | "virtual";
   venue?: string;
   link?: string;
@@ -79,6 +81,8 @@ const ntaSignatoryOptions = [
 ].sort((first, second) => first.label.localeCompare(second.label));
 const formatDate = (date: string) => date ? new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeZone: "Asia/Manila" }).format(new Date(`${date}T12:00:00+08:00`)) : "";
 const formatDateRange = (from: string, to: string) => from === to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`;
+const ntaFormHelpText = "Choose an individual notice, group schedule, or multiple personnel notice.";
+const cleanNtaField = (value?: string) => value === ntaFormHelpText ? "" : value ?? "";
 const initialBatch = (): NtaBatch => ({ number: "1", dateFrom: "", dateTo: "", timeFrom: "08:00", timeTo: "17:00", venueType: "physical", venue: "", link: "", attendees: [{ name: "", position: "", office: "", userId: "", manual: false }] });
 
 function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office: string; unit: string | null; onSaved: (record: NtaRecord) => void; onCancel: () => void }) {
@@ -94,6 +98,8 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
   const selectedSignatory = ntaSignatoryOptions.find((option) => option.value === signatorySelection);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [timeFrom, setTimeFrom] = useState("08:00");
+  const [timeTo, setTimeTo] = useState("17:00");
   const [venueType, setVenueType] = useState<"physical" | "virtual">("physical");
   const [venue, setVenue] = useState("");
   const [link, setLink] = useState("");
@@ -144,7 +150,7 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
     const common = { mode, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.position, recipientIds, ownerId: user.uid, ownerUnit: unit, createdAt: serverTimestamp() };
     try {
       const data = mode === "individual"
-        ? { ...common, to: to.trim(), toUserId: manualRecipient ? "" : toUserId, positionDesignation: positionDesignation.trim(), dateFrom, dateTo, venueType, venue: venue.trim(), link: venueType === "virtual" ? link.trim() : "" }
+        ? { ...common, to: to.trim(), toUserId: manualRecipient ? "" : toUserId, positionDesignation: positionDesignation.trim(), dateFrom, dateTo, timeFrom, timeTo, venueType, venue: venue.trim(), link: venueType === "virtual" ? link.trim() : "" }
         : { ...common, batches: batches.map((batch) => ({ ...batch, venue: batch.venue.trim(), link: batch.venueType === "virtual" ? batch.link.trim() : "", attendees: batch.attendees.map((attendee) => { const selectedPerson = attendee.manual ? undefined : personnel.find((person) => person.userId === attendee.userId); return { ...attendee, userId: attendee.manual ? "" : attendee.userId ?? "", name: attendee.manual ? attendee.name.trim() : selectedPerson?.name ?? attendee.name.trim(), position: attendee.manual ? attendee.position?.trim() ?? "" : selectedPerson?.position ?? attendee.position?.trim() ?? "", office: attendee.manual ? attendee.office.trim() : selectedPerson?.office ?? attendee.office.trim() }; }) })) };
       const firestore = db;
       const recordRef = doc(collection(firestore, "ntaRecords"));
@@ -163,7 +169,7 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
   }
 
   return <section className="content-section form-section nta-form-section">
-    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Notice to Attend</h2><p className="muted">Choose an individual notice, group schedule, or multiple personnel notice.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Notice to Attend</h2><p className="muted">{ntaFormHelpText}</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="error-message nta-error">{error}</p>}
     <form className="permit-form" onSubmit={save}>
       <label className="wide-field">Notice type<select value={mode} onChange={(event) => setMode(event.target.value as NtaMode)}><option value="individual">Individual</option><option value="batch">Group</option><option value="multiple">Multiple Personnel</option></select></label>
@@ -176,6 +182,7 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
         <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
         <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
         <div className="date-range-field"><span>Date (From – To)</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} required /></div></div>
+        <div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div>
         <label>Venue type<select value={venueType} onChange={(event) => setVenueType(event.target.value as "physical" | "virtual")}><option value="physical">Physical venue</option><option value="virtual">Virtual platform</option></select></label>
         <label>{venueType === "virtual" ? "Platform name" : "Venue address"}<input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder={venueType === "virtual" ? "Google Meet, Zoom, etc." : "Street, city, or building"} required /></label>
         {venueType === "virtual" && <label className="wide-field">Meeting link<input type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://" required /></label>}
@@ -204,7 +211,17 @@ function NtaEditor({ record, userId, office, unit, onCancel, onSaved, onRemove }
   const [toUserId, setToUserId] = useState(record.toUserId ?? record.recipientIds?.[0] ?? "");
   const [positionDesignation, setPositionDesignation] = useState(record.positionDesignation ?? "");
   const [manualRecipient, setManualRecipient] = useState(!(record.toUserId ?? record.recipientIds?.[0]));
-  const [batches, setBatches] = useState<NtaBatch[]>(() => (record.batches ?? []).map((batch) => ({ ...batch, attendees: batch.attendees.map((attendee) => ({ ...attendee, manual: attendee.manual ?? !attendee.userId })) })));
+  const [activityTitle, setActivityTitle] = useState(cleanNtaField(record.activityTitle));
+  const [organizer, setOrganizer] = useState(cleanNtaField(record.organizer));
+  const [dateFrom, setDateFrom] = useState(record.dateFrom ?? "");
+  const [dateTo, setDateTo] = useState(record.dateTo ?? record.dateFrom ?? "");
+  const [timeFrom, setTimeFrom] = useState(record.timeFrom ?? "");
+  const [timeTo, setTimeTo] = useState(record.timeTo ?? "");
+  const [venueType, setVenueType] = useState<"physical" | "virtual">(record.venueType ?? "physical");
+  const [venue, setVenue] = useState(cleanNtaField(record.venue));
+  const [link, setLink] = useState(record.link ?? "");
+  const [batches, setBatches] = useState<NtaBatch[]>(() => (record.batches ?? []).map((batch) => ({ ...batch, timeFrom: batch.timeFrom ?? "", timeTo: batch.timeTo ?? "", venueType: batch.venueType ?? "physical", venue: cleanNtaField(batch.venue), link: batch.link ?? "", attendees: batch.attendees.map((attendee) => ({ ...attendee, manual: attendee.manual ?? !attendee.userId })) })));
+  const hasLegacyPlaceholder = record.activityTitle === ntaFormHelpText || record.organizer === ntaFormHelpText || (record.mode === "individual" && record.venue === ntaFormHelpText) || (record.batches ?? []).some((batch) => batch.venue === ntaFormHelpText);
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
   const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
@@ -250,7 +267,7 @@ function NtaEditor({ record, userId, office, unit, onCancel, onSaved, onRemove }
       const schedulesByRecipient = new Map<string, Array<{ dateFrom: string; dateTo: string; venue: string }>>();
       if (record.mode === "individual") {
         const recipientId = manualRecipient ? "" : toUserId;
-        if (recipientId && recipientId !== userId) schedulesByRecipient.set(recipientId, [{ dateFrom: record.dateFrom ?? "", dateTo: record.dateTo ?? record.dateFrom ?? "", venue: record.venue ?? "" }]);
+        if (recipientId && recipientId !== userId) schedulesByRecipient.set(recipientId, [{ dateFrom, dateTo: dateTo || dateFrom, venue: venue.trim() }]);
       } else {
         cleanedBatches.forEach((batch) => batch.attendees.forEach((attendee) => {
           if (!attendee.userId || attendee.userId === userId) return;
@@ -260,11 +277,12 @@ function NtaEditor({ record, userId, office, unit, onCancel, onSaved, onRemove }
       const recipientIds = [...schedulesByRecipient.keys()];
       const notificationDrafts = new Map<string, Parameters<typeof makeDocumentNotification>[1]>();
       schedulesByRecipient.forEach((schedules, recipientId) => {
-        notificationDrafts.set(recipientId, { recipientId, ownerId: userId, documentId: record.id, documentType: "Notice to Attend", activityTitle: record.activityTitle, schedules });
+        notificationDrafts.set(recipientId, { recipientId, ownerId: userId, documentId: record.id, documentType: "Notice to Attend", activityTitle: activityTitle.trim(), schedules });
       });
+      const sharedUpdates = { activityTitle: activityTitle.trim(), organizer: organizer.trim() };
       const updates = record.mode === "individual"
-        ? { to: individualName, toUserId: manualRecipient ? "" : toUserId, positionDesignation: individualPosition, recipientIds }
-        : { batches: cleanedBatches, recipientIds };
+        ? { ...sharedUpdates, to: individualName, toUserId: manualRecipient ? "" : toUserId, positionDesignation: individualPosition, dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venueType, venue: venue.trim(), link: venueType === "virtual" ? link.trim() : "", recipientIds }
+        : { ...sharedUpdates, batches: cleanedBatches, recipientIds };
       const firestore = db;
       const batch = writeBatch(firestore);
       batch.update(doc(firestore, "ntaRecords", record.id), updates);
@@ -293,11 +311,54 @@ function NtaEditor({ record, userId, office, unit, onCancel, onSaved, onRemove }
       await batch.commit();
       onSaved({ ...record, ...updates } as NtaRecord);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to update the Notice to Attend.");
+      setError(cause instanceof Error ? cause.message : "Unable to save Notice to Attend changes.");
     } finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section nta-form-section"><div className="section-heading"><div><p className="eyebrow">Edit record</p><h2>Edit {record.mode === "individual" ? "individual notice" : record.mode === "multiple" ? "multiple personnel notice" : "group notice"}</h2><p className="muted">{record.mode === "individual" ? "Update the personnel name and position, or remove this notice." : "Update or remove personnel names, positions, and offices."}</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>{error && <p className="error-message nta-error">{error}</p>}<form className="permit-form" onSubmit={save}>{record.mode === "individual" ? <><div className="wide-field nta-recipient-fields"><div className={`nta-recipient-field-grid${manualRecipient ? "" : " nta-recipient-dropdown-grid"}`}>{manualRecipient ? <><label>Personnel Name<input value={to} onChange={(event) => setTo(event.target.value)} required /></label><label>Personnel Position<input value={positionDesignation} onChange={(event) => setPositionDesignation(event.target.value)} required /></label></> : <label>Personnel Name<select value={toUserId} onChange={(event) => { const selectedId = event.target.value; const selected = personnel.find((person) => person.userId === selectedId); setToUserId(selectedId); setTo(selected?.name ?? ""); setPositionDesignation(selected?.position ?? ""); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select>{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload to try again.</span>}</label>}<label className="nta-manual-recipient-toggle"><input type="checkbox" aria-label="Enter personnel and position manually" checked={manualRecipient} onChange={(event) => { const enabled = event.target.checked; setManualRecipient(enabled); setToUserId(""); if (!enabled) { setTo(""); setPositionDesignation(""); } }} />Manual</label></div></div></> : <div className="wide-field nta-batches">{batches.map((batch, batchIndex) => <fieldset className="nta-batch-fieldset" key={batchIndex}><legend>Group {batch.number || batchIndex + 1}</legend><div className="nta-attendee-fields"><span>Personnel attending this group</span>{batch.attendees.map((attendee, attendeeIndex) => <div className={attendee.manual ? "nta-attendee-input nta-attendee-input-manual" : "nta-attendee-input nta-attendee-input-dropdown"} key={attendeeIndex}>{attendee.manual ? <div className="nta-attendee-manual-fields"><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} personnel name`} placeholder="Personnel Name" value={attendee.name} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { name: event.target.value })} required /><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} personnel position`} placeholder="Personnel Position" value={attendee.position ?? ""} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { position: event.target.value })} required /><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} personnel office`} placeholder="Personnel Office" value={attendee.office} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { office: event.target.value })} required /></div> : <><select aria-label={`Group ${batch.number} person ${attendeeIndex + 1} personnel name`} value={attendee.userId ?? ""} onChange={(event) => { const selectedId = event.target.value; const selected = personnel.find((person) => person.userId === selectedId); updateAttendee(batchIndex, attendeeIndex, { userId: selectedId, name: selected?.name ?? "", position: selected?.position ?? "", office: selected?.office ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === attendee.userId || !selectedAttendeeUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select></>}<label className="nta-manual-attendee-toggle"><input type="checkbox" aria-label={`Enter group ${batch.number} personnel details manually`} checked={Boolean(attendee.manual)} onChange={(event) => { const enabled = event.target.checked; updateAttendee(batchIndex, attendeeIndex, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", office: "" }); }} />Manual</label>{batch.attendees.length > 1 && <button type="button" className="remove-participant remove-action" aria-label={`Remove personnel ${attendeeIndex + 1} from group ${batch.number}`} onClick={() => setBatches((current) => current.map((item, index) => index === batchIndex ? { ...item, attendees: item.attendees.filter((_, row) => row !== attendeeIndex) } : item))}>Remove</button>}</div>)}{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload to try again.</span>}<button type="button" className="text-button plain-action add-item-text-button" onClick={() => updateBatch(batchIndex, { attendees: [...batch.attendees, { name: "", position: "", office: "", userId: "", manual: false }] })}>+ Add personnel</button></div></fieldset>)}</div>}<div className="form-actions nta-edit-actions">{record.mode === "individual" && <button type="button" className="remove-participant nta-remove-notice remove-action" onClick={onRemove}>Remove notice</button>}<button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button></div></form></section>;
+  return <section className="content-section form-section nta-form-section nta-edit-section">
+    <div className="section-heading">
+      <div><p className="eyebrow">Edit record</p><h2>Edit {record.mode === "individual" ? "individual notice" : record.mode === "multiple" ? "multiple personnel notice" : "group notice"}</h2><p className="muted">Update the activity information, schedule, venue, and designated personnel.</p></div>
+      <button type="button" className="ghost-button" onClick={onCancel}>Cancel</button>
+    </div>
+    {hasLegacyPlaceholder && <p className="error-message nta-error" role="alert">Some saved activity details contained form guidance text and were cleared. Enter the missing title, organizer, or venue before saving.</p>}
+    {error && <p className="error-message nta-error">{error}</p>}
+    <form className="permit-form" onSubmit={save}>
+      <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
+      <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
+      {record.mode === "individual" ? <>
+        <div className="wide-field nta-recipient-fields">
+          <div className={`nta-recipient-field-grid${manualRecipient ? "" : " nta-recipient-dropdown-grid"}`}>
+            {manualRecipient ? <>
+              <label>Personnel Name<input value={to} onChange={(event) => setTo(event.target.value)} required /></label>
+              <label>Personnel Position<input value={positionDesignation} onChange={(event) => setPositionDesignation(event.target.value)} required /></label>
+            </> : <label>Personnel Name<select value={toUserId} onChange={(event) => { const selectedId = event.target.value; const selected = personnel.find((person) => person.userId === selectedId); setToUserId(selectedId); setTo(selected?.name ?? ""); setPositionDesignation(selected?.position ?? ""); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select>{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload to try again.</span>}</label>}
+            <label className="nta-manual-recipient-toggle"><input type="checkbox" aria-label="Enter personnel and position manually" checked={manualRecipient} onChange={(event) => { const enabled = event.target.checked; setManualRecipient(enabled); setToUserId(""); if (!enabled) { setTo(""); setPositionDesignation(""); } }} />Manual</label>
+          </div>
+        </div>
+        <div className="date-range-field"><span>Date (From – To)</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); if (dateTo && event.target.value > dateTo) setDateTo(event.target.value); }} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} required /></div></div>
+        <div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} /></div></div>
+        <label>Venue type<select value={venueType} onChange={(event) => setVenueType(event.target.value as "physical" | "virtual")}><option value="physical">Physical venue</option><option value="virtual">Virtual platform</option></select></label>
+        <label>{venueType === "virtual" ? "Platform name" : "Venue address"}<input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder={venueType === "virtual" ? "Google Meet, Zoom, etc." : "Street, city, or building"} required /></label>
+        {venueType === "virtual" && <label className="wide-field">Meeting link<input type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://" required /></label>}
+      </> : <div className="wide-field nta-batches">
+        {batches.map((batch, batchIndex) => <fieldset className="nta-batch-fieldset" key={batchIndex}>
+          <legend>Group {batch.number || batchIndex + 1}</legend>
+          <div className="date-range-field"><span>Date (From – To)</span><div><input aria-label={`Group ${batch.number} date from`} type="date" value={batch.dateFrom} onChange={(event) => { const nextDateFrom = event.target.value; updateBatch(batchIndex, { dateFrom: nextDateFrom, dateTo: batch.dateTo && nextDateFrom > batch.dateTo ? nextDateFrom : batch.dateTo }); }} required /><span>to</span><input aria-label={`Group ${batch.number} date to`} type="date" min={batch.dateFrom} value={batch.dateTo} onChange={(event) => updateBatch(batchIndex, { dateTo: event.target.value })} required /></div></div>
+          <div className="date-range-field"><span>Time</span><div><input aria-label={`Group ${batch.number} time from`} type="time" value={batch.timeFrom} onChange={(event) => updateBatch(batchIndex, { timeFrom: event.target.value })} required /><span>to</span><input aria-label={`Group ${batch.number} time to`} type="time" value={batch.timeTo} onChange={(event) => updateBatch(batchIndex, { timeTo: event.target.value })} required /></div></div>
+          <label>Venue type<select value={batch.venueType} onChange={(event) => updateBatch(batchIndex, { venueType: event.target.value as "physical" | "virtual" })}><option value="physical">Physical venue</option><option value="virtual">Virtual platform</option></select></label>
+          <label>{batch.venueType === "virtual" ? "Platform name" : "Venue address"}<input value={batch.venue} onChange={(event) => updateBatch(batchIndex, { venue: event.target.value })} required /></label>
+          {batch.venueType === "virtual" && <label className="wide-field">Meeting link<input type="url" value={batch.link} onChange={(event) => updateBatch(batchIndex, { link: event.target.value })} placeholder="https://" required /></label>}
+          <div className="nta-attendee-fields"><span>Personnel attending this group</span>{batch.attendees.map((attendee, attendeeIndex) => <div className={attendee.manual ? "nta-attendee-input nta-attendee-input-manual" : "nta-attendee-input nta-attendee-input-dropdown"} key={attendeeIndex}>
+            {attendee.manual ? <div className="nta-attendee-manual-fields"><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} personnel name`} placeholder="Personnel Name" value={attendee.name} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { name: event.target.value })} required /><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} personnel position`} placeholder="Personnel Position" value={attendee.position ?? ""} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { position: event.target.value })} required /><input aria-label={`Group ${batch.number} person ${attendeeIndex + 1} personnel office`} placeholder="Personnel Office" value={attendee.office} onChange={(event) => updateAttendee(batchIndex, attendeeIndex, { office: event.target.value })} required /></div> : <select aria-label={`Group ${batch.number} person ${attendeeIndex + 1} personnel name`} value={attendee.userId ?? ""} onChange={(event) => { const selectedId = event.target.value; const selected = personnel.find((person) => person.userId === selectedId); updateAttendee(batchIndex, attendeeIndex, { userId: selectedId, name: selected?.name ?? "", position: selected?.position ?? "", office: selected?.office ?? "" }); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === attendee.userId || !selectedAttendeeUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select>}
+            <label className="nta-manual-attendee-toggle"><input type="checkbox" aria-label={`Enter group ${batch.number} personnel details manually`} checked={Boolean(attendee.manual)} onChange={(event) => { const enabled = event.target.checked; updateAttendee(batchIndex, attendeeIndex, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", office: "" }); }} />Manual</label>
+            {batch.attendees.length > 1 && <button type="button" className="remove-participant remove-action" aria-label={`Remove personnel ${attendeeIndex + 1} from group ${batch.number}`} onClick={() => updateBatch(batchIndex, { attendees: batch.attendees.filter((_, index) => index !== attendeeIndex) })}>Remove</button>}
+          </div>)}{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload to try again.</span>}<button type="button" className="text-button plain-action add-item-text-button" onClick={() => updateBatch(batchIndex, { attendees: [...batch.attendees, { name: "", position: "", office: "", userId: "", manual: false }] })}>+ Add personnel</button></div>
+          {batches.length > 1 && <button type="button" className="remove-participant nta-remove-batch" aria-label={`Remove group ${batch.number}`} onClick={() => setBatches((current) => current.filter((_, index) => index !== batchIndex))}>Remove group</button>}
+        </fieldset>)}
+      </div>}
+      <div className="form-actions nta-edit-actions">{record.mode === "individual" && <button type="button" className="remove-participant nta-remove-notice remove-action" onClick={onRemove}>Remove notice</button>}<button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button></div>
+    </form>
+  </section>;
 }
 
 function NtaList({ records, ownerId, preparedByNames, fallbackPreparedBy, deletingId, copyingId, onNew, onEdit, onPreview, onCopy, onDelete }: { records: NtaRecord[]; ownerId: string; preparedByNames: Record<string, string>; fallbackPreparedBy: string; deletingId: string | null; copyingId: string | null; onNew: () => void; onEdit: (record: NtaRecord) => void; onPreview: (record: NtaRecord) => void; onCopy: (record: NtaRecord) => void; onDelete: (record: NtaRecord) => void }) {
@@ -305,7 +366,7 @@ function NtaList({ records, ownerId, preparedByNames, fallbackPreparedBy, deleti
   return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Notices to Attend</h2><p className="muted">{records.length} {records.length === 1 ? "notice" : "notices"} available to your Assignment.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No notices to attend yet</h3><p>Create an individual, group, or multiple personnel notice.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Notice To Attend</button></div> : <div className="permit-table"><RecordPagination totalRecords={records.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Notice to Attend" /><div className="table-head nta-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span>Prepared By</span><span></span></div>{visibleRecords.map((record) => {
     const isOwner = record.ownerId === ownerId;
     const schedules = record.mode === "individual"
-      ? [formatDateRange(record.dateFrom ?? "", record.dateTo ?? "")]
+      ? [[formatDateRange(record.dateFrom ?? "", record.dateTo ?? ""), record.timeFrom && record.timeTo ? `${formatTime(record.timeFrom)} – ${formatTime(record.timeTo)}` : ""].filter(Boolean).join(" · ")]
       : (record.batches ?? []).map((batch) => {
         const date = formatDateRange(batch.dateFrom, batch.dateTo);
         const start = formatTime(batch.timeFrom);
@@ -313,7 +374,7 @@ function NtaList({ records, ownerId, preparedByNames, fallbackPreparedBy, deleti
         const time = start || end ? `${start}${start && end ? " – " : ""}${end}` : "";
         return [date, time].filter(Boolean).join(" · ");
       }).filter(Boolean);
-    return <div className="table-row nta-list-row" key={record.id}><span>{record.subject}</span><span>{record.activityTitle}</span><span className="nta-list-schedules">{schedules.length ? schedules.map((schedule, index) => <span key={`${record.id}-schedule-${index}`}>{schedule}</span>) : <span>—</span>}</span><span>{preparedByNames[record.ownerId] || (isOwner ? fallbackPreparedBy : "") || "—"}</span><span className="nta-list-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPreview(record)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(record)}>{copyingId === record.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</span></div>;
+    return <div className="table-row nta-list-row" key={record.id}><span>{record.subject}</span><span>{cleanNtaField(record.activityTitle) || "—"}</span><span className="nta-list-schedules">{schedules.length ? schedules.map((schedule, index) => <span key={`${record.id}-schedule-${index}`}>{schedule}</span>) : <span>—</span>}</span><span>{preparedByNames[record.ownerId] || (isOwner ? fallbackPreparedBy : "") || "—"}</span><span className="nta-list-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPreview(record)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(record)}>{copyingId === record.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</span></div>;
   })}</div>}</section>;
 }
 
@@ -360,18 +421,18 @@ function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, fir
       <section className="nta-to-subject"><div className="nta-to-recipient"><p><b>TO</b><strong>:</strong><strong>{record.to?.toUpperCase()}</strong></p>{record.positionDesignation && <p className="nta-position-line"><span aria-hidden="true" /><span aria-hidden="true" /><span>{record.positionDesignation}</span></p>}</div><p><b>SUBJECT</b><strong>:</strong><strong>{record.subject.toUpperCase()}</strong></p></section>
       <hr className="nta-rule" />
       <p className="nta-directed">You are hereby directed to attend the activity with the following details:</p>
-      <dl className="nta-details"><div><dt>Title of Activity</dt><b>:</b><dd>{record.activityTitle}</dd></div><div><dt>Organizer / Host</dt><b>:</b><dd>{record.organizer}</dd></div><div><dt>Date(s)</dt><b>:</b><dd>{formatDateRange(record.dateFrom ?? "", record.dateTo ?? "")}</dd></div><div><dt>Venue / Platform</dt><b>:</b><dd>{record.venue}</dd></div>{record.venueType === "virtual" && <div><dt>Link</dt><b>:</b><dd className="nta-link">{record.link}</dd></div>}</dl>
+      <dl className="nta-details"><div><dt>Title of Activity</dt><b>:</b><dd>{cleanNtaField(record.activityTitle) || "—"}</dd></div><div><dt>Organizer / Host</dt><b>:</b><dd>{cleanNtaField(record.organizer) || "—"}</dd></div><div><dt>Date(s)</dt><b>:</b><dd>{formatDateRange(record.dateFrom ?? "", record.dateTo ?? "")}</dd></div>{(record.timeFrom || record.timeTo) && <div><dt>Time</dt><b>:</b><dd>{record.timeFrom ? formatTime(record.timeFrom) : ""}{record.timeFrom && record.timeTo ? " – " : ""}{record.timeTo ? formatTime(record.timeTo) : ""}</dd></div>}<div><dt>Venue / Platform</dt><b>:</b><dd>{cleanNtaField(record.venue) || "—"}</dd></div>{record.venueType === "virtual" && <div><dt>Link</dt><b>:</b><dd className="nta-link">{record.link}</dd></div>}</dl>
       <NtaIndividualClosing units={individualClosingUnits} signatoryName={signatoryName} signatoryDesignation={signatoryDesignation} signatoryPulledBack={individualSignatoryPulledBack} compacted={individualClosingCompacted} />
     </> : batchOverview ? <>
       <section className="nta-to-subject"><p><b>TO</b><strong>:</strong><strong>ALL CONCERNED PERSONNEL</strong></p><p className="nta-office-line"><span /> <strong>This Office</strong></p><p><b>SUBJECT</b><strong>:</strong><strong>{record.subject.toUpperCase()}</strong></p></section>
       <hr className="nta-rule" />
       <p className="nta-directed">You are hereby directed to attend the activity with the following details:</p>
       <dl className="nta-details nta-batch-overview">{[
-        ["Title", <strong key="title">{record.activityTitle}</strong>],
-        ["Organizer / Host", <strong key="organizer">{record.organizer}</strong>],
+        ["Title", <strong key="title">{cleanNtaField(record.activityTitle) || "—"}</strong>],
+        ["Organizer / Host", <strong key="organizer">{cleanNtaField(record.organizer) || "—"}</strong>],
         ["Date", batches.map((batch) => <strong key={batch.number}>{formatDateRange(batch.dateFrom, batch.dateTo)}</strong>)],
         ["Time", batches.map((batch) => <strong key={batch.number}>{formatTime(batch.timeFrom)} – {formatTime(batch.timeTo)}</strong>)],
-        ["Venue / Platform", batches.map((batch) => <strong key={batch.number}>{batch.venue}{batch.venueType === "virtual" && batch.link ? ` (${batch.link})` : ""}</strong>)],
+        ["Venue / Platform", batches.map((batch) => <strong key={batch.number}>{cleanNtaField(batch.venue) || "—"}{batch.venueType === "virtual" && batch.link ? ` (${batch.link})` : ""}</strong>)],
       ].map(([label, value]) => <div key={String(label)}><dt>{label}</dt><b>:</b><dd>{value}</dd></div>)}</dl>
       <p className="nta-attendance-intro">{record.mode === "multiple" ? "Designated Participant(s):" : "The said concerned personnel are as follows:"}</p><div className="nta-batch-tables nta-first-page-attendees">{firstPageRows > 0 && batches.slice(0, 1).map((batch) => <NtaBatchParticipants batch={{ ...batch, attendees: batch.attendees.slice(0, firstPageRows) }} key={batch.number} multiplePersonnel={record.mode === "multiple"} showCaption={record.mode === "batch" || (record.mode === "multiple" && batches.length > 1)} />)}</div>{showFixedCopy && <NtaFixedCopy />}
     </> : <>
@@ -709,7 +770,7 @@ export default function NtaModule({ user, office, unit }: { user: User; office: 
         createdAt: serverTimestamp(),
       };
       const data = record.mode === "individual"
-        ? { ...common, to: record.to ?? "", toUserId: record.toUserId ?? "", positionDesignation: record.positionDesignation ?? "", dateFrom: record.dateFrom ?? "", dateTo: record.dateTo ?? record.dateFrom ?? "", venueType: record.venueType ?? "physical", venue: record.venue ?? "", link: record.link ?? "" }
+        ? { ...common, to: record.to ?? "", toUserId: record.toUserId ?? "", positionDesignation: record.positionDesignation ?? "", dateFrom: record.dateFrom ?? "", dateTo: record.dateTo ?? record.dateFrom ?? "", timeFrom: record.timeFrom ?? "", timeTo: record.timeTo ?? "", venueType: record.venueType ?? "physical", venue: record.venue ?? "", link: record.link ?? "" }
         : { ...common, batches: (record.batches ?? []).map((batch) => ({ ...batch, attendees: batch.attendees.map((attendee) => ({ ...attendee })) })) };
       const recordRef = doc(collection(firestore, "ntaRecords"));
       const batch = writeBatch(firestore);
