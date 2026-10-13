@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { collection, deleteField, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type DocumentReference } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { accountAssignment, accountOffice } from "@/lib/account-profile";
+import { accountAssignment, accountDesignation, accountOffice } from "@/lib/account-profile";
 import { isApprovedAdminAccount, personnelMatchesAccountScope } from "@/lib/personnel";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { isSuperadminRole } from "@/lib/user-roles";
@@ -58,10 +58,15 @@ type CalendarOfActivities = {
   activities: CalendarOfActivitiesRow[];
   preparedName: string;
   preparedPosition: string;
+  checkedBy?: CalendarOfActivitiesAdminSignatory;
+  notedBy?: CalendarOfActivitiesAdminSignatory;
+  approvedBy?: CalendarOfActivitiesApprover;
   createdAt?: unknown;
 };
 type Profile = { name: string; position: string; office: string; unit: Unit };
-type Account = { id: string; name: string; adminAccount: boolean };
+type CalendarOfActivitiesAdminSignatory = { userId: string; name: string; designation: string; position: string; assignment: string };
+type CalendarOfActivitiesApprover = { name: string; designation: "Regional Executive Director" | "RTD for Operations" };
+type Account = { id: string; name: string; adminAccount: boolean; designation: string; position: string; assignment: string };
 
 const unitLabel = (unit: Unit) => unit === "Field Operations Division" || unit.startsWith("FOD-") ? unit : `FOD-${unit}`;
 const calendarOfActivitiesStatus = (plan: CalendarOfActivities): CalendarOfActivitiesStatus => plan.status === "Approved" || plan.status === "Disapproved" ? plan.status : "Pending";
@@ -81,6 +86,10 @@ const fixedCalendarOfActivitiesSignatories = [
   { label: "Checked:", name: "GERLIE B. ANTIPASO", position: "DRRM Alternate Focal Person / Agriculturist II" },
   { label: "Noted:", name: "MELODY C. GUIMARY", position: "Chief, Field Operations Division" },
   { label: "Approved:", name: "REBECCA R. ATEGA", position: "RTD for Operations" },
+];
+const calendarOfActivitiesApprovers: CalendarOfActivitiesApprover[] = [
+  { name: "ENGR. RICARDO M. OÑATE JR.", designation: "Regional Executive Director" },
+  { name: "REBECCA R. ATEGA", designation: "RTD for Operations" },
 ];
 const asset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const emptyActivity = (): ActivityDraft => ({ dateFrom: "", dateTo: "", activity: "", location: "", responsiblePeople: [], nextResponsibleId: "" });
@@ -136,8 +145,10 @@ function timestampMillis(value: unknown) {
   return 0;
 }
 
+const compareActivityDates = (first: CalendarOfActivitiesRow, second: CalendarOfActivitiesRow) => first.dateFrom.localeCompare(second.dateFrom) || first.dateTo.localeCompare(second.dateTo);
+
 function activityPages(activities: CalendarOfActivitiesRow[]) {
-  const chronologicalActivities = [...activities].sort((first, second) => first.dateFrom.localeCompare(second.dateFrom) || first.dateTo.localeCompare(second.dateTo));
+  const chronologicalActivities = [...activities].sort(compareActivityDates);
   const pages: CalendarOfActivitiesRow[][] = [];
   for (let index = 0; index < chronologicalActivities.length; index += pageSize) pages.push(chronologicalActivities.slice(index, index + pageSize));
   return pages;
@@ -145,6 +156,7 @@ function activityPages(activities: CalendarOfActivitiesRow[]) {
 
 function CalendarOfActivitiesPaper({ plan, activities, pageNumber, pageCount }: { plan: CalendarOfActivities; activities: CalendarOfActivitiesRow[]; pageNumber: number; pageCount: number }) {
   const isLastPage = pageNumber === pageCount;
+  const chronologicalActivities = [...activities].sort(compareActivityDates);
   return <article className="calendar-of-activities-paper">
     <header className="calendar-of-activities-paper-heading">
       <img src={asset("/da-caraga-logo.jpg")} alt="Department of Agriculture Caraga Region" />
@@ -153,12 +165,14 @@ function CalendarOfActivitiesPaper({ plan, activities, pageNumber, pageCount }: 
     <div className="calendar-of-activities-paper-rule" />
     <div className="calendar-of-activities-paper-title"><h1>CALENDAR OF ACTIVITIES</h1><p className="calendar-of-activities-paper-unit">{unitDescription[plan.unit]}</p><p className="calendar-of-activities-paper-month">{formatMonth(plan.month)}</p></div>
     <table className="calendar-of-activities-paper-table"><thead><tr><th>Date</th><th>Activity</th><th>Location</th><th>Responsible Personnel</th></tr></thead><tbody>
-      {activities.map((activity, index) => <tr key={`${activity.dateFrom}-${activity.activity}-${index}`}><td className="calendar-of-activities-paper-date">{formatDateRange(activity.dateFrom, activity.dateTo)}</td><td>{activity.activity}</td><td>{activity.location}</td><td><div className="calendar-of-activities-paper-responsible">{activity.responsiblePeople.map((person, personIndex) => <span key={person.userId}>{personIndex + 1}) {person.name}</span>)}</div></td></tr>)}
+      {chronologicalActivities.map((activity, index) => <tr key={`${activity.dateFrom}-${activity.activity}-${index}`}><td className="calendar-of-activities-paper-date">{formatDateRange(activity.dateFrom, activity.dateTo)}</td><td>{activity.activity}</td><td>{activity.location}</td><td><div className="calendar-of-activities-paper-responsible">{activity.responsiblePeople.map((person, personIndex) => <span key={person.userId}>{personIndex + 1}) {person.name}</span>)}</div></td></tr>)}
     </tbody></table>
     <footer className="calendar-of-activities-paper-footer">
       {isLastPage && <>
         <div className="calendar-of-activities-paper-signatory"><span>Prepared:</span><strong>{plan.preparedName}</strong><em>{plan.preparedPosition}</em></div>
-        {fixedCalendarOfActivitiesSignatories.map((signatory) => <div className="calendar-of-activities-paper-signatory" key={signatory.label}><span>{signatory.label}</span><strong>{signatory.name}</strong><em>{signatory.label === "Checked:" ? `${checkedRoleByUnit[plan.unit]}${plan.unit === "Field Operations Division" ? "" : " / Agriculturist II"}` : signatory.position}</em></div>)}
+        <div className="calendar-of-activities-paper-signatory"><span>Checked:</span>{plan.checkedBy ? <><strong>{plan.checkedBy.name.toLocaleUpperCase("en-PH")}</strong><em>{plan.checkedBy.designation} / {plan.checkedBy.position}</em></> : <><strong>{fixedCalendarOfActivitiesSignatories[0].name}</strong><em>{`${checkedRoleByUnit[plan.unit]}${plan.unit === "Field Operations Division" ? "" : " / Agriculturist II"}`}</em></>}</div>
+        <div className="calendar-of-activities-paper-signatory"><span>Noted:</span>{plan.notedBy ? <><strong>{plan.notedBy.name.toLocaleUpperCase("en-PH")}</strong><div className="calendar-of-activities-paper-signatory-title"><em>{plan.notedBy.designation}</em>{plan.notedBy.designation === "Chief" && plan.notedBy.assignment === "Field Operations Division" ? ", " : " / "}{plan.notedBy.assignment}</div></> : <><strong>{fixedCalendarOfActivitiesSignatories[1].name}</strong><em>{fixedCalendarOfActivitiesSignatories[1].position}</em></>}</div>
+        <div className="calendar-of-activities-paper-signatory"><span>Approved:</span>{plan.approvedBy ? <><strong>{plan.approvedBy.name.toLocaleUpperCase("en-PH")}</strong><div className="calendar-of-activities-paper-signatory-title"><em>{plan.approvedBy.designation}</em></div></> : <><strong>{fixedCalendarOfActivitiesSignatories[2].name}</strong><em>{fixedCalendarOfActivitiesSignatories[2].position}</em></>}</div>
       </>}
     </footer>
   </article>;
@@ -228,9 +242,12 @@ function CalendarOfActivitiesPreview({ plan, onClose }: { plan: CalendarOfActivi
   </div>;
 }
 
-function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCancel, onError }: { user: User; profile: Profile; accounts: Account[]; plan?: CalendarOfActivities; onSaved: (plan: CalendarOfActivities) => void; onCancel: () => void; onError: (message: string) => void }) {
+function CalendarOfActivitiesForm({ user, profile, accounts, adminAccounts, plan, onSaved, onCancel, onError }: { user: User; profile: Profile; accounts: Account[]; adminAccounts: Account[]; plan?: CalendarOfActivities; onSaved: (plan: CalendarOfActivities) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [month, setMonth] = useState(() => plan?.month ?? "");
   const [activities, setActivities] = useState<ActivityDraft[]>(() => plan ? plan.activities.map((activity) => ({ ...activity, responsiblePeople: activity.responsiblePeople.map((person) => ({ ...person })), nextResponsibleId: "" })) : [emptyActivity()]);
+  const [checkedById, setCheckedById] = useState(() => plan?.checkedBy?.userId ?? "");
+  const [notedById, setNotedById] = useState(() => plan?.notedBy?.userId ?? "");
+  const [approvedByDesignation, setApprovedByDesignation] = useState(() => plan?.approvedBy?.designation ?? "");
   const [saving, setSaving] = useState(false);
   const dateBounds = monthDateBounds(month);
 
@@ -276,6 +293,18 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
       onError("Each activity date must fall within the selected month and year.");
       return;
     }
+    const checkedByAccount = adminAccounts.find((account) => account.id === checkedById);
+    const notedByAccount = adminAccounts.find((account) => account.id === notedById);
+    const approvedBy = calendarOfActivitiesApprovers.find((signatory) => signatory.designation === approvedByDesignation);
+    if (!checkedByAccount || !notedByAccount || !approvedBy) {
+      onError("Select an Admin for Checked By and Noted By, and choose an approver.");
+      return;
+    }
+    const signatories = {
+      checkedBy: { userId: checkedByAccount.id, name: checkedByAccount.name, designation: checkedByAccount.designation, position: checkedByAccount.position, assignment: checkedByAccount.assignment },
+      notedBy: { userId: notedByAccount.id, name: notedByAccount.name, designation: notedByAccount.designation, position: notedByAccount.position, assignment: notedByAccount.assignment },
+      approvedBy,
+    };
     setSaving(true);
     onError("");
     const rows: CalendarOfActivitiesRow[] = activities.map(({ dateFrom, dateTo, activity, location, responsiblePeople }) => ({ dateFrom, dateTo, activity: activity.trim(), location: location.trim(), responsiblePeople }));
@@ -287,6 +316,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
       activities: rows,
       preparedName: profile.name.trim(),
       preparedPosition: profile.position.trim(),
+      ...signatories,
       createdAt: serverTimestamp(),
     };
     const activityByAccount = new Map<string, CalendarOfActivitiesReminder[]>();
@@ -328,9 +358,9 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
         }
         existingByRecipient.forEach((notifications) => notifications.forEach((notification) => notificationChanges.push({ kind: "delete", reference: notification.ref })));
 
-        for (let start = 0; start < notificationChanges.length; start += 17) {
+        for (let start = 0; start < Math.max(notificationChanges.length, 1); start += 17) {
           const batch = writeBatch(firestore);
-          if (start === 0) batch.update(planRef, { activities: rows });
+          if (start === 0) batch.update(planRef, { activities: rows, ...signatories });
           notificationChanges.slice(start, start + 17).forEach((change) => {
             if (change.kind === "delete") batch.delete(change.reference);
             else if (change.kind === "update") batch.update(change.reference, change.data!);
@@ -339,7 +369,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
           await batch.commit();
           if (start === 0) planUpdateCommitted = true;
         }
-        onSaved({ ...plan, activities: rows });
+        onSaved({ ...plan, activities: rows, ...signatories });
       } else {
         const planRef = doc(collection(firestore, calendarOfActivitiesCollection));
         createdPlanRef = planRef;
@@ -359,7 +389,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
     } catch (cause) {
       if (plan) {
         const code = (cause as { code?: string }).code;
-        if (planUpdateCommitted) onSaved({ ...plan, activities: rows });
+        if (planUpdateCommitted) onSaved({ ...plan, activities: rows, ...signatories });
         onError(planUpdateCommitted
           ? `Activity details were saved, but some responsible-person notifications could not be updated${code ? ` (${code})` : ""}. Save again to retry the notifications.`
           : code ? `Could not update the Calendar of Activities (${code}).` : "Could not update the Calendar of Activities.");
@@ -411,6 +441,11 @@ function CalendarOfActivitiesForm({ user, profile, accounts, plan, onSaved, onCa
         <button type="button" className="text-button plain-action add-item-text-button" disabled={activities.length >= maximumActivities} onClick={() => setActivities((current) => current.length < maximumActivities ? [...current, emptyActivity()] : current)}>+ Add another activity</button>
         {activities.length >= maximumActivities && <small className="calendar-of-activities-limit-note">A calendar can contain up to {maximumActivities} activities.</small>}
       </div>
+      <div className="calendar-of-activities-signatories wide-field">
+        <label>Checked By<select value={checkedById} onChange={(event) => setCheckedById(event.target.value)} required disabled={saving || !adminAccounts.length}><option value="">Select an Admin</option>{adminAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+        <label>Noted By<select value={notedById} onChange={(event) => setNotedById(event.target.value)} required disabled={saving || !adminAccounts.length}><option value="">Select an Admin</option>{adminAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+        <label>Approved By<select value={approvedByDesignation} onChange={(event) => setApprovedByDesignation(event.target.value as CalendarOfActivitiesApprover["designation"] | "")} required disabled={saving}><option value="">Select an approver</option>{calendarOfActivitiesApprovers.map((signatory) => <option key={signatory.designation} value={signatory.designation}>{signatory.designation}</option>)}</select></label>
+      </div>
       <div className="form-actions"><button className="primary-button" disabled={saving}>{saving ? "Saving…" : plan ? "Save changes" : "Save"}</button></div>
     </form>
   </section>;
@@ -440,6 +475,7 @@ function CalendarOfActivitiesList({ plans, currentUserId, onNew, onEdit, onView,
 export default function CalendarOfActivitiesModule({ user, mode = "prepared", profileRevision = 0 }: { user: User; mode?: "prepared" | "approved-records"; profileRevision?: number }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [adminAccounts, setAdminAccounts] = useState<Account[]>([]);
   const [plans, setPlans] = useState<CalendarOfActivities[]>([]);
   const [view, setView] = useState<"list" | "new" | "edit">("list");
   const [editingPlan, setEditingPlan] = useState<CalendarOfActivities | null>(null);
@@ -484,6 +520,10 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
             ? getDoc(doc(firestore, calendarOfActivitiesCollection, calendarId))
             : Promise.resolve(null);
         }));
+        const admins = allAccountsSnapshot.docs.filter((item) => isApprovedAdminAccount(item.data().accountRole, item.data().accountStatus)).map((item) => {
+          const data = item.data();
+          return { id: item.id, name: String(data.name ?? "").trim(), adminAccount: true, designation: accountDesignation(data.designation), position: typeof data.position === "string" ? data.position.trim() : "", assignment: accountAssignment(data) };
+        }).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
         const colleagues = allAccountsSnapshot.docs.filter((item) => {
           if (item.id === user.uid || isSuperadminRole(item.data().accountRole)) return false;
           const person = item.data();
@@ -492,14 +532,17 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
             accountRole: person.accountRole,
             accountStatus: person.accountStatus,
           });
-        }).map((item) => ({ id: item.id, name: String(item.data().name ?? ""), adminAccount: isApprovedAdminAccount(item.data().accountRole, item.data().accountStatus) })).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
+        }).map((item) => {
+          const data = item.data();
+          return { id: item.id, name: String(data.name ?? "").trim(), adminAccount: isApprovedAdminAccount(data.accountRole, data.accountStatus), designation: accountDesignation(data.designation), position: typeof data.position === "string" ? data.position.trim() : "", assignment: accountAssignment(data) };
+        }).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
         const rowsById = new Map<string, CalendarOfActivities>([...unitPlansSnapshot.docs, ...ownedPlansSnapshot.docs].map((item): [string, CalendarOfActivities] => [item.id, { id: item.id, ...item.data() } as CalendarOfActivities]));
         receivedPlans.forEach((item) => {
           if (item?.exists()) rowsById.set(item.id, { id: item.id, ...item.data() } as CalendarOfActivities);
         });
         const rows = [...rowsById.values()];
         rows.sort((first, second) => timestampMillis(second.createdAt) - timestampMillis(first.createdAt));
-        if (!cancelled) { setProfile(loadedProfile); setAccounts(colleagues); setPlans(rows); }
+        if (!cancelled) { setProfile(loadedProfile); setAccounts(colleagues); setAdminAccounts(admins); setPlans(rows); }
       } catch (cause) {
         if (!cancelled) {
           const code = (cause as { code?: string }).code;
@@ -579,7 +622,7 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
 
   return <>
     {error && <div className="error-message calendar-of-activities-error" role="alert">{error}</div>}
-    {loading ? <section className="content-section"><p className="muted">Loading Calendar of Activities records…</p></section> : mode === "prepared" && !profile ? <section className="content-section calendar-of-activities-profile-notice"><h2>Profile details needed</h2><p>Set your Assignment in Profile to view your office’s Calendar of Activities.</p></section> : mode === "prepared" && (view === "new" || (view === "edit" && editingPlan)) ? <CalendarOfActivitiesForm key={view === "edit" ? editingPlan!.id : "new"} user={user} profile={profile!} accounts={accounts} plan={view === "edit" ? editingPlan! : undefined} onSaved={(plan) => { if (view === "edit") setPlans((current) => current.map((item) => item.id === plan.id ? plan : item)); else setPlans((current) => [plan, ...current]); setEditingPlan(null); setView("list"); }} onCancel={() => { setEditingPlan(null); setView("list"); }} onError={setError} /> : <CalendarOfActivitiesList plans={plans} currentUserId={user.uid} onNew={() => { if (!profile?.name.trim() || !profile.position.trim()) { setError("Complete your name and position in Profile before preparing a new Calendar of Activities."); return; } setError(""); setEditingPlan(null); setView("new"); }} onEdit={(plan) => { setError(""); setEditingPlan(plan); setView("edit"); }} onView={setPreview} onDelete={setPendingDelete} onStatusChange={(plan, status) => void updateCalendarOfActivitiesStatus(plan, status)} deletingId={deletingId} updatingStatusId={updatingStatusId} adminRecordsOnly={mode === "approved-records"} />}
+    {loading ? <section className="content-section"><p className="muted">Loading Calendar of Activities records…</p></section> : mode === "prepared" && !profile ? <section className="content-section calendar-of-activities-profile-notice"><h2>Profile details needed</h2><p>Set your Assignment in Profile to view your office’s Calendar of Activities.</p></section> : mode === "prepared" && (view === "new" || (view === "edit" && editingPlan)) ? <CalendarOfActivitiesForm key={view === "edit" ? editingPlan!.id : "new"} user={user} profile={profile!} accounts={accounts} adminAccounts={adminAccounts} plan={view === "edit" ? editingPlan! : undefined} onSaved={(plan) => { if (view === "edit") setPlans((current) => current.map((item) => item.id === plan.id ? plan : item)); else setPlans((current) => [plan, ...current]); setEditingPlan(null); setView("list"); }} onCancel={() => { setEditingPlan(null); setView("list"); }} onError={setError} /> : <CalendarOfActivitiesList plans={plans} currentUserId={user.uid} onNew={() => { if (!profile?.name.trim() || !profile.position.trim()) { setError("Complete your name and position in Profile before preparing a new Calendar of Activities."); return; } setError(""); setEditingPlan(null); setView("new"); }} onEdit={(plan) => { setError(""); setEditingPlan(plan); setView("edit"); }} onView={setPreview} onDelete={setPendingDelete} onStatusChange={(plan, status) => void updateCalendarOfActivitiesStatus(plan, status)} deletingId={deletingId} updatingStatusId={updatingStatusId} adminRecordsOnly={mode === "approved-records"} />}
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Calendar of Activities Deletion?" description="Are you sure you want to delete this Calendar of Activities? This action cannot be undone, and its activity notifications will also be removed." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteCalendarOfActivities(pendingDelete); }} />
     {preview && <CalendarOfActivitiesPreview plan={preview} onClose={() => setPreview(null)} />}
   </>;

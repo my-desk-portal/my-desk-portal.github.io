@@ -9,6 +9,7 @@ import "./profile-photo.css";
 
 const uploadThingUrl = process.env.NEXT_PUBLIC_UPLOADTHING_URL || "/api/uploadthing";
 const uploadThingConfigured = Boolean(process.env.NEXT_PUBLIC_UPLOADTHING_URL);
+const defaultProfilePhotoURL = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/da-default-dp.png`;
 
 const { useUploadThing } = generateReactHelpers<any>({ url: uploadThingUrl });
 const maxPhotoBytes = 4 * 1024 * 1024;
@@ -82,9 +83,12 @@ export default function ProfilePhotoUpload({
 
   return (
     <div className="profile-photo-field">
-      {photoURL
-        ? <img className="profile-photo-preview" src={photoURL} alt="Current profile photo" />
-        : <span className="profile-photo-preview profile-photo-placeholder" aria-hidden="true">{user.displayName?.trim().charAt(0).toUpperCase() || "?"}</span>}
+      <img
+        className="profile-photo-preview"
+        src={photoURL || defaultProfilePhotoURL}
+        alt="Profile photo"
+        onError={(event) => { event.currentTarget.src = defaultProfilePhotoURL; }}
+      />
       <div className="profile-photo-controls">
         <strong>Profile photo</strong>
         <label className="profile-photo-select">

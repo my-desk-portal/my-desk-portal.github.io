@@ -9,6 +9,7 @@
   .calendar-of-activities-list-status::before{content:"Status: "}
   .calendar-of-activities-row-actions{flex-wrap:wrap;gap:18px;justify-content:flex-start;padding-top:3px}
   .calendar-of-activities-form{gap:17px;grid-template-columns:minmax(0,1fr)}
+  .calendar-of-activities-signatories{grid-template-columns:minmax(0,1fr)}
   .calendar-of-activities-meta{grid-template-columns:1fr}
   .calendar-of-activities-row{gap:12px;grid-template-columns:minmax(0,1fr);padding:14px}
   .calendar-of-activities-dates{gap:9px;grid-template-columns:1fr}

@@ -19,6 +19,30 @@ service cloud.firestore {
       return isEmailVerified() && (isSuperAdmin()
         || (exists(userPath) && get(userPath).data.get("accountStatus", "Approved") == "Approved"));
     }
+    function isCalendarActivityAdminAccount(userId) {
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      return userId is string
+        && exists(userPath)
+        && get(userPath).data.get("accountRole", "") == "admin"
+        && get(userPath).data.get("accountStatus", "Approved") in ["Approved", null];
+    }
+    function isCalendarActivityAdminSignatory(signatory) {
+      return signatory is map
+        && signatory.keys().hasAll(["userId", "name", "designation", "position", "assignment"])
+        && signatory.keys().hasOnly(["userId", "name", "designation", "position", "assignment"])
+        && signatory.userId is string && signatory.userId.size() > 0 && signatory.userId.size() <= 128
+        && signatory.name is string && signatory.name.size() > 0 && signatory.name.size() <= 120
+        && signatory.designation is string && signatory.designation.size() <= 120
+        && signatory.position is string && signatory.position.size() <= 120
+        && signatory.assignment is string && signatory.assignment.size() <= 160;
+    }
+    function isCalendarActivityApprover(signatory) {
+      return signatory is map
+        && signatory.keys().hasAll(["name", "designation"])
+        && signatory.keys().hasOnly(["name", "designation"])
+        && signatory.name is string && signatory.name.size() > 0 && signatory.name.size() <= 120
+        && signatory.designation in ["Regional Executive Director", "RTD for Operations"];
+    }
     function profileOffice(profile) {
       let version = profile.get("profileFieldsVersion", 0);
       let office = profile.get("office", "");
@@ -422,8 +446,8 @@ service cloud.firestore {
           || isPermitAdmin()
           || isCalendarOwnerOrSameUnit(calendarId));
       allow create: if isVerifiedUser()
-        && request.resource.data.keys().hasAll(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
-        && request.resource.data.keys().hasOnly(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "createdAt"])
+        && request.resource.data.keys().hasAll(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "checkedBy", "notedBy", "approvedBy", "createdAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "unit", "month", "status", "activities", "preparedName", "preparedPosition", "checkedBy", "notedBy", "approvedBy", "createdAt"])
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.unit is string
         && request.resource.data.unit == signedInUnit()
@@ -439,6 +463,11 @@ service cloud.firestore {
         && request.resource.data.preparedPosition is string
         && request.resource.data.preparedPosition.size() > 0
         && request.resource.data.preparedPosition.size() <= 120
+        && isCalendarActivityAdminSignatory(request.resource.data.checkedBy)
+        && isCalendarActivityAdminAccount(request.resource.data.checkedBy.userId)
+        && isCalendarActivityAdminSignatory(request.resource.data.notedBy)
+        && isCalendarActivityAdminAccount(request.resource.data.notedBy.userId)
+        && isCalendarActivityApprover(request.resource.data.approvedBy)
         && request.resource.data.createdAt is timestamp;
       allow update: if isVerifiedUser()
         && (resource.data.ownerId == request.auth.uid || resource.data.unit == signedInUnit())
@@ -448,8 +477,13 @@ service cloud.firestore {
         && request.resource.data.preparedName == resource.data.preparedName
         && request.resource.data.preparedPosition == resource.data.preparedPosition
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.diff(resource.data).affectedKeys().hasAny(["activities", "status"])
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["activities", "status"])
+        && request.resource.data.diff(resource.data).affectedKeys().hasAny(["activities", "status", "checkedBy", "notedBy", "approvedBy"])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["activities", "status", "checkedBy", "notedBy", "approvedBy"])
+        && (!request.resource.data.keys().hasAny(["checkedBy"]) || isCalendarActivityAdminSignatory(request.resource.data.checkedBy))
+        && (!request.resource.data.keys().hasAny(["notedBy"]) || isCalendarActivityAdminSignatory(request.resource.data.notedBy))
+        && (!request.resource.data.keys().hasAny(["approvedBy"]) || isCalendarActivityApprover(request.resource.data.approvedBy))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["checkedBy"]) || isCalendarActivityAdminAccount(request.resource.data.checkedBy.userId))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["notedBy"]) || isCalendarActivityAdminAccount(request.resource.data.notedBy.userId))
         && resource.data.status == "Pending"
         && (!request.resource.data.keys().hasAny(["status"])
           || request.resource.data.status in ["Pending", "Approved", "Disapproved"])

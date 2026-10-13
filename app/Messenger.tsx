@@ -52,17 +52,8 @@ const unitLabel = (office: string, unit: string) => {
 const isHttpsUrl = (value: string) => { try { return new URL(value).protocol === "https:" && value.length <= 500; } catch { return false; } };
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 
-function defaultAvatarForUnit(unit: string) {
-  const file = unit === "AGRISTAT" || unit === "FOD-AGRISTAT" ? "agristat-default-dp.png"
-    : unit === "AMIA" || unit === "FOD-AMIA" ? "amia-default-dp.png"
-      : unit === "DRRM" || unit === "FOD-DRRM" ? "drrm-default-dp.png"
-        : unit === "Field Operations Division" ? "fod-default-dp.png"
-          : "da-default-dp.png";
-  return publicAsset(`/${file}`);
-}
-
 function PersonAvatar({ person, className = "" }: { person: Person; className?: string }) {
-  const fallback = defaultAvatarForUnit(person.unit);
+  const fallback = publicAsset("/da-default-dp.png");
   const src = person.photoURL && isHttpsUrl(person.photoURL) ? person.photoURL : fallback;
   return <img className={`messenger-avatar ${className}`} src={src} alt="" aria-hidden="true" onError={(event) => { event.currentTarget.src = fallback; }} />;
 }
