@@ -1737,6 +1737,7 @@ export default function Home() {
   const [singleSlipPreview, setSingleSlipPreview] = useState(false);
   const [specialOrderPreview, setSpecialOrderPreview] = useState<SpecialOrder | null>(null);
   const [error, setError] = useState("");
+  const [startupError, setStartupError] = useState("");
   const [loading, setLoading] = useState(true);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -2074,9 +2075,19 @@ export default function Home() {
   useEffect(() => {
     if (!auth) { setLoading(false); return; }
     let authChange = 0;
-    return onAuthStateChanged(auth, (currentUser) => {
+    let active = true;
+    const showStartupTimeout = () => {
+      if (!active) return;
+      setStartupError("My Desk could not complete its Firebase startup check. Check your internet connection and Firebase project configuration, then reload.");
+      setLoading(false);
+    };
+    let startupTimeout = window.setTimeout(showStartupTimeout, 15000);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      window.clearTimeout(startupTimeout);
+      startupTimeout = window.setTimeout(showStartupTimeout, 15000);
       const thisAuthChange = ++authChange;
       const verifiedUser = currentUser?.emailVerified ? currentUser : null;
+      setStartupError("");
       setLoading(true);
       setApprovalError("");
       setApprovalStatus(null);
@@ -2085,11 +2096,12 @@ export default function Home() {
       if (!verifiedUser) {
         setUser(null);
         setAccountProfile(null);
+        window.clearTimeout(startupTimeout);
         setLoading(false);
         return;
       }
       void (async () => {
-        if (!db) { setUser(verifiedUser); setLoading(false); return; }
+        if (!db) { setUser(verifiedUser); window.clearTimeout(startupTimeout); setLoading(false); return; }
         try {
           const profileRef = doc(db, "users", verifiedUser.uid);
           const profileSnapshot = await getDoc(profileRef);
@@ -2171,10 +2183,27 @@ export default function Home() {
             setApprovalError("We could not check your approval status. Please sign out and try again.");
           }
         } finally {
-          if (thisAuthChange === authChange) setLoading(false);
+          if (active && thisAuthChange === authChange) {
+            window.clearTimeout(startupTimeout);
+            setStartupError("");
+            setLoading(false);
+          }
         }
       })();
+    }, (cause) => {
+      if (!active) return;
+      const code = (cause as { code?: string }).code;
+      window.clearTimeout(startupTimeout);
+      setStartupError(code
+        ? `Firebase could not restore your sign-in session (${code}). Reload My Desk to try again.`
+        : "Firebase could not restore your sign-in session. Reload My Desk to try again.");
+      setLoading(false);
     });
+    return () => {
+      active = false;
+      window.clearTimeout(startupTimeout);
+      unsubscribe();
+    };
   }, []);
   useEffect(() => {
     if (!user || !db) { setAccountProfile(null); return; }
@@ -2664,6 +2693,7 @@ export default function Home() {
 
   if (loading) return <div className="loading-screen" role="status" aria-label="Loading My Desk"><span>Loading</span><img className="loading-logo" src={publicAsset("/my%20desk%20logo.png")} alt="" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><span aria-hidden="true">...</span></div>;
   if (!isFirebaseConfigured) return <div className="setup-screen"><div className="setup-card"><img className="brand-mark brand-logo" src="/my%20desk%20logo.png" alt="My Desk logo" draggable={false} onDragStart={(event) => event.preventDefault()} onContextMenu={(event) => event.preventDefault()} /><p className="eyebrow">One setup step</p><h1>Connect your Firebase project</h1><p className="muted">Copy <strong>.env.example</strong> to <strong>.env.local</strong>, add your Firebase web app credentials, then restart the dev server.</p><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID=...</code></div></div>;
+  if (startupError) return <div className="setup-screen"><section className="setup-card"><p className="eyebrow">Connection issue</p><h1>My Desk could not start</h1><p className="muted" role="alert">{startupError}</p><button className="primary-button" type="button" onClick={() => window.location.reload()}>Reload My Desk</button></section></div>;
   if (!user) return profileSetupUser
     ? <RegistrationDetails user={profileSetupUser} onSubmitted={(submittedUser) => { setProfileSetupUser(null); setApprovalUser(submittedUser); setApprovalStatus(submittedUser.email?.trim().toLowerCase() === SUPERADMIN_EMAIL ? "Approved" : "Pending"); setApprovalError(""); }} />
     : approvalUser ? <div className="setup-screen"><section className="setup-card account-approval-card"><p className="eyebrow">Account approval</p><h1>{approvalStatus === "Disapproved" ? "Account disapproved" : approvalStatus === "Missing" ? "Account profile unavailable" : "Awaiting approval"}</h1><p>{approvalStatus === "Disapproved" ? "Your account was disapproved. Contact the Super Admin if you need help." : approvalStatus === "Missing" ? "Your account profile could not be found. Contact the Super Admin for assistance." : "Your email is verified. Your account will be available after the IT Administrator approves it."}</p>{approvalError && <p className="auth-message auth-message-error" role="alert">{approvalError}</p>}<button type="button" className="primary-button" onClick={() => { if (auth) void signOut(auth); }}>Sign Out</button></section></div> : <Login onError={setError} />;

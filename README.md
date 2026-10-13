@@ -40,7 +40,7 @@ npx wrangler secret put UPLOADTHING_TOKEN
 npx wrangler secret put FIREBASE_API_KEY
 ```
 
-Use a rotated UploadThing token for `UPLOADTHING_TOKEN`. Set `FIREBASE_API_KEY` to the Firebase Web API key used by the site. For local Worker development, copy `uploadthing-worker/.dev.vars.example` to `uploadthing-worker/.dev.vars` and fill in both values, run `npx wrangler dev` from `uploadthing-worker`, and set `NEXT_PUBLIC_UPLOADTHING_URL=http://127.0.0.1:8787/api/uploadthing` in the site environment.
+Use a rotated UploadThing token for `UPLOADTHING_TOKEN`. Set `FIREBASE_API_KEY` to the Firebase Web API key used by the site. For local Worker development, copy `uploadthing-worker/.dev.vars.example` to `uploadthing-worker/.dev.vars` and fill in the needed values, run `npx wrangler dev` from `uploadthing-worker`, and set `NEXT_PUBLIC_UPLOADTHING_URL=http://127.0.0.1:8787/api/uploadthing` in the site environment.
 
 Set `NEXT_PUBLIC_UPLOADTHING_URL` in the site's `.env.local` and hosting build settings to the Worker endpoint, for example `https://ps-taguibo-uploadthing.<your-workers-subdomain>.workers.dev/api/uploadthing`. Build and republish the static site after setting it. Profile photos accept JPEG, PNG, or WebP files up to 4 MB.
 

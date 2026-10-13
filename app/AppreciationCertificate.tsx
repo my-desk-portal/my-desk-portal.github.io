@@ -5,16 +5,14 @@ import { addDoc, collection, deleteDoc, doc, getDocs, query, serverTimestamp, up
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { loadPdfTools } from "@/lib/pdf-tools";
-import { CertificateStatusBadge, certificateWorkflowStatus, type CertificateWorkflowFields } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./appreciation.css";
 import "./appreciation-amia.css";
-import "./certificate-workflow.css";
 
 type AppreciationGender = "female" | "male";
 type AppreciationSpeaker = { name: string; gender: AppreciationGender; position: string; office: string };
 type AppreciationSpeakerDraft = { name: string; gender: AppreciationGender | ""; position: string; office: string };
-type AppreciationRecord = CertificateWorkflowFields & {
+type AppreciationRecord = {
   id: string;
   unit: "AMIA" | "DRRM";
   speakers?: AppreciationSpeaker[];
@@ -25,6 +23,8 @@ type AppreciationRecord = CertificateWorkflowFields & {
   eventTitle: string;
   eventDateFrom: string;
   eventDateTo: string;
+  eventTimeFrom: string;
+  eventTimeTo: string;
   eventDestination: string;
   distributionSameAsDestination: boolean;
   distributionPlace: string;
@@ -77,6 +77,13 @@ function displayDateRange(from: string, to: string) {
   if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) return `${startMonth} ${start.getDate()} - ${end.getDate()}, ${end.getFullYear()}`;
   if (start.getFullYear() === end.getFullYear()) return `${displayDate(from)} - ${endMonth} ${end.getDate()}, ${end.getFullYear()}`;
   return `${displayDate(from)} - ${displayDate(to)}`;
+}
+
+function displayTime(value: string) {
+  const [hourText, minutes] = value.split(":");
+  const hourValue = Number(hourText);
+  if (!Number.isFinite(hourValue) || !minutes) return value;
+  return `${hourValue % 12 || 12}:${minutes} ${hourValue >= 12 ? "PM" : "AM"}`;
 }
 
 function ordinalDate(value: string) {
@@ -136,7 +143,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
   }, [user.uid]);
 
   async function deleteRecord(record: AppreciationRecord) {
-    if (!db || certificateWorkflowStatus(record.status) === "Approved") return;
+    if (!db) return;
     setDeletingId(record.id);
     setError("");
     try {
@@ -179,10 +186,11 @@ export default function AppreciationCertificate({ user }: { user: User }) {
       eventTitle: String(form.get("event-title") ?? "").trim(),
       eventDateFrom: String(form.get("event-date-from") ?? ""),
       eventDateTo: String(form.get("event-date-to") ?? ""),
+      eventTimeFrom: String(form.get("event-time-from") ?? ""),
+      eventTimeTo: String(form.get("event-time-to") ?? ""),
       eventDestination,
       distributionSameAsDestination: sameAsDestination,
       distributionPlace,
-      status: "Pending" as const,
       ownerId: user.uid,
       createdAt: serverTimestamp(),
     };
@@ -202,7 +210,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
   async function saveSpeakerCorrections(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!db || !editingRecord || certificateWorkflowStatus(editingRecord.status) === "Approved") { setError("Approved certificates cannot be edited."); return; }
+    if (!db || !editingRecord) { setError("The Appreciation certificate could not be updated."); return; }
     const form = new FormData(event.currentTarget);
     const names = form.getAll("speaker-name").map((value) => String(value).trim());
     const genders = form.getAll("speaker-gender").map((value) => String(value) as AppreciationGender);
@@ -247,7 +255,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
         const batch = writeBatch(db);
         const chunk: AppreciationRecord[] = parsed.slice(offset, offset + 450).map((record) => {
           const reference = doc(target);
-          const data = { ...record, ...primarySpeakerFields(record.speakers), status: "Pending" as const, ownerId: user.uid, createdAt: serverTimestamp() };
+          const data = { ...record, ...primarySpeakerFields(record.speakers), ownerId: user.uid, createdAt: serverTimestamp() };
           batch.set(reference, data);
           return { ...data, id: reference.id, createdAt: undefined } as AppreciationRecord;
         });
@@ -381,7 +389,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
     <input ref={importInputRef} className="appreciation-import-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => void importAppreciations(event)} aria-label="Import Appreciation certificate workbook" />
     {error && <p className="appreciation-error" role="alert">{error}</p>}
     {importMessage && <p className="appreciation-success" role="status">{importMessage}</p>}
-    {loading ? <p className="muted">Loading Appreciation certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Appreciation certificates yet</h3><p>Add the speaker and event details manually or import the completed Appreciation_Importing_Template.xlsx workbook.</p><div className="appreciation-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add an Appreciation Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="appreciation-record-list"><div className="appreciation-record-head"><span>Office</span><span>Resource Speaker(s)</span><span>Event&apos;s Title</span><span>Event Dates</span><span>Status</span><span></span></div>{records.map((record) => <div className="appreciation-record-row" key={record.id}><span><span className="appreciation-unit-tag">{record.unit}</span></span><strong>{recordSpeakers(record).map((speaker) => speaker.name).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><span><CertificateStatusBadge record={record} /></span><div className="appreciation-record-actions">{certificateWorkflowStatus(record.status) !== "Approved" && <button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button>}<button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button>{certificateWorkflowStatus(record.status) !== "Approved" && <button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</div></div>)}</div>}
+    {loading ? <p className="muted">Loading Appreciation certificates...</p> : records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No Appreciation certificates yet</h3><p>Add the speaker and event details manually or import the completed Appreciation_Importing_Template.xlsx workbook.</p><div className="appreciation-empty-actions"><button type="button" className="text-button plain-action" onClick={() => { setError(""); setView("new"); }}>Add an Appreciation Certificate</button><button type="button" className="text-button plain-action" disabled={importing} onClick={() => { setError(""); setImportMessage(""); importInputRef.current?.click(); }}>{importing ? "Importing..." : "Upload an excel file"}</button></div></div> : <div className="appreciation-record-list"><div className="appreciation-record-head"><span>Unit</span><span>Resource Speaker(s)</span><span>Event&apos;s Title</span><span>Event Dates</span><span></span></div>{records.map((record) => <div className="appreciation-record-row" key={record.id}><span><span className="appreciation-unit-tag">{record.unit}</span></span><strong>{recordSpeakers(record).map((speaker) => speaker.name).join(", ")}</strong><span>{record.eventTitle}</span><span>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</span><div className="appreciation-record-actions"><button type="button" className="row-action" onClick={() => { setEditingRecord(record); setError(""); setView("edit"); }}>Edit</button><button type="button" className="row-action" onClick={() => { setError(""); setPreview(record); }}>View</button><button type="button" className="delete-button" disabled={deletingId !== null} onClick={() => setPendingDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button></div></div>)}</div>}
     <p className="appreciation-hold-note">AGRISTAT appreciation template on hold.</p>
   </section>
   <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Appreciation Certificate Deletion?" description="Are you sure you want to delete this Appreciation Certificate? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} />
@@ -401,11 +409,12 @@ function AppreciationForm({ onCancel, onSubmit, saving, error }: { onCancel: () 
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Appreciation</h2><p className="muted">Enter one or more resource speakers and the event details. AMIA certificates print on A4; DRRM certificates print on landscape Letter paper. Each speaker gets a separate certificate.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="appreciation-error" role="alert">{error}</p>}
     <form className="permit-form appreciation-form" onSubmit={onSubmit}>
-      <label className="wide-field">Office<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT appreciation template on hold.</small></label>
+      <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT appreciation template on hold.</small></label>
       <AppreciationSpeakersFieldset speakers={speakers} onChange={updateSpeaker} onAdd={() => setSpeakers((current) => [...current, { name: "", gender: "", position: "", office: "" }])} onRemove={(index) => setSpeakers((current) => current.filter((_, row) => row !== index))} />
       <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <div className="wide-field appreciation-schedule">
         <div className="appreciation-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => { setEventDateFrom(event.target.value); if (eventDateTo && eventDateTo < event.target.value) setEventDateTo(""); }} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} value={eventDateTo} onChange={(event) => setEventDateTo(event.target.value)} required /></label></div>
+        <div className="appreciation-time-range"><label>Time Conducted (From)<input name="event-time-from" type="time" defaultValue="08:00" required /></label><span>to</span><label>Time Conducted (To)<input name="event-time-to" type="time" defaultValue="17:00" required /></label></div>
       </div>
       <label className="wide-field">Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
       <label className="wide-field appreciation-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event&apos;s Destination is the same as where the certificate will be awarded</label>
@@ -510,7 +519,7 @@ function AppreciationPaper({ record, speaker }: { record: AppreciationRecord; sp
       <div className="appreciation-speaker-name appreciation-speaker-name-amia">{speaker.name}</div>
       <div className="appreciation-speaker-role appreciation-speaker-role-amia"><em>{speaker.position}</em>,{" "}<strong>{speaker.office}</strong></div>
       <div className="appreciation-body appreciation-body-amia" ref={bodyRef}>
-        <p>in appreciation of {possessive} invaluable expertise and insight on {possessive} field as a <strong>RESOURCE SPEAKER</strong> during the <strong><em>{record.eventTitle}</em></strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> at {record.eventDestination}.</p>
+        <p>in appreciation of {possessive} invaluable expertise and insight on {possessive} field as a <strong>RESOURCE SPEAKER</strong> in the <strong><em>{record.eventTitle}</em></strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at {record.eventDestination}.</p>
         <p>Given this {ordinalDate(record.eventDateTo)} in at <strong>{countryLocation(record.distributionPlace)}</strong>.</p>
         <footer className="appreciation-signatory appreciation-signatory-amia"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
       </div>
@@ -522,7 +531,7 @@ function AppreciationPaper({ record, speaker }: { record: AppreciationRecord; sp
     <div className="appreciation-speaker-name">{speaker.name}</div>
     <div className="appreciation-speaker-role"><em>{speaker.position}</em>, {speaker.office}</div>
     <div className="appreciation-body" ref={bodyRef}>
-      <p>For {objectPronoun} exemplary service, commitment, and invaluable shared insights as <strong>RESOURCE SPEAKER</strong> during the <strong>{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> at <strong>{record.eventDestination}</strong>.</p>
+      <p>For {objectPronoun} exemplary service, commitment, and invaluable shared insights as <strong>RESOURCE SPEAKER</strong> for <strong>{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at <strong>{record.eventDestination}</strong>.</p>
       <p>Given this {ordinalDate(record.eventDateTo)} at <strong>{countryLocation(record.distributionPlace)}</strong>.</p>
       <footer className="appreciation-signatory"><strong>ENGR. RICARDO M. O&#209;ATE JR.</strong><em>Regional Executive Director</em></footer>
     </div>

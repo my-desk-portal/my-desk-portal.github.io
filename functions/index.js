@@ -343,7 +343,6 @@ export const sendPendingDocumentReminders = onSchedule({
     throw error;
   });
 });
-
 export const expirePendingPermitSlips = onSchedule({
   schedule: "* * * * *",
   timeZone: "Asia/Manila",
@@ -358,3 +357,4 @@ export const expirePendingPermitSlips = onSchedule({
     throw error;
   }
 });
+

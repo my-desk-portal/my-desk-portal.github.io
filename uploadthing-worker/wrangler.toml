@@ -6,3 +6,6 @@ workers_dev = true
 
 [observability]
 enabled = true
+
+[observability.issues]
+enabled = true

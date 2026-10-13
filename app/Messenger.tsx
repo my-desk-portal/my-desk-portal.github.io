@@ -207,6 +207,15 @@ export default function MessengerModule({ user, profileOffice, profileAssignment
   }, [profileOffice, profileAssignment]);
 
   useEffect(() => {
+    try {
+      for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+        const key = sessionStorage.key(index);
+        if (key?.startsWith("chika-history-")) sessionStorage.removeItem(key);
+      }
+    } catch { /* Browser storage is optional. */ }
+  }, []);
+
+  useEffect(() => {
     if (!db) { setLoadingPeople(false); return; }
     return onSnapshot(collection(db, "users"), (snapshot) => {
       setPeople(snapshot.docs.filter((item) => item.id !== user.uid && !isSuperadminRole(item.data().accountRole)).map((item) => {
@@ -451,17 +460,17 @@ export default function MessengerModule({ user, profileOffice, profileAssignment
         <label>Filter by Assignment<select value={assignmentFilter} onChange={(event) => setAssignmentFilter(event.target.value)}><option value={allAssignmentsFilter}>All Assignments</option>{assignmentOptions.map((assignment) => <option key={assignment} value={assignment}>{assignment}</option>)}</select></label>
       </div>
       <ul className="messenger-people-list">
-        {loadingPeople && <li className="messenger-empty">Loading people…</li>}
         {!loadingPeople && visiblePeople.length === 0 && <li className="messenger-empty">No people match your search.</li>}
         {visiblePeople.map((person) => {
           const chat = chatByPerson.get(person.id);
           const unread = chat ? isUnread(chat, user.uid) : false;
-          return <li key={person.id}><button type="button" className={`messenger-person${selectedId === person.id ? " active" : ""}${unread ? " unread" : ""}`} onClick={() => { setSelectedId(person.id); setPicker(null); setError(""); }}>
+          return <li key={person.id}><button type="button" className={`messenger-person${selectedId === person.id ? " active" : ""}${unread ? " unread" : ""}`} onClick={() => { setSelectedId(person.id); setPicker(null); setReplyTo(null); setError(""); }}>
             <PersonAvatar person={person} />
             <span className="messenger-person-text"><strong>{person.name}</strong><small>{chat && lastVisibleAt(chat) > 0 && chat.lastText ? `${chat.lastSenderId === user.uid ? "You: " : ""}${chat.lastText}` : [unitLabel(person.office, person.unit), person.position].filter(Boolean).join(" · ")}</small></span>
             {unread && <span className="messenger-unread-dot" aria-label="Unread" />}
           </button></li>;
         })}
+        {loadingPeople && <li className="messenger-empty">Loading people…</li>}
       </ul>
     </aside>
     <div className="messenger-chat">
