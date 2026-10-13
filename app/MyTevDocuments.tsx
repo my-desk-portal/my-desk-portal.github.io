@@ -13,7 +13,6 @@ import {
   formatTevTravelReferences,
   maxCenrrRows,
   maxItineraryRows,
-  maxOrsStatusRows,
   tevDivisionLabel,
   tevCtcDirector,
   tevCtcDirectorOffice,
@@ -145,13 +144,12 @@ function MyTevLetterhead({ appendix }: { appendix?: string }) {
   </header>;
 }
 
-function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount, isLastDocumentPage, documentPageCount, recordTotals, rates }: { record: MyTevRecord; itinerary: TevItinerary; page: DocumentRowPage<TevItineraryRow>; pageNumber: number; pageCount: number; isLastDocumentPage: boolean; documentPageCount: number; recordTotals: ReturnType<typeof totalsForRecord>; rates: TevRegionRate[] }) {
+function MyTevItineraryPage({ record, itinerary, page, pageNumber, documentPageNumber, isLastDocumentPage, recordTotals, rates }: { record: MyTevRecord; itinerary: TevItinerary; page: DocumentRowPage<TevItineraryRow>; pageNumber: number; documentPageNumber: number; isLastDocumentPage: boolean; recordTotals: ReturnType<typeof totalsForRecord>; rates: TevRegionRate[] }) {
   const profile = record.profile;
   const signatory = divisionSignatory(record.divisionName);
   const datesOfTravel = formatTevTravelDateRanges(record.travelReferences);
   const rows = pageRowsWithFillers(page, maxItineraryRows, 134, 7);
   const isContinuation = pageNumber > 1;
-  const isFinalPage = pageNumber === pageCount;
   const pageTotals = totalsForItinerary({ ...itinerary, rows: page.rows }, rates);
   const totals = isLastDocumentPage ? recordTotals : pageTotals;
   return <div className="mytev-paper-frame" key={itinerary.id}><article className="mytev-paper mytev-itinerary-paper">
@@ -194,11 +192,11 @@ function MyTevItineraryPage({ record, itinerary, page, pageNumber, pageCount, is
           <td />
           <td>{row && hasItineraryData(row) ? formatTevAmountIfNonZero(perDiemForClaims(row.claims, row.region, rates) + transportationForRow(row)) : ""}</td>
         </tr>})}</tbody>
-        {!isFinalPage ? <tfoot><tr><td colSpan={5}>PAGE {pageNumber} SUBTOTAL — CONTINUED</td><td>{formatTevAmountIfNonZero(pageTotals.transportation)}</td><td>{formatTevAmountIfNonZero(pageTotals.perDiem)}</td><td>-</td><td>{formatTevAmountIfNonZero(pageTotals.grandTotal)}</td></tr></tfoot> : isLastDocumentPage ? <tfoot><tr><td className="mytev-itinerary-total-label" colSpan={5}>{documentPageCount > 1 ? "GRAND TOTAL" : "TOTAL"}</td><td>{formatTevAmountIfNonZero(totals.transportation)}</td><td>{formatTevAmountIfNonZero(totals.perDiem)}</td><td>-</td><td>{formatTevAmountIfNonZero(totals.grandTotal)}</td></tr></tfoot> : null}
+        {!isLastDocumentPage ? <tfoot><tr><td className="mytev-itinerary-total-label" colSpan={5}>SUBTOTAL</td><td>{formatTevAmountIfNonZero(pageTotals.transportation)}</td><td>{formatTevAmountIfNonZero(pageTotals.perDiem)}</td><td>-</td><td>{formatTevAmountIfNonZero(pageTotals.grandTotal)}</td></tr></tfoot> : <tfoot><tr><td className="mytev-itinerary-total-label" colSpan={5}>TOTAL</td><td>{formatTevAmountIfNonZero(totals.transportation)}</td><td>{formatTevAmountIfNonZero(totals.perDiem)}</td><td>-</td><td>{formatTevAmountIfNonZero(totals.grandTotal)}</td></tr></tfoot>}
       </table>
       <div className="mytev-itinerary-footer">
         <section className="mytev-itinerary-certified">
-          <div className="mytev-itinerary-certification-text"><span>I certify that:</span><span>(1) I have reviewed the foregoing itinerary;</span><span>(2) the travel is necessary to the service;</span><span>(3) the period covered is reasonable; and</span><span>(4) the expenses claimed are proper.</span></div>
+          <p className="mytev-itinerary-certification-text">I certify that (1) I have reviewed the foregoing itinerary; (2) the travel is necessary to the service; (3) the period covered is reasonable; and (4) the expenses claimed are proper.</p>
           <div className="mytev-itinerary-certified-signature"><strong>{signatory.name}</strong><small><i>{signatory.position}</i>, {tevDivisionLabel(record.divisionName)}</small></div>
         </section>
         <div className="mytev-itinerary-approvals">
@@ -235,7 +233,13 @@ function MyTevOrsPage({ record, rates }: { record: MyTevRecord; rates: TevRegion
         <div className="mytev-ors-certified"><b>B</b><p><strong>Certified:</strong> Allotment available and obligated for the purpose/adjustment necessary as indicated above.</p><div className="mytev-ors-signature"><span><b>Signature</b><em>:</em><i /></span><span><b>Printed Name</b><em>:</em><strong>{tevOrsBudgetSignatory.name.toLocaleUpperCase("en-PH")}</strong></span><span><b>Position</b><em>:</em><i><em>{budgetTitle}</em>, {budgetSection}</i></span><span><b>Date</b><em>:</em><i /></span></div></div>
       </div>
       <div className="mytev-ors-status">
-        <table><colgroup><col /><col /><col /><col /><col /><col /><col /><col /><col /></colgroup><thead><tr className="mytev-ors-status-title"><th>C</th><th colSpan={8}>STATUS OF OBLIGATION</th></tr><tr><th rowSpan={2}>Date</th><th rowSpan={2}>Particulars</th><th colSpan={2}>Reference</th><th colSpan={5}>Amount</th></tr><tr><th>ORS/JEV/Check No.</th><th>ADA/TRA</th><th>Obligation<br />(a)</th><th>Payable<br />(b)</th><th>Payment<br />(c)</th><th>Balance<br />Not Yet Due<br />(a-b)</th><th>Balance<br />Due and Demandable<br />(b-c)</th></tr></thead><tbody>{Array.from({ length: maxOrsStatusRows }, (_, index) => <tr key={`ors-status-${index}`}>{Array.from({ length: 9 }, (_, cellIndex) => <td key={`ors-status-${index}-${cellIndex}`} />)}</tr>)}</tbody></table>
+        <table><colgroup><col /><col /><col /><col /><col /><col /><col /><col /></colgroup><thead>
+          <tr className="mytev-ors-status-title"><th>C</th><th colSpan={7}>STATUS OF OBLIGATION</th></tr>
+          <tr className="mytev-ors-status-groups"><th className="mytev-ors-status-date-spacer" /><th colSpan={2}>Reference</th><th colSpan={5}>Amount</th></tr>
+          <tr><th className="mytev-ors-status-date" rowSpan={3}>Date</th><th rowSpan={3}>Particulars</th><th className="mytev-ors-reference-number" rowSpan={3}>ORS/JEV/Check/ADA/TRA No.</th><th rowSpan={2}>Obligation</th><th rowSpan={2}>Payable</th><th className="mytev-ors-payment-heading" rowSpan={2}>Payment</th><th colSpan={2}>Balance</th></tr>
+          <tr><th className="mytev-ors-balance-heading mytev-ors-balance-not-yet">Not Yet Due</th><th className="mytev-ors-balance-heading">Due and Demandable</th></tr>
+          <tr><th>(a)</th><th>(b)</th><th>(c)</th><th>(a-b)</th><th>(b-c)</th></tr>
+        </thead><tbody><tr>{Array.from({ length: 8 }, (_, cellIndex) => <td key={`ors-status-${cellIndex}`} />)}</tr></tbody></table>
       </div>
     </div>
   </article></div>;
@@ -350,7 +354,7 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
   const denseContent = references.length > 120 || record.evidenceOfTravel.length > 140 || certification.otherExplanation.length > 150;
   return <div className="mytev-paper-frame"><article className="mytev-paper mytev-ctc-paper">
     <div className={`mytev-ctc-document${denseContent ? " mytev-ctc-document-dense" : ""}`}>
-      <span className="mytev-ctc-appendix">Appendix 47</span>
+      <MyTevLetterhead appendix="Appendix 47" />
       <h1>CERTIFICATION OF TRAVEL COMPLETED</h1>
       <div className="mytev-ctc-entity"><b>Entity Name:</b><span>{tevEntityName}</span><b>Fund Cluster:</b><span>{tevFundCluster}</span></div>
       <div className="mytev-ctc-station"><div><b style={fitTextStyle(tevCtcDirector, 48)}>{tevCtcDirector.toLocaleUpperCase("en-PH")}</b><em>Director-In-Charge</em></div><div><b style={{ ...fitTextStyle(tevCtcDirectorOffice, 32), whiteSpace: "nowrap", overflowWrap: "normal" }}>{tevCtcDirectorOffice.toLocaleUpperCase("en-PH")}</b><span>Station</span></div></div>
@@ -375,14 +379,14 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
 export default function MyTevDocuments({ record, rates }: { record: MyTevRecord; rates: TevRegionRate[] }) {
   const itineraryPages = record.itineraries.flatMap((itinerary) => {
     const pages = paginateRows(itinerary.rows, maxItineraryRows, 134, 7, itineraryRowHeight);
-    return pages.map((page, index) => ({ itinerary, page, pageNumber: index + 1, pageCount: pages.length }));
-  });
+    return pages.map((page, index) => ({ itinerary, page, pageNumber: index + 1 }));
+  }).map((entry, index) => ({ ...entry, documentPageNumber: index + 1 }));
   const itineraryTotals = totalsForRecord(record.itineraries, rates);
   const cenrrList = cenrrRows(record.itineraries);
   const cenrrPages = paginateRows(cenrrList, maxCenrrRows, 123, 4.2, cenrrRowHeight);
   const cenrrGrandTotal = cenrrList.reduce((sum, row) => sum + row.amount, 0);
   return <div className="mytev-preview-pages">
-    {itineraryPages.map(({ itinerary, page, pageNumber, pageCount }, index) => <MyTevItineraryPage key={`${itinerary.id}-${pageNumber - 1}`} record={record} itinerary={itinerary} page={page} pageNumber={pageNumber} pageCount={pageCount} isLastDocumentPage={index === itineraryPages.length - 1} documentPageCount={itineraryPages.length} recordTotals={itineraryTotals} rates={rates} />)}
+    {itineraryPages.map(({ itinerary, page, pageNumber, documentPageNumber }, index) => <MyTevItineraryPage key={`${itinerary.id}-${pageNumber - 1}`} record={record} itinerary={itinerary} page={page} pageNumber={pageNumber} documentPageNumber={documentPageNumber} isLastDocumentPage={index === itineraryPages.length - 1} recordTotals={itineraryTotals} rates={rates} />)}
     <MyTevOrsPage record={record} rates={rates} />
     <MyTevDisbursementPage record={record} rates={rates} />
     {cenrrPages.map((page, index) => <MyTevCenrrPage key={`cenrr-${index}`} record={record} page={page} pageNumber={index + 1} pageCount={cenrrPages.length} grandTotal={cenrrGrandTotal} />)}

@@ -27,7 +27,7 @@
 .special-order-subject span,.special-order-details span{padding-left:.756cqi}
 .special-order-intro{margin-top:2.86cqi}
 .special-order-body{margin-top:2.86cqi}
-.special-order-details p{gap:1.26cqi;min-height:3.27cqi;padding-bottom:.63cqi}
+.special-order-details p{align-items:center;gap:1.26cqi;min-height:3.27cqi;padding:.4cqi 0}
 .special-order-participants,.special-order-obligations{margin-top:2.86cqi}
 .special-order-spacer{height:2.32cqi}
 .special-order-participants h2{margin-bottom:2.02cqi}
