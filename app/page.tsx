@@ -2223,12 +2223,13 @@ export default function Home() {
   }, [user, playNotificationTone]);
   useEffect(() => {
     if (!user || !db) return;
+    const firestore = db;
     const ownerIds = [...new Set(permits.map((permit) => permit.ownerId).filter((ownerId): ownerId is string => typeof ownerId === "string" && ownerId !== user.uid && !permitPreparedByNameLookups.current.has(ownerId)))];
     ownerIds.forEach((ownerId) => permitPreparedByNameLookups.current.add(ownerId));
     if (!ownerIds.length) return;
     void Promise.all(ownerIds.map(async (ownerId) => {
       try {
-        const profile = await getDoc(doc(db, "users", ownerId));
+        const profile = await getDoc(doc(firestore, "users", ownerId));
         const name = profile.exists() && typeof profile.data().name === "string" ? profile.data().name.trim() : "";
         return [ownerId, name] as const;
       } catch {
@@ -2417,8 +2418,9 @@ export default function Home() {
   }, [user, accountProfile, playNotificationTone]);
   useEffect(() => {
     if (!user || !db) return;
+    const firestore = db;
     let cancelled = false;
-    loadUnitSharedRecords<SpecialOrder>(db, "specialOrders", user.uid, accountProfile?.userId === user.uid ? accountProfile.assignment : null).then(async (orders) => {
+    loadUnitSharedRecords<SpecialOrder>(firestore, "specialOrders", user.uid, accountProfile?.userId === user.uid ? accountProfile.assignment : null).then(async (orders) => {
       orders.sort((left, right) => {
         const leftTime = (left.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
         const rightTime = (right.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
@@ -2427,7 +2429,7 @@ export default function Home() {
       const ownerIds = [...new Set(orders.map((order) => order.ownerId).filter(Boolean))];
       const profiles = await Promise.all(ownerIds.map(async (ownerId) => {
         try {
-          const profile = await getDoc(doc(db, "users", ownerId));
+          const profile = await getDoc(doc(firestore, "users", ownerId));
           const name = profile.exists() && typeof profile.data().name === "string" ? profile.data().name.trim() : "";
           return [ownerId, name] as const;
         } catch {
