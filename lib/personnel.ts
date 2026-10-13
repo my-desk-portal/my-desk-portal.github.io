@@ -10,8 +10,8 @@ export function isApprovedAdminAccount(accountRole: unknown, accountStatus: unkn
   return accountRole === "admin" && (accountStatus === undefined || accountStatus === null || accountStatus === "Approved");
 }
 
-export function personnelDisplayName(person: Pick<PersonnelEntry, "name" | "accountRole">) {
-  return person.accountRole === "admin" ? `${person.name} (Admin account)` : person.name;
+export function personnelDisplayName(person: Pick<PersonnelEntry, "name">) {
+  return person.name;
 }
 
 export function personnelMatchesAccountScope(
