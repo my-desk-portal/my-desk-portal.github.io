@@ -79,7 +79,7 @@ function isPermitAdmin(email?: string | null, accountRole?: unknown) {
 type Unit = string;
 type AccountAssignment = string;
 type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string; approvedPermitNo?: string };
-type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personIds?: string[]; recipientIds?: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; ownerId?: string; ownerOffice?: string; ownerDivision?: string; ownerUnit?: string; ownerDesignation?: string; ownerAssignment?: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
+type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personIds?: string[]; recipientIds?: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; ownerId?: string; ownerRole?: AccountRole; ownerOffice?: string; ownerDivision?: string; ownerUnit?: string; ownerDesignation?: string; ownerAssignment?: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; participantPositions?: string[]; participantOffices?: string[]; participantUserIds?: string[]; participantIds?: string[]; recipientIds?: string[]; signatoryName?: string; signatoryDesignation?: string; ownerId: string; ownerUnit?: string; createdAt?: unknown };
 
 const specialOrderSignatories = [
@@ -612,7 +612,7 @@ function PermitForm({ user, office, assignment, division = "", unit = "", design
         const permitNos = nameList.map((_, index) => `${year}-${String(firstNumber + index).padStart(4, "0")}`);
         const lastNumber = firstNumber + nameList.length - 1;
         const permitRef = doc(collection(firestore, "permits"));
-        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, personIds, recipientIds: [...new Set(personIds.filter((id) => id && id !== user.uid))], personUnits, unit: personUnits[0], purpose: purpose.trim(), ownerId: user.uid, ownerOffice, ownerDivision, ownerUnit, ownerDesignation, ownerAssignment: savedProfile.assignment || ownerUnit, createdAt: serverTimestamp() };
+        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, personIds, recipientIds: [...new Set(personIds.filter((id) => id && id !== user.uid))], personUnits, unit: personUnits[0], purpose: purpose.trim(), ownerId: user.uid, ownerRole: normalizeAccountRole(submitterData.accountRole, user.email), ownerOffice, ownerDivision, ownerUnit, ownerDesignation, ownerAssignment: savedProfile.assignment || ownerUnit, createdAt: serverTimestamp() };
         unitCounterRefs.forEach((counterRef, index) => transaction.set(counterRef, { lastNumber, unit: units[index], year }));
         transaction.set(yearCounterRef, { lastNumber, year });
         transaction.set(permitRef, record);
@@ -959,15 +959,19 @@ function PermitNotificationCenter({ isAdmin, isSuperAdmin, userId, notifications
 
 type PermitFooterSignatory = { kind: "fod" | "shared-program"; name: string; designation: string; assignment: string };
 
-function permitFooterSignatory(ownerOffice: string, ownerDivision: string, ownerUnit: string, admins: PermitAdminSignatory[]): PermitFooterSignatory | null {
+function permitFooterSignatory(ownerOffice: string, ownerDivision: string, ownerUnit: string, ownerRole: AccountRole | undefined, admins: PermitAdminSignatory[]): PermitFooterSignatory | null {
   if (permitApprovalRoute(ownerOffice, ownerDivision, ownerUnit) !== "fod") return null;
-  const usesSharedProgramSignatory = ["AGRISTAT", "AMIA", "DRRM"].includes(ownerUnit);
-  const admin = admins.find((profile) => profile.office === "Division"
+  const usesProjectLeaderSignatory = ["AGRISTAT", "AMIA"].includes(ownerUnit);
+  const matchesFieldOperationsProfile = (profile: PermitAdminSignatory, designation: string) => profile.office === "Division"
     && profile.division === "Field Operations Division"
     && profile.unit === "Field Operations Division"
-    && profile.designation === "Chief");
+    && profile.designation === designation;
+  const sharedProgramLeader = ownerRole === "regular" && usesProjectLeaderSignatory
+    ? admins.find((profile) => matchesFieldOperationsProfile(profile, "AGRISTAT/DRRM/AMIA Project Leader"))
+    : undefined;
+  const admin = sharedProgramLeader ?? admins.find((profile) => matchesFieldOperationsProfile(profile, "Chief"));
   return admin ? {
-    kind: usesSharedProgramSignatory ? "shared-program" : "fod",
+    kind: usesProjectLeaderSignatory ? "shared-program" : "fod",
     name: admin.name,
     designation: admin.designation,
     assignment: admin.unit,
@@ -988,20 +992,10 @@ function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers
   const permitOwnerDivision = ownerProfile.division;
   const permitOwnerUnit = ownerProfile.unit || permitOwnerAssignment;
   const approvalRoute = permitApprovalRoute(ownerProfile.office, permitOwnerDivision, permitOwnerUnit);
-  const usesSharedProgramSignatory = approvalRoute === "fod" && ["AGRISTAT", "AMIA", "DRRM"].includes(permitOwnerUnit);
-  const signatory = permitFooterSignatory(ownerProfile.office, permitOwnerDivision, permitOwnerUnit, adminSignatories);
-  const usesRequestedSignatureProfile = ownerProfile.office === "Division"
-    && permitOwnerDivision === "Field Operations Division"
-    && permitOwnerUnit === "Field Operations Division";
-  const signatureAsset = usesRequestedSignatureProfile
-    ? permit.ownerDesignation === "AGRISTAT/DRRM/AMIA Project Leader"
-      ? "/agristat_and_drrm_focal_persons_amia_project_leader.png"
-      : permit.ownerDesignation === "Chief" ? "/field_operations_division_chief_signature.png" : ""
-    : !hasVersionFourOwner && approvalRoute === "fod"
-      ? usesSharedProgramSignatory
-        ? "/agristat_and_drrm_focal_persons_amia_project_leader.png"
-        : "/field_operations_division_chief_signature.png"
-      : "";
+  const signatory = permitFooterSignatory(ownerProfile.office, permitOwnerDivision, permitOwnerUnit, permit.ownerRole, adminSignatories);
+  const signatureAsset = signatory?.designation === "AGRISTAT/DRRM/AMIA Project Leader"
+    ? "/agristat_and_drrm_focal_persons_amia_project_leader.png"
+    : signatory?.designation === "Chief" ? "/field_operations_division_chief_signature.png" : "";
   const requiresConfiguredSignatory = approvalRoute !== null;
   return <article className="permit-document">
     <header className="permit-header">
@@ -1099,7 +1093,7 @@ function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers
       <div className="permit-approved-name">{signatory?.name.toLocaleUpperCase("en") || (requiresConfiguredSignatory ? "" : "GERLIE B. ANTIPASO")}</div>
       {signatory?.kind === "fod"
         ? <div className="permit-approved-role"><em>{signatory.designation}</em><span style={{ fontStyle: "normal" }}>, {signatory.assignment}</span></div>
-        : <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>}
+        : <div className="permit-approved-role">{signatory?.designation === "AGRISTAT/DRRM/AMIA Project Leader" ? signatory.designation : "DRRM/AMIA/AGRISTAT Head/Agriculturist II"}</div>}
     </div>
 
   </article>;
@@ -1108,12 +1102,18 @@ function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers
 function PrintPreview({ permit, approvedPermitNumbers, onClose, ownerOffice, ownerAssignment, singleSlip = false }: { permit: Permit; approvedPermitNumbers: Record<string, string>; onClose: () => void; ownerOffice: string; ownerAssignment: string; singleSlip?: boolean }) {
   const sheetsRef = useRef<HTMLDivElement>(null);
   const [adminSignatories, setAdminSignatories] = useState<PermitAdminSignatory[]>([]);
+  const [ownerRoleLookup, setOwnerRoleLookup] = useState<{ ownerId: string; role: AccountRole | null } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState("");
   const sheets = chunkNames(permit.names, 4);
   const standaloneView = singleSlip || permit.names.length === 1;
+  const ownerRoleLookupMatches = Boolean(permit.ownerId && ownerRoleLookup?.ownerId === permit.ownerId);
+  const hasOwnerRoleLookup = Boolean(permit.ownerRole) || ownerRoleLookupMatches;
+  const ownerRoleLoading = Boolean(permit.ownerId && db) && !hasOwnerRoleLookup;
+  const ownerRole = permit.ownerRole ?? (ownerRoleLookupMatches ? ownerRoleLookup?.role ?? undefined : undefined);
+  const previewPermit = ownerRole && !permit.ownerRole ? { ...permit, ownerRole } : permit;
 
   useEffect(() => {
     let current = true;
@@ -1124,6 +1124,28 @@ function PrintPreview({ permit, approvedPermitNumbers, onClose, ownerOffice, own
     });
     return () => { current = false; };
   }, []);
+
+  useEffect(() => {
+    const firestore = db;
+    const ownerId = permit.ownerId;
+    if (permit.ownerRole || !ownerId || !firestore) return;
+    let current = true;
+    void getDoc(doc(firestore, "users", ownerId)).then((snapshot) => {
+      if (!current) return;
+      if (!snapshot.exists()) {
+        setOwnerRoleLookup({ ownerId, role: null });
+        return;
+      }
+      const data = snapshot.data();
+      setOwnerRoleLookup({
+        ownerId,
+        role: normalizeAccountRole(data.accountRole, typeof data.email === "string" ? data.email : null),
+      });
+    }).catch(() => {
+      if (current) setOwnerRoleLookup({ ownerId, role: null });
+    });
+    return () => { current = false; };
+  }, [permit.ownerId, permit.ownerRole]);
 
   async function waitForImages(container: HTMLElement) {
     await Promise.all(Array.from(container.querySelectorAll("img")).map(async (image) => {
@@ -1197,17 +1219,17 @@ function PrintPreview({ permit, approvedPermitNumbers, onClose, ownerOffice, own
       {!singleSlip && <span>Permit preview</span>}
       <button type="button" className="ghost-button" onClick={onClose}>Close</button>
       {!singleSlip && <>
-        <button type="button" className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>
-        <button type="button" className="pdf-button" disabled={printing} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>
+        <button type="button" className="pdf-button" disabled={downloading || ownerRoleLoading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button>
+        <button type="button" className="pdf-button" disabled={printing || ownerRoleLoading} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>
         {downloadError && <small className="download-error">{downloadError}</small>}
         {printError && <small className="download-error" role="alert">{printError}</small>}
       </>}
     </div>
     <div ref={sheetsRef} className={standaloneView ? "permit-sheets permit-sheets-single" : "permit-sheets"}>
       {standaloneView
-        ? <div className="permit-sheets-single-scale"><PermitCard permit={permit} name={permit.names[0] ?? ""} permitNo={permit.permitNos?.[0] ?? permit.permitNo} decisionKey={permitDecisionKey(permit, 0)} approvedPermitNumbers={approvedPermitNumbers} ownerOffice={ownerOffice} ownerAssignment={ownerAssignment} adminSignatories={adminSignatories} /></div>
+        ? <div className="permit-sheets-single-scale"><PermitCard permit={previewPermit} name={permit.names[0] ?? ""} permitNo={permit.permitNos?.[0] ?? permit.permitNo} decisionKey={permitDecisionKey(permit, 0)} approvedPermitNumbers={approvedPermitNumbers} ownerOffice={ownerOffice} ownerAssignment={ownerAssignment} adminSignatories={adminSignatories} /></div>
         : sheets.map((sheetNames, sheetIndex) => <div className="permit-sheet" key={sheetIndex}>
-          {sheetNames.map((name, nameIndex) => { const personIndex = sheetIndex * 4 + nameIndex; return <PermitCard permit={permit} name={name} permitNo={permit.permitNos?.[personIndex] ?? permit.permitNo} decisionKey={permitDecisionKey(permit, personIndex)} approvedPermitNumbers={approvedPermitNumbers} ownerOffice={ownerOffice} ownerAssignment={ownerAssignment} adminSignatories={adminSignatories} key={nameIndex} />; })}
+          {sheetNames.map((name, nameIndex) => { const personIndex = sheetIndex * 4 + nameIndex; return <PermitCard permit={previewPermit} name={name} permitNo={permit.permitNos?.[personIndex] ?? permit.permitNo} decisionKey={permitDecisionKey(permit, personIndex)} approvedPermitNumbers={approvedPermitNumbers} ownerOffice={ownerOffice} ownerAssignment={ownerAssignment} adminSignatories={adminSignatories} key={nameIndex} />; })}
         </div>)}
     </div>
   </div>;
