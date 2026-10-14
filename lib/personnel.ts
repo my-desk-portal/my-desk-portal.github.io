@@ -1,7 +1,7 @@
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { isSuperadminRole } from "@/lib/user-roles";
-import { accountOffice, accountAssignment, accountDesignation, accountProfileSelection } from "@/lib/account-profile";
+import { accountOffice, accountAssignment, accountDesignation, accountProfileSelection, fieldOperationsCombinedAssignment } from "@/lib/account-profile";
 
 export type PersonnelEntry = { userId: string; name: string; position: string; office: string; unit: string; accountRole?: string; accountStatus?: string };
 export type PermitAdminSignatory = { userId: string; name: string; position: string; office: string; assignment: string; designation: string };
@@ -55,6 +55,8 @@ export async function loadPermitAdminSignatories(): Promise<PermitAdminSignatory
       const data = item.data();
       if (data.accountRole !== "admin" || (data.accountStatus !== undefined && data.accountStatus !== "Approved")) return [];
       const profile = accountProfileSelection(data);
+      const hasCombinedFieldOperationsAssignment = [data.assignment, data.projectProgram, data.unit]
+        .some((value) => typeof value === "string" && value.trim() === fieldOperationsCombinedAssignment);
       const name = typeof data.name === "string" ? data.name.trim() : "";
       if (!name || !profile.office) return [];
       return [{
@@ -62,7 +64,7 @@ export async function loadPermitAdminSignatories(): Promise<PermitAdminSignatory
         name,
         position: typeof data.position === "string" ? data.position.trim() : "",
         office: profile.office,
-        assignment: profile.assignment,
+        assignment: hasCombinedFieldOperationsAssignment ? fieldOperationsCombinedAssignment : profile.assignment,
         designation: accountDesignation(data.designation),
       }];
     }).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" })

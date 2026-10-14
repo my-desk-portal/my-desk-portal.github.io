@@ -1,4 +1,8 @@
 .user-master-list-section{min-width:0}
+.user-master-list-toolbar{align-items:end;display:flex;gap:12px;justify-content:space-between;margin:0 0 16px}
+.user-master-list-search{max-width:430px;width:100%}
+.user-master-list-search input{font-weight:400}
+.user-master-list-results{color:var(--muted);font-size:12px;padding-bottom:13px}
 .user-master-list-count{align-self:center;background:var(--mint);border:1px solid var(--line);color:var(--muted);font-size:12px;padding:8px 12px;white-space:nowrap}
 .user-master-list-message{background:#edf7f0;border-left:4px solid #4b9f69;color:#26633b;margin:0 0 18px;padding:12px 14px}
 .user-master-list-message.is-error{background:#fff1ef;border-color:var(--accent);color:#9d321f}
@@ -12,3 +16,4 @@
 .user-master-list-table select:disabled{background:#f2f5f3;color:var(--muted)}
 .user-master-list-table .user-master-list-action-select{max-width:140px}
 @media(max-width:720px){.user-master-list-section .section-heading{align-items:flex-start}.user-master-list-count{font-size:10px;padding:6px 8px}.user-master-list-table{min-width:760px}}
+@media(max-width:520px){.user-master-list-toolbar{align-items:stretch;flex-direction:column}.user-master-list-search{max-width:none}.user-master-list-results{padding:0}}

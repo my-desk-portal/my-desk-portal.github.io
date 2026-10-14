@@ -153,6 +153,8 @@ export function hasAccountDesignation(value: unknown, designation: string) {
   return accountDesignation(value) === designation;
 }
 
+export const fieldOperationsCombinedAssignment = "AGRISTAT-AMIA-DRRM";
+
 export const fieldOperationsAssignments = [
   "4K",
   "AGRISTAT",
@@ -274,7 +276,7 @@ export function accountAssignment(profile: AccountProfileFields) {
     : version === 2
       ? stringValue(profile.projectProgram) || stringValue(profile.unit)
       : stringValue(profile.unit) || stringValue(profile.office) || stringValue(profile.projectProgram);
-  if (assignment === "AGRISTAT-AMIA-DRRM") return "";
+  if (assignment === fieldOperationsCombinedAssignment) return "";
   return fieldOperationsAssignmentAlias(assignment)
     || assignment
     || fieldOperationsAssignmentAlias(rawAccountOffice(profile));

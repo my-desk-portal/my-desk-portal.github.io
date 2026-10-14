@@ -45,12 +45,31 @@ const roleOptions: { value: AccountRole; label: string }[] = [
 
 export default function UserMasterList({ user }: { user: User }) {
   const [accounts, setAccounts] = useState<MasterListAccount[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [pendingDelete, setPendingDelete] = useState<MasterListAccount | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(accounts);
+  const filteredAccounts = useMemo(() => {
+    const terms = searchQuery.trim().toLocaleLowerCase("en-PH").split(/\s+/).filter(Boolean);
+    if (!terms.length) return accounts;
+    return accounts.filter((account) => {
+      const searchableText = [
+        account.name,
+        account.position,
+        account.designation,
+        accountOffice(account),
+        account.assignment,
+        account.projectProgram,
+        account.unit,
+        normalizeAccountRole(account.accountRole),
+        normalizeAccountStatus(account.accountStatus),
+      ].filter((value): value is string => typeof value === "string").join(" ").toLocaleLowerCase("en-PH");
+      return terms.every((term) => searchableText.includes(term));
+    });
+  }, [accounts, searchQuery]);
+  const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(filteredAccounts);
 
   useEffect(() => {
     if (!db) { setError("Firebase is not configured."); setLoading(false); return; }
@@ -111,6 +130,11 @@ export default function UserMasterList({ user }: { user: User }) {
     {error && <p className="user-master-list-message is-error" role="alert">{error}</p>}
     {message && <p className="user-master-list-message" role="status">{message}</p>}
     {loading ? <p className="muted">Loading verified accounts...</p> : accounts.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No verified accounts yet</h3><p>Accounts appear here after their owners verify their email address and sign in.</p></div> : <>
+      <div className="user-master-list-toolbar">
+        <label className="user-master-list-search">Search accounts<input type="search" value={searchQuery} onChange={(event) => { setSearchQuery(event.target.value); setPage(0); }} placeholder="Name, position, office, assignment, role..." /></label>
+        {searchQuery.trim() && <span className="user-master-list-results">{filteredAccounts.length} matching {filteredAccounts.length === 1 ? "account" : "accounts"}</span>}
+      </div>
+      {filteredAccounts.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No matching accounts</h3><p>Try a different name, position, designation, office, assignment, role, or status.</p></div> : <>
       <div className="user-master-list-table-wrap"><table className="user-master-list-table"><thead><tr><th>Name</th><th>Position</th><th>Designation</th><th>Office</th><th>Role</th><th>Status / Action</th></tr></thead><tbody>
       {visibleRecords.map((account) => {
         const status = normalizeAccountStatus(account.accountStatus);
@@ -132,7 +156,8 @@ export default function UserMasterList({ user }: { user: User }) {
         </tr>;
       })}
       </tbody></table></div>
-      <RecordPagination totalRecords={accounts.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Users' Master List" />
+      <RecordPagination totalRecords={filteredAccounts.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Users' Master List" />
+      </>}
     </>}
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Delete this account?" description={`Remove ${pendingDelete?.name || "this account"} from the Users' Master List? Its Firestore profile will be deleted, which disables access to My Desk.`} busy={Boolean(pendingDelete && busyId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => void deleteAccount()} />
   </section>;
