@@ -109,3 +109,11 @@
 .nta-list-head,.nta-list-row{grid-template-columns:minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) 150px}
 .nta-list-row>span:first-child{font-weight:400}
 @media(max-width:720px){.nta-list-row{grid-template-columns:1fr}.nta-list-row>span:not(.nta-list-actions){grid-column:1}.nta-list-row>.nta-list-actions{grid-column:1}}
+
+.nta-form-section .nta-schedule-fields,.nta-form-section .nta-venue-fields{display:grid;gap:18px 22px;grid-column:1/-1;min-width:0}
+.nta-form-section .nta-schedule-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
+.nta-form-section .nta-venue-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.nta-form-section .nta-venue-fields.is-virtual{grid-template-columns:repeat(3,minmax(0,1fr))}
+.nta-form-section .nta-schedule-fields>*,.nta-form-section .nta-venue-fields>*{min-width:0}
+@media(max-width:900px){.nta-form-section .nta-schedule-fields,.nta-form-section .nta-venue-fields.is-virtual{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.nta-form-section .nta-schedule-fields,.nta-form-section .nta-venue-fields{grid-template-columns:minmax(0,1fr)}}

@@ -1,9 +1,9 @@
 /* Standalone Permit Slip notification preview. */
 .preview-toolbar-single{justify-content:center}
 .preview-backdrop-single{align-content:start;display:grid;grid-template-columns:minmax(0,1fr);justify-items:center}
-.permit-sheets-single{display:block;justify-self:center;margin:0 auto;overflow:visible;width:min(100%,160mm)}
+.permit-sheets-single{display:block;justify-self:center;margin:0 auto;overflow:visible;width:min(100%,160mm,calc(70.7vh - 106px))}
 .permit-sheets-single-scale{container-type:inline-size;width:100%}
-.permit-sheets-single-scale .permit-document{font-size:3.024cqi;height:auto;padding:.2in;transform:none;width:100%}
+.permit-sheets-single-scale .permit-document{aspect-ratio:105 / 148.5;font-size:3.024cqi;height:auto;padding:.2in;transform:none;width:100%}
 .permit-sheets-single .permit-header{gap:1.936cqi;margin-bottom:1.452cqi}
 .permit-sheets-single .permit-logos{gap:1.21cqi}
 .permit-sheets-single .permit-logo-left{height:10.16cqi;width:10.644cqi}
@@ -34,6 +34,6 @@
 
 @media(max-width:720px){.preview-toolbar-single{padding-top:.1in}}
 @media(max-width:480px){.permit-sheets-single .permit-banner{white-space:normal}}
-@media print{.permit-sheets-single{display:block!important;height:auto;margin:0 auto;overflow:visible;width:105mm!important}.permit-sheets-single-scale{width:100%}}
+@media print{.permit-sheets-single{display:grid!important;grid-template-columns:1fr 1fr!important;grid-template-rows:1fr 1fr!important;height:297mm!important;margin:0 auto;overflow:visible;width:210mm!important}.permit-sheets-single-scale{height:100%;width:100%}.permit-sheets-single-scale .permit-document{aspect-ratio:auto!important;height:100%!important;padding:.14in .16in!important;width:100%!important}}
 
 .permit-approval>.permit-disapproved-stamp{display:grid;margin:4px auto;width:max-content}
