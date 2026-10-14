@@ -9,7 +9,7 @@ import { calendarOfActivitiesCollection } from "@/lib/calendar-of-activities-sto
 import { isPermitAdmin } from "./PermitSlipAdmin";
 import { LEGACY_PENDING_STATUS, normalizeWorkflowStatus } from "./workflow-status";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
-import { accountOffice, accountOfficeOptions, accountProfileSelection, assignmentsForOffice } from "@/lib/account-profile";
+import { accountDivisionOptions, accountOffice, accountOfficeOptions, accountProfileSelection, divisionsForOffice, executiveOfficeDivisionOptions, unitsForOfficeDivision } from "@/lib/account-profile";
 import "./whereabouts-calendar.css";
 
 type CalendarTravelOrder = {
@@ -304,11 +304,13 @@ function formatCalendarDateRange(from: string, to: string) {
   return `${startDate} - ${endMonthName} ${endDay}, ${endYear}`;
 }
 
-export default function WhereaboutsCalendarModule({ user, accountRole, office, assignment }: { user: User; accountRole: AccountRole; office: string; assignment: string }) {
+export default function WhereaboutsCalendarModule({ user, accountRole, office, division, unit, assignment }: { user: User; accountRole: AccountRole; office: string; division?: string; unit?: string; assignment?: string }) {
   const canFilterOfficeAssignment = isPermitAdmin(user.email, accountRole);
-  const accountScope = accountProfileSelection({ office, assignment, profileFieldsVersion: 3 });
-  const defaultOfficeFilter = canFilterOfficeAssignment ? "All" : accountScope.office || "All";
-  const defaultAssignmentFilter: PermitUnitFilter = canFilterOfficeAssignment ? "All" : accountScope.assignment || "All";
+  const accountScope = division !== undefined || unit !== undefined
+    ? accountProfileSelection({ office, division: division ?? "", unit: unit ?? "", profileFieldsVersion: 4 })
+    : accountProfileSelection({ office, assignment: assignment ?? "", profileFieldsVersion: 3 });
+  const defaultDivisionFilter = canFilterOfficeAssignment ? "All" : accountScope.division || "All";
+  const defaultUnitFilter: PermitUnitFilter = canFilterOfficeAssignment ? "All" : accountScope.unit || accountScope.division || "All";
   const today = new Date();
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
   const [orders, setOrders] = useState<CalendarTravelOrder[]>([]);
@@ -317,13 +319,13 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
   const [calendarsOfActivities, setCalendarsOfActivities] = useState<ApprovedCalendarOfActivities[]>([]);
   const [totalPersonnelCount, setTotalPersonnelCount] = useState<number | null>(null);
   const [totalPersonnelLoading, setTotalPersonnelLoading] = useState(true);
-  const [accountScopes, setAccountScopes] = useState<Map<string, { office: string; assignment: string; name: string }>>(() => new Map());
+  const [accountScopes, setAccountScopes] = useState<Map<string, { office: string; division: string; unit: string; name: string }>>(() => new Map());
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [nameSearch, setNameSearch] = useState("");
   const [documentFilter, setDocumentFilter] = useState<"permit" | "travel" | "leave" | "calendar-of-activities">("permit");
-  const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>(defaultAssignmentFilter);
-  const [summaryOfficeFilter, setSummaryOfficeFilter] = useState(defaultOfficeFilter);
+  const [divisionFilter, setDivisionFilter] = useState(defaultDivisionFilter);
+  const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>(defaultUnitFilter);
   const [selectedPeoplePage, setSelectedPeoplePage] = useState(0);
   const [permitPage, setPermitPage] = useState(0);
   const [travelPage, setTravelPage] = useState(0);
@@ -335,9 +337,9 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
 
   useEffect(() => { setSelectedPeoplePage(0); }, [selectedDate]);
   useEffect(() => {
-    setUnitFilter(defaultAssignmentFilter);
-    setSummaryOfficeFilter(defaultOfficeFilter);
-  }, [defaultOfficeFilter, defaultAssignmentFilter]);
+    setDivisionFilter(defaultDivisionFilter);
+    setUnitFilter(defaultUnitFilter);
+  }, [defaultDivisionFilter, defaultUnitFilter]);
 
   useEffect(() => {
     let active = true;
@@ -354,12 +356,13 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
     const firestore = db;
     void getDocs(collection(firestore, "users")).then((snapshot) => {
       if (!active) return;
-      const scopes = new Map<string, { office: string; assignment: string; name: string }>();
+      const scopes = new Map<string, { office: string; division: string; unit: string; name: string }>();
       snapshot.docs.forEach((account) => {
         const profile = accountProfileSelection(account.data());
         scopes.set(account.id, {
           office: profile.office,
-          assignment: profile.assignment,
+          division: profile.division,
+          unit: profile.unit || profile.division,
           name: typeof account.data().name === "string" ? account.data().name.trim() : "",
         });
       });
@@ -457,7 +460,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
       finishInitialLoad("leave-backfill");
     });
     return () => { active = false; unsubscribeTravel(); unsubscribeCalendarsOfActivities(); unsubscribePermits(); unsubscribeLeaveApplications(); unsubscribeLeaveBackfill(); };
-  }, [user.uid, user.email, accountRole, office, assignment]);
+  }, [user.uid, user.email, accountRole, office, division, unit, assignment]);
 
   const year = month.getFullYear();
   const monthIndex = month.getMonth();
@@ -470,45 +473,51 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
     return day > 0 && day <= daysInMonth ? day : null;
   });
 
-  const assignmentMatchesFilter = (recordAssignment: string, selectedAssignment: string) => {
-    if (selectedAssignment === "All") return true;
-    const normalizedRecord = normalizeUnit(recordAssignment);
-    const normalizedSelected = normalizeUnit(selectedAssignment);
+  const unitMatchesFilter = (recordUnit: string, selectedUnit: string) => {
+    if (selectedUnit === "All") return true;
+    const normalizedRecord = normalizeUnit(recordUnit);
+    const normalizedSelected = normalizeUnit(selectedUnit);
     return normalizedRecord && normalizedSelected
       ? normalizedRecord === normalizedSelected
-      : recordAssignment.trim().toLocaleLowerCase() === selectedAssignment.trim().toLocaleLowerCase();
+      : recordUnit.trim().toLocaleLowerCase() === selectedUnit.trim().toLocaleLowerCase();
   };
-  const recordMatchesSelectedScope = (recordOffice?: string, recordAssignment?: string) => {
+  const recordMatchesSelectedScope = (recordOffice?: string, recordDivision?: string, recordUnit?: string) => {
     const inferredOffice = recordOffice
-      || (normalizeUnit(recordAssignment) ? "Field Operations Division" : "")
-      || accountOfficeOptions.find((officeOption) => assignmentsForOffice(officeOption).some((option) => option.toLocaleLowerCase() === recordAssignment?.trim().toLocaleLowerCase()))
+      || (recordDivision && accountDivisionOptions.includes(recordDivision as (typeof accountDivisionOptions)[number]) ? "Division" : "")
+      || (recordDivision && executiveOfficeDivisionOptions.includes(recordDivision as (typeof executiveOfficeDivisionOptions)[number]) ? "Office of the Regional Executive Director" : "")
+      || (recordDivision && accountOfficeOptions.find((officeOption) => divisionsForOffice(officeOption).includes(recordDivision)))
+      || (recordUnit && normalizeUnit(recordUnit) ? "Division" : "")
+      || accountOfficeOptions.find((officeOption) => divisionsForOffice(officeOption).some((divisionOption) => unitsForOfficeDivision(officeOption, divisionOption).some((option) => option.toLocaleLowerCase() === recordUnit?.trim().toLocaleLowerCase())))
+      || accountScope.office
       || "";
-    const candidate = accountProfileSelection({ office: inferredOffice, assignment: recordAssignment ?? "", profileFieldsVersion: 3 });
-    if (summaryOfficeFilter !== "All" && candidate.office !== summaryOfficeFilter) return false;
-    return assignmentMatchesFilter(candidate.assignment || recordAssignment || "", unitFilter);
+    const candidate = recordDivision
+      ? accountProfileSelection({ office: accountOffice({ office: inferredOffice, profileFieldsVersion: 3 }) ?? inferredOffice, division: recordDivision, unit: recordUnit ?? "", profileFieldsVersion: 4 })
+      : accountProfileSelection({ office: recordOffice || inferredOffice, assignment: recordUnit ?? "", profileFieldsVersion: 3 });
+    if (divisionFilter !== "All" && candidate.division !== divisionFilter) return false;
+    return unitMatchesFilter(candidate.unit || candidate.division || recordUnit || "", unitFilter);
   };
-  const recordMatchesAccountScope = (ownerId?: string, recordAssignment?: string, recordOffice?: string, recordName?: string) => {
+  const recordMatchesAccountScope = (ownerId?: string, recordUnit?: string, recordOffice?: string, recordName?: string) => {
     const ownerScope = ownerId ? accountScopes.get(ownerId) : undefined;
-    if (ownerScope?.office) return recordMatchesSelectedScope(ownerScope.office, ownerScope.assignment);
-    const normalizedAssignment = normalizeUnit(recordAssignment);
+    if (ownerScope?.office) return recordMatchesSelectedScope(ownerScope.office, ownerScope.division, ownerScope.unit);
+    const normalizedUnit = normalizeUnit(recordUnit);
     const normalizedName = recordName?.trim().replace(/\s+/g, " ").toLocaleLowerCase();
     if (normalizedName) {
       const matchingPeople = [...accountScopes.values()].filter((person) => {
         const nameMatches = person.name.trim().replace(/\s+/g, " ").toLocaleLowerCase() === normalizedName;
-        return nameMatches && (!recordAssignment || assignmentMatchesFilter(person.assignment, normalizedAssignment || recordAssignment));
+        return nameMatches && (!recordUnit || unitMatchesFilter(person.unit, normalizedUnit || recordUnit));
       });
-      if (matchingPeople.length) return matchingPeople.some((person) => recordMatchesSelectedScope(person.office, person.assignment));
+      if (matchingPeople.length) return matchingPeople.some((person) => recordMatchesSelectedScope(person.office, person.division, person.unit));
     }
-    if (summaryOfficeFilter === "All" && unitFilter === "All" && !recordOffice && !recordAssignment) return true;
-    const fallbackOffice = recordOffice || (normalizedAssignment ? "Field Operations Division" : accountScope.office);
-    return recordMatchesSelectedScope(fallbackOffice, normalizedAssignment || recordAssignment || "");
+    if (divisionFilter === "All" && unitFilter === "All" && !recordOffice && !recordUnit) return true;
+    const fallbackOffice = recordOffice || (normalizedUnit ? "Division" : accountScope.office);
+    return recordMatchesSelectedScope(fallbackOffice, undefined, normalizedUnit || recordUnit || "");
   };
-  const recordAssignmentForFilter = (ownerId?: string, fallbackAssignment?: string) =>
-    accountScopes.get(ownerId ?? "")?.assignment || normalizeUnit(fallbackAssignment) || fallbackAssignment || "";
-  const availableSummaryAssignments = summaryOfficeFilter === "All"
-    ? [...new Set(accountOfficeOptions.flatMap((option) => assignmentsForOffice(option)))]
-      .sort((first, second) => first.localeCompare(second, "en", { sensitivity: "base" }))
-    : [...assignmentsForOffice(summaryOfficeFilter)];
+  const recordUnitForFilter = (ownerId?: string, fallbackUnit?: string) =>
+    accountScopes.get(ownerId ?? "")?.unit || normalizeUnit(fallbackUnit) || fallbackUnit || "";
+  const availableSummaryDivisions = [...new Set([...accountDivisionOptions, ...executiveOfficeDivisionOptions])];
+  const availableSummaryUnits = divisionFilter === "All"
+    ? [...new Set(accountOfficeOptions.flatMap((officeOption) => divisionsForOffice(officeOption).flatMap((divisionOption) => unitsForOfficeDivision(officeOption, divisionOption))))]
+    : [...new Set(accountOfficeOptions.flatMap((officeOption) => unitsForOfficeDivision(officeOption, divisionFilter)))];
   const calendarOrders = orders.filter((order) => recordMatchesAccountScope(order.ownerId, order.ownerUnit ?? order.chargeTo));
   const calendarPermitSlips = permitSlips.filter((permit) => recordMatchesAccountScope(permit.ownerId, permit.unit, undefined, permit.name));
   const calendarLeaveApplications = leaveApplications.filter((leave) => recordMatchesAccountScope(leave.ownerId, leave.office));
@@ -637,14 +646,14 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
     .filter((permit) => permit.date >= yearStart && permit.date <= yearEnd)
     .filter((permit) => recordMatchesAccountScope(permit.ownerId, permit.unit, undefined, permit.name))
     .filter((permit) => !normalizedSearch || (permit.name ?? "").toLocaleLowerCase().includes(normalizedSearch))
-    .filter((permit) => assignmentMatchesFilter(recordAssignmentForFilter(permit.ownerId, permit.unit), unitFilter))
+    .filter((permit) => unitMatchesFilter(recordUnitForFilter(permit.ownerId, permit.unit), unitFilter))
     .sort((left, right) => approvedPermitNumber(right, approvedPermitNumbers).localeCompare(approvedPermitNumber(left, approvedPermitNumbers), "en", { numeric: true, sensitivity: "base" }) || right.date.localeCompare(left.date) || left.name.localeCompare(right.name));
   const annualOrders = orders
     .filter((order) => order.status === "Approved")
     .filter((order) => order.departureDate <= yearEnd && order.returnDate >= yearStart)
     .filter((order) => recordMatchesAccountScope(order.ownerId, order.ownerUnit ?? order.chargeTo))
     .filter((order) => !normalizedSearch || (order.people ?? []).some((person) => (person.name ?? "").toLocaleLowerCase().includes(normalizedSearch)))
-    .filter((order) => assignmentMatchesFilter(recordAssignmentForFilter(order.ownerId, order.ownerUnit ?? order.chargeTo), unitFilter))
+    .filter((order) => unitMatchesFilter(recordUnitForFilter(order.ownerId, order.ownerUnit ?? order.chargeTo), unitFilter))
     .sort((left, right) =>
       right.departureDate.localeCompare(left.departureDate)
       || right.returnDate.localeCompare(left.returnDate));
@@ -653,7 +662,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
     .filter((leave) => leave.inclusiveDateFrom <= yearEnd && leave.inclusiveDateTo >= yearStart)
     .filter((leave) => recordMatchesAccountScope(leave.ownerId, leave.office))
     .filter((leave) => !normalizedSearch || leaveApplicantName(leave).toLocaleLowerCase().includes(normalizedSearch))
-    .filter((leave) => assignmentMatchesFilter(recordAssignmentForFilter(leave.ownerId, leave.office), unitFilter))
+    .filter((leave) => unitMatchesFilter(recordUnitForFilter(leave.ownerId, leave.office), unitFilter))
     .sort((left, right) =>
       right.inclusiveDateFrom.localeCompare(left.inclusiveDateFrom)
       || right.inclusiveDateTo.localeCompare(left.inclusiveDateTo)
@@ -665,7 +674,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
     .filter((plan) => plan.month.startsWith(`${summaryYear}-`))
     .filter((plan) => recordMatchesAccountScope(plan.ownerId, plan.unit))
     .filter((plan) => !normalizedSearch || plan.activities.some((activity) => (activity.responsiblePeople ?? []).some((person) => (person.name ?? "").toLocaleLowerCase().includes(normalizedSearch))))
-    .filter((plan) => assignmentMatchesFilter(recordAssignmentForFilter(plan.ownerId, plan.unit), unitFilter))
+    .filter((plan) => unitMatchesFilter(recordUnitForFilter(plan.ownerId, plan.unit), unitFilter))
     .sort((left, right) =>
       right.month.localeCompare(left.month)
       || (left.unit ?? "").localeCompare(right.unit ?? ""));
@@ -678,14 +687,14 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
   const visibleAnnualPermits = annualPermits.slice(currentPermitPage * 10, currentPermitPage * 10 + 10);
   const visibleAnnualOrders = annualOrders.slice(currentTravelPage * 10, currentTravelPage * 10 + 10);
   const visibleAnnualLeaveApplications = annualLeaveApplications.slice(currentLeavePage * 10, currentLeavePage * 10 + 10);
-  const selectedPersonnelTotal = (summaryOfficeFilter !== "All" || unitFilter !== "All")
-    ? [...accountScopes.values()].filter((person) => recordMatchesSelectedScope(person.office, person.assignment)).length
+  const selectedPersonnelTotal = (divisionFilter !== "All" || unitFilter !== "All")
+    ? [...accountScopes.values()].filter((person) => recordMatchesSelectedScope(person.office, person.division, person.unit)).length
     : totalPersonnelCount;
   return <section className="content-section whereabouts-calendar-section">
     <div className="section-heading whereabouts-heading"><div><p className="eyebrow">Travel, Leave, and Permit Records</p><h2>Whereabouts Calendar</h2><p className="muted">Select a shaded date to view pending or approved Travel Orders and Leave Applications, plus approved Permit Slips.</p></div></div>
     <div className="whereabouts-calendar-filters" aria-label="Filter whereabouts calendar">
-      <CalendarFilterDropdown label="Office" value={summaryOfficeFilter} options={[{ value: "All", label: "All Offices" }, ...accountOfficeOptions.map((option) => ({ value: option, label: option }))]} onChange={(value) => { setSummaryOfficeFilter(value); setUnitFilter("All"); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); setLeavePage(0); setCalendarsOfActivitiesPage(0); }} />
-      <CalendarFilterDropdown label="Assignment" value={unitFilter} options={[{ value: "All", label: "All Assignments" }, ...availableSummaryAssignments.map((option) => ({ value: option, label: option }))]} onChange={(value) => { setUnitFilter(value as PermitUnitFilter); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); setLeavePage(0); setCalendarsOfActivitiesPage(0); }} />
+      <CalendarFilterDropdown label="Division" value={divisionFilter} options={[{ value: "All", label: "All Divisions" }, ...availableSummaryDivisions.map((option) => ({ value: option, label: option }))]} onChange={(value) => { setDivisionFilter(value); setUnitFilter("All"); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); setLeavePage(0); setCalendarsOfActivitiesPage(0); }} />
+      <CalendarFilterDropdown label="Unit / Program / Project" value={unitFilter} options={[{ value: "All", label: "All Units / Programs / Projects" }, ...availableSummaryUnits.map((option) => ({ value: option, label: option }))]} onChange={(value) => { setUnitFilter(value as PermitUnitFilter); setSelectedPeoplePage(0); setPermitPage(0); setTravelPage(0); setLeavePage(0); setCalendarsOfActivitiesPage(0); }} />
     </div>
     {error && <div className="error-message whereabouts-error">{error}</div>}
     <section className="whereabouts-calendar" aria-label="Travel Order, Leave Application, and Permit Slip calendar">

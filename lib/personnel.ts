@@ -1,10 +1,10 @@
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { isSuperadminRole } from "@/lib/user-roles";
-import { accountOffice, accountAssignment, accountDesignation, accountProfileSelection, fieldOperationsCombinedAssignment } from "@/lib/account-profile";
+import { accountDesignation, accountProfileSelection, fieldOperationsCombinedAssignment } from "@/lib/account-profile";
 
-export type PersonnelEntry = { userId: string; name: string; position: string; office: string; unit: string; accountRole?: string; accountStatus?: string };
-export type PermitAdminSignatory = { userId: string; name: string; position: string; office: string; assignment: string; designation: string };
+export type PersonnelEntry = { userId: string; name: string; position: string; office: string; division: string; unit: string; accountRole?: string; accountStatus?: string };
+export type PermitAdminSignatory = { userId: string; name: string; position: string; office: string; division: string; unit: string; assignment: string; designation: string };
 
 export function isApprovedAdminAccount(accountRole: unknown, accountStatus: unknown) {
   return accountRole === "admin" && (accountStatus === undefined || accountStatus === null || accountStatus === "Approved");
@@ -19,18 +19,23 @@ export function personnelMatchesAccountScope(
   candidateAssignment: string,
   office: string,
   assignment: string,
-  options: { includeAdminAccounts?: boolean; accountRole?: unknown; accountStatus?: unknown } = {},
+  options: { includeAdminAccounts?: boolean; accountRole?: unknown; accountStatus?: unknown; division?: string; candidateDivision?: string } = {},
 ) {
   if (options.includeAdminAccounts && isApprovedAdminAccount(options.accountRole, options.accountStatus)) return true;
-  const scope = accountProfileSelection({ office, assignment, profileFieldsVersion: 3 });
-  const candidate = accountProfileSelection({ office: candidateOffice, assignment: candidateAssignment, profileFieldsVersion: 3 });
+  const scope = options.division
+    ? accountProfileSelection({ office, division: options.division, unit: assignment, profileFieldsVersion: 4 })
+    : accountProfileSelection({ office, assignment, profileFieldsVersion: 3 });
+  const candidate = options.candidateDivision
+    ? accountProfileSelection({ office: candidateOffice, division: options.candidateDivision, unit: candidateAssignment, profileFieldsVersion: 4 })
+    : accountProfileSelection({ office: candidateOffice, assignment: candidateAssignment, profileFieldsVersion: 3 });
   if (!scope.office || candidate.office !== scope.office) return false;
-  return Boolean(scope.assignment && candidate.assignment === scope.assignment);
+  return Boolean(scope.division && candidate.division === scope.division && scope.assignment && candidate.assignment === scope.assignment);
 }
 
-export function filterPersonnelForAccount(entries: PersonnelEntry[], office: string, assignment: string, options: { includeAdminAccounts?: boolean } = {}) {
+export function filterPersonnelForAccount(entries: PersonnelEntry[], office: string, assignment: string, options: { includeAdminAccounts?: boolean; division?: string } = {}) {
   return entries.filter((person) => personnelMatchesAccountScope(person.office, person.unit, office, assignment, {
     ...options,
+    candidateDivision: person.division,
     accountRole: person.accountRole,
     accountStatus: person.accountStatus,
   }));
@@ -64,6 +69,8 @@ export async function loadPermitAdminSignatories(): Promise<PermitAdminSignatory
         name,
         position: typeof data.position === "string" ? data.position.trim() : "",
         office: profile.office,
+        division: profile.division,
+        unit: profile.unit,
         assignment: hasCombinedFieldOperationsAssignment ? fieldOperationsCombinedAssignment : profile.assignment,
         designation: accountDesignation(data.designation),
       }];
@@ -92,12 +99,14 @@ export async function loadPersonnel(options: { includeAllAccounts?: boolean; ded
     personnelRequest = getDocs(collection(firestore, "users")).then((snapshot) => {
       const entries = snapshot.docs.filter((item) => includeAllAccounts || !isSuperadminRole(item.data().accountRole)).map((item) => {
         const data = item.data();
+        const profile = accountProfileSelection(data);
         return {
           userId: item.id,
           name: typeof data.name === "string" ? data.name.trim() : "",
           position: typeof data.position === "string" ? data.position.trim() : "",
-          office: accountOffice(data) ?? "",
-          unit: accountAssignment(data),
+          office: profile.office,
+          division: profile.division,
+          unit: profile.unit || profile.assignment,
           accountRole: typeof data.accountRole === "string" ? data.accountRole : undefined,
           accountStatus: typeof data.accountStatus === "string" ? data.accountStatus : undefined,
         };

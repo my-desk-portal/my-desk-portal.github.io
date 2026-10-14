@@ -44,11 +44,15 @@ export function CertificateStatusBadge({ record, children }: { record: Certifica
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const fieldOperationsChiefSignature = "field_operations_division_chief_signature.png";
 
+export function hasFieldOperationsChiefApprovalSignature(record: CertificateWorkflowFields) {
+  return certificateWorkflowStatus(record.status) === "Approved"
+    && record.signatureAsset === fieldOperationsChiefSignature
+    && record.signerDesignation?.trim() === "Chief"
+    && (record.signerOffice === "Division" || record.signerOffice === "Field Operations Division");
+}
+
 export function CertificateApprovalSignature({ record }: { record: CertificateWorkflowFields }) {
-  if (certificateWorkflowStatus(record.status) !== "Approved"
-    || record.signatureAsset !== fieldOperationsChiefSignature
-    || record.signerDesignation?.trim() !== "Chief"
-    || record.signerOffice !== "Field Operations Division") return null;
+  if (!hasFieldOperationsChiefApprovalSignature(record)) return null;
   const approvedAt = toDate(record.decidedAt);
   const dateParts = approvedAt
     ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(approvedAt)

@@ -145,7 +145,7 @@ function TravelOrderForm({ user, office, unit, initialOrder, onSaved, onCancel, 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!db) { onError("Firebase is not configured."); return; }
-    if (!unit) { onError("Your Assignment is still loading. Try saving again in a moment."); return; }
+    if (!unit) { onError("Your Unit / Program / Project is still loading. Try saving again in a moment."); return; }
     if (!transportation.length) { onError("Select at least one means of transportation."); return; }
     const normalizedPeople = people.map((person) => ({ ...person, name: person.name.trim(), position: person.position.trim(), salary: person.salary.trim() }));
     if (!normalizedPeople.length || normalizedPeople.some((person) => !person.userId)) {
@@ -628,7 +628,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
   async function copyOrder(order: TravelOrder) {
     const firestore = db;
     if (!firestore) return;
-    if (!unit) { setError("Your Assignment is still loading. Try copying again in a moment."); return; }
+    if (!unit) { setError("Your Unit / Program / Project is still loading. Try copying again in a moment."); return; }
     if (!order.people.length || order.people.some((person) => !person.userId)) {
       setError("This older Travel Order has no account assigned to every person. Edit it and select an account for each person before copying.");
       return;

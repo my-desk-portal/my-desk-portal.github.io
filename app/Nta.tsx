@@ -85,7 +85,7 @@ const ntaFormHelpText = "Choose an individual notice, group schedule, or multipl
 const cleanNtaField = (value?: string) => value === ntaFormHelpText ? "" : value ?? "";
 const initialBatch = (): NtaBatch => ({ number: "1", dateFrom: "", dateTo: "", timeFrom: "08:00", timeTo: "17:00", venueType: "physical", venue: "", link: "", attendees: [{ name: "", position: "", office: "", userId: "", manual: false }] });
 
-function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office: string; unit: string | null; onSaved: (record: NtaRecord) => void; onCancel: () => void }) {
+function NtaForm({ user, office, division, unit, onSaved, onCancel }: { user: User; office: string; division?: string | null; unit: string | null; onSaved: (record: NtaRecord) => void; onCancel: () => void }) {
   const [mode, setMode] = useState<NtaMode>("individual");
   const [to, setTo] = useState("");
   const [toUserId, setToUserId] = useState("");
@@ -114,7 +114,7 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const loadedPersonnel = filterPersonnelForAccount(await loadAccountPersonnel(), office, unit ?? "", { includeAdminAccounts: true });
+        const loadedPersonnel = filterPersonnelForAccount(await loadAccountPersonnel(), office, unit ?? "", { includeAdminAccounts: true, division: division ?? undefined });
         if (!cancelled) {
           setPersonnel(loadedPersonnel);
           setPersonnelStatus("ready");
@@ -125,7 +125,7 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
     }
     void loadPersonnel();
     return () => { cancelled = true; };
-  }, [office, unit]);
+  }, [office, division, unit]);
 
   function updateBatch(index: number, update: Partial<NtaBatch>) {
     setBatches((current) => current.map((batch, itemIndex) => itemIndex === index ? { ...batch, ...update } : batch));
@@ -138,7 +138,7 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!db) { setError("Database is not configured."); return; }
-    if (!unit) { setError("Your Assignment is still loading. Try saving again in a moment."); return; }
+    if (!unit) { setError("Your Unit / Program / Project is still loading. Try saving again in a moment."); return; }
     if (!selectedSignatory) { setError("Select a signatory."); return; }
     setBusy(true); setError("");
     const schedulesByRecipient = new Map<string, Array<{ dateFrom: string; dateTo: string; venue: string }>>();
@@ -216,7 +216,7 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
   </section>;
 }
 
-function NtaEditor({ record, userId, office, unit, onCancel, onSaved, onRemove }: { record: NtaRecord; userId: string; office: string; unit: string | null; onCancel: () => void; onSaved: (record: NtaRecord) => void; onRemove: () => void }) {
+function NtaEditor({ record, userId, office, division, unit, onCancel, onSaved, onRemove }: { record: NtaRecord; userId: string; office: string; division?: string | null; unit: string | null; onCancel: () => void; onSaved: (record: NtaRecord) => void; onRemove: () => void }) {
   const [to, setTo] = useState(record.to ?? "");
   const [toUserId, setToUserId] = useState(record.toUserId ?? record.recipientIds?.[0] ?? "");
   const [positionDesignation, setPositionDesignation] = useState(record.positionDesignation ?? "");
@@ -241,7 +241,7 @@ function NtaEditor({ record, userId, office, unit, onCancel, onSaved, onRemove }
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), office, unit ?? "", { includeAdminAccounts: true });
+        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), office, unit ?? "", { includeAdminAccounts: true, division: division ?? undefined });
         if (!cancelled) {
           setPersonnel(entries);
           setPersonnelStatus("ready");
@@ -252,7 +252,7 @@ function NtaEditor({ record, userId, office, unit, onCancel, onSaved, onRemove }
     }
     void loadPersonnel();
     return () => { cancelled = true; };
-  }, [office, unit]);
+  }, [office, division, unit]);
 
   function updateBatch(index: number, update: Partial<NtaBatch>) {
     setBatches((current) => current.map((batch, itemIndex) => itemIndex === index ? { ...batch, ...update } : batch));
@@ -373,7 +373,7 @@ function NtaEditor({ record, userId, office, unit, onCancel, onSaved, onRemove }
 
 function NtaList({ records, ownerId, preparedByNames, fallbackPreparedBy, deletingId, copyingId, onNew, onEdit, onPreview, onCopy, onDelete }: { records: NtaRecord[]; ownerId: string; preparedByNames: Record<string, string>; fallbackPreparedBy: string; deletingId: string | null; copyingId: string | null; onNew: () => void; onEdit: (record: NtaRecord) => void; onPreview: (record: NtaRecord) => void; onCopy: (record: NtaRecord) => void; onDelete: (record: NtaRecord) => void }) {
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Notices to Attend</h2><p className="muted">{records.length} {records.length === 1 ? "notice" : "notices"} available to your Assignment.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No notices to attend yet</h3><p>Create an individual, group, or multiple personnel notice.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Notice To Attend</button></div> : <div className="permit-table"><RecordPagination totalRecords={records.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Notice to Attend" /><div className="table-head nta-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span>Prepared By</span><span></span></div>{visibleRecords.map((record) => {
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Notices to Attend</h2><p className="muted">{records.length} {records.length === 1 ? "notice" : "notices"} available to your Unit / Program / Project.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No notices to attend yet</h3><p>Create an individual, group, or multiple personnel notice.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Notice To Attend</button></div> : <div className="permit-table"><RecordPagination totalRecords={records.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Notice to Attend" /><div className="table-head nta-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span>Prepared By</span><span></span></div>{visibleRecords.map((record) => {
     const isOwner = record.ownerId === ownerId;
     const schedules = record.mode === "individual"
       ? [[formatDateRange(record.dateFrom ?? "", record.dateTo ?? ""), record.timeFrom && record.timeTo ? `${formatTime(record.timeFrom)} – ${formatTime(record.timeTo)}` : ""].filter(Boolean).join(" · ")]
@@ -699,7 +699,7 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
   return <div className="preview-backdrop nta-preview-backdrop"><div className="preview-toolbar"><span>NTA preview</span><button type="button" className="ghost-button" onClick={onClose}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>{error && <small className="download-error">{error}</small>}{printError && <small className="download-error" role="alert">{printError}</small>}</div><div ref={pagesRef} className="nta-preview-pages">{record.mode === "individual" ? <><NtaPage record={record} page="individual" individualClosingUnits={individualFirstPageClosing} individualSignatoryPulledBack={individualSignatoryPulledBack} individualClosingCompacted={individualClosingCompacted} />{individualContinuationClosing.length > 0 && <NtaPage record={record} page="individual-continuation" individualClosingUnits={individualContinuationClosing} individualClosingCompacted={individualClosingCompacted} />}</> : <><NtaPage record={record} page="batch-overview" firstPageRows={firstPageRows} showFixedCopy={batchSinglePage} />{!batchSinglePage && <>{rosterPages.map((sections, index) => <NtaPage key={`batch-attendees-${index}`} record={record} page="batch-attendees" rosterSections={sections} showFixedCopy={index === rosterPages.length - 1 && closingOnRosterPage} />)}{(!rosterPages.length || !closingOnRosterPage) && <NtaPage record={record} page="batch-copy" showFixedCopy />}</>}</>}</div></div>;
 }
 
-export default function NtaModule({ user, office, unit }: { user: User; office: string; unit: string | null }) {
+export default function NtaModule({ user, office, division, unit }: { user: User; office: string; division?: string | null; unit: string | null }) {
   const [records, setRecords] = useState<NtaRecord[]>([]);
   const [preparedByNames, setPreparedByNames] = useState<Record<string, string>>({});
   const [view, setView] = useState<"list" | "new">("list");
@@ -755,7 +755,7 @@ export default function NtaModule({ user, office, unit }: { user: User; office: 
     }
   }
   async function copyRecord(record: NtaRecord) {
-    if (!db || !unit) { setLoadError("Your Assignment is still loading. Try copying again in a moment."); return; }
+    if (!db || !unit) { setLoadError("Your Unit / Program / Project is still loading. Try copying again in a moment."); return; }
     setCopyingId(record.id);
     setLoadError("");
     try {
@@ -798,5 +798,5 @@ export default function NtaModule({ user, office, unit }: { user: User; office: 
       setCopyingId(null);
     }
   }
-  return <>{loadError && <div className="error-message">{loadError}</div>}{editingRecord ? <NtaEditor record={editingRecord} userId={user.uid} office={office} unit={unit} onCancel={() => setEditingRecord(null)} onSaved={(updatedRecord) => { setRecords((current) => current.map((item) => item.id === updatedRecord.id ? updatedRecord : item)); setEditingRecord(null); }} onRemove={() => { if (editingRecord) setPendingDelete(editingRecord); }} /> : view === "new" ? <NtaForm user={user} office={office} unit={unit} onSaved={(record) => { setRecords((current) => [record, ...current]); setView("list"); }} onCancel={() => setView("list")} /> : <NtaList records={records} ownerId={user.uid} preparedByNames={preparedByNames} fallbackPreparedBy={user.displayName ?? ""} deletingId={deletingId} copyingId={copyingId} onNew={() => setView("new")} onEdit={setEditingRecord} onPreview={setPreview} onCopy={(record) => void copyRecord(record)} onDelete={setPendingDelete} />}{preview && <NtaPreview key={preview.id} record={preview} onClose={() => setPreview(null)} />}<DeleteConfirmation open={Boolean(pendingDelete && pendingDelete.ownerId === user.uid)} title="Confirm NTA Deletion?" description="Are you sure you want to delete this Notice to Attend? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} /></>;
+  return <>{loadError && <div className="error-message">{loadError}</div>}{editingRecord ? <NtaEditor record={editingRecord} userId={user.uid} office={office} division={division} unit={unit} onCancel={() => setEditingRecord(null)} onSaved={(updatedRecord) => { setRecords((current) => current.map((item) => item.id === updatedRecord.id ? updatedRecord : item)); setEditingRecord(null); }} onRemove={() => { if (editingRecord) setPendingDelete(editingRecord); }} /> : view === "new" ? <NtaForm user={user} office={office} division={division} unit={unit} onSaved={(record) => { setRecords((current) => [record, ...current]); setView("list"); }} onCancel={() => setView("list")} /> : <NtaList records={records} ownerId={user.uid} preparedByNames={preparedByNames} fallbackPreparedBy={user.displayName ?? ""} deletingId={deletingId} copyingId={copyingId} onNew={() => setView("new")} onEdit={setEditingRecord} onPreview={setPreview} onCopy={(record) => void copyRecord(record)} onDelete={setPendingDelete} />}{preview && <NtaPreview key={preview.id} record={preview} onClose={() => setPreview(null)} />}<DeleteConfirmation open={Boolean(pendingDelete && pendingDelete.ownerId === user.uid)} title="Confirm NTA Deletion?" description="Are you sure you want to delete this Notice to Attend? This action cannot be undone." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteRecord(pendingDelete); }} /></>;
 }

@@ -2,16 +2,97 @@ import { tevDivisions, type TevDivision } from "@/lib/mytev";
 
 export type AccountProfileFields = {
   office?: unknown;
+  division?: unknown;
   assignment?: unknown;
   projectProgram?: unknown;
   unit?: unknown;
   profileFieldsVersion?: unknown;
 };
 
+export type AccountProfileSelection = {
+  office: string;
+  division: string;
+  unit: string;
+  assignment: string;
+};
+
 export const accountOfficeOptions = [
-  "Field Operations Division",
-  "Regional Field Office",
+  "Division",
+  "Office of the Regional Executive Director",
 ] as const;
+
+export const accountDivisionOptions = [
+  "Administrative Division",
+  "Agribusiness and Marketing Assistance Division",
+  "Field Operations Division",
+  "Finance Division",
+  "Integrated Laboratories Division",
+  "Planning, Monitoring and Evaluation Division",
+  "Regional Agricultural Engineering Division",
+  "Regulatory Division",
+  "Research Division",
+] as const;
+
+export const executiveOfficeDivisionOptions = [
+  "Office of the Regional Executive Director",
+  "RTD for Operations",
+  "RTD for Research and Regulations",
+] as const;
+
+const fieldOperationsUnitOptions = [
+  "4K",
+  "AGRISTAT",
+  "AMIA",
+  "DRRM",
+  "APCO - ADN",
+  "APCO - ADS",
+  "APCO - SDN",
+  "APCO - SDS",
+  "APCO - PDI",
+  "CFIDP",
+  "Corn Program",
+  "ELCAC",
+  "Extension and Partnership",
+  "F2C2",
+  "Field Operations Division",
+  "Gender and Development",
+  "Halal Projects",
+  "HVCD Program",
+  "IPM",
+  "Livestock Program",
+  "NUPA Program",
+  "Organic Agriculture Program",
+  "Rice Program",
+  "RSBSA",
+  "SAAD",
+  "Soybean Program",
+] as const;
+
+const unitsByDivision: Record<string, readonly string[]> = {
+  "Administrative Division": ["Administrative Division", "General Services Section", "Human Resource Section"],
+  "Agribusiness and Marketing Assistance Division": ["Agribusiness and Marketing Assistance Division"],
+  "Field Operations Division": fieldOperationsUnitOptions,
+  "Finance Division": ["Budget Section", "Accounting Section", "Finance Division"],
+  "Integrated Laboratories Division": ["Integrated Laboratories Division", "NHSP"],
+  "Planning, Monitoring and Evaluation Division": ["Information and Communications Technology Unit", "Planning, Monitoring and Evaluation Division"],
+  "Regional Agricultural Engineering Division": ["Regional Agricultural Engineering Division"],
+  "Regulatory Division": ["Regional Agricultural Engineering Division"],
+  "Research Division": ["Del Monte RES", "Modernization and ORDA", "Research Division", "Tagbina RES", "Trento RES"],
+};
+
+export function divisionsForOffice(office: string) {
+  if (office === "Division") return accountDivisionOptions;
+  if (office === "Office of the Regional Executive Director") return executiveOfficeDivisionOptions;
+  return [] as const;
+}
+
+export function unitsForOfficeDivision(office: string, division: string) {
+  if (office === "Division") return unitsByDivision[division] ?? [];
+  if (office === "Office of the Regional Executive Director" && executiveOfficeDivisionOptions.includes(division as (typeof executiveOfficeDivisionOptions)[number])) {
+    return [division];
+  }
+  return [] as const;
+}
 
 export const accountPositionOptions = [
   "Administrative Aide I",
@@ -155,29 +236,7 @@ export function hasAccountDesignation(value: unknown, designation: string) {
 
 export const fieldOperationsCombinedAssignment = "AGRISTAT-AMIA-DRRM";
 
-export const fieldOperationsAssignments = [
-  "4K",
-  "AGRISTAT",
-  "AMIA",
-  "DRRM",
-  "APCO - ADN",
-  "APCO - ADS",
-  "APCO - PDI",
-  "APCO - SDN",
-  "APCO - SDS",
-  "Corn Program",
-  "ELCAC",
-  "Extension and Partnership",
-  "F2C2",
-  "GAD",
-  "HVCDP Program",
-  "Livestock Program",
-  "NUPAP",
-  "Organic Agriculture Program",
-  "Rice Program",
-  "RSBSA",
-  "SAAD",
-] as const;
+export const fieldOperationsAssignments = fieldOperationsUnitOptions;
 
 export const regionalFieldOfficeAssignments = [
   ...tevDivisions,
@@ -187,6 +246,8 @@ export const regionalFieldOfficeAssignments = [
 ].sort((first, second) => first.localeCompare(second));
 
 export function assignmentsForOffice(office: string) {
+  if (office === "Division") return [...new Set([...accountDivisionOptions, ...Object.values(unitsByDivision).flat()])];
+  if (office === "Office of the Regional Executive Director") return executiveOfficeDivisionOptions;
   if (office === "Field Operations Division") return fieldOperationsAssignments;
   if (office === "Regional Field Office") return regionalFieldOfficeAssignments;
   return [] as const;
@@ -195,98 +256,51 @@ export function assignmentsForOffice(office: string) {
 const divisionByLegacyAssignment: Record<string, string> = {
   AMIA: "Agribusiness and Marketing Assistance Division",
   AGRISTAT: "Planning, Monitoring and Evaluation Division",
-  DRRM: "Disaster Risk Reduction and Management Division",
+  DRRM: "Field Operations Division",
 };
 
-export function accountDivisionForApproval(office: string, assignment: string) {
-  const selected = accountProfileSelection({ office, assignment, profileFieldsVersion: 3 });
-  const normalizedOffice = selected.office ?? "";
-  const normalizedAssignment = selected.assignment.trim().toUpperCase();
-  if (normalizedOffice === "Regional Field Office") return assignment.trim();
-  if (normalizedOffice === "Field Operations Division" && normalizedAssignment in divisionByLegacyAssignment) {
-    return divisionByLegacyAssignment[normalizedAssignment] ?? "";
-  }
-  return divisionByLegacyAssignment[normalizedOffice.replace(/^FOD-/i, "").toUpperCase()] ?? normalizedOffice;
+export function accountDivisionForApproval(office: string, assignment: string, division = "") {
+  if (division.trim()) return division.trim();
+  return accountProfileSelection({ office, assignment, profileFieldsVersion: 3 }).division
+    || divisionByLegacyAssignment[assignment.trim().toUpperCase()]
+    || "";
 }
 
-export function accountTevDivision(office: string, assignment: string): TevDivision | null {
-  const normalizedOffice = office.trim();
-  const normalizedAssignment = assignment.trim();
-  if (normalizedOffice === "Regional Field Office" && tevDivisions.includes(normalizedAssignment as TevDivision)) {
-    return normalizedAssignment as TevDivision;
-  }
-  if (
-    normalizedOffice === "Field Operations Division"
-    || /^FOD-/i.test(normalizedOffice)
-    || ["AGRISTAT", "AMIA", "DRRM"].includes(normalizedOffice.toUpperCase())
-  ) {
-    return "Field Operations Division";
-  }
-  return tevDivisions.includes(normalizedAssignment as TevDivision) ? normalizedAssignment as TevDivision : null;
-}
-
-export function accountProfileSelection(profile: AccountProfileFields) {
-  const storedOffice = accountOffice(profile) ?? "";
-  const storedAssignment = accountAssignment(profile);
-
-  const normalizedStoredOffice = storedOffice.trim();
-  if (accountOfficeOptions.includes(storedOffice as (typeof accountOfficeOptions)[number])) {
-    const validAssignments = assignmentsForOffice(storedOffice);
-    return {
-      office: storedOffice,
-      assignment: validAssignments.some((option) => option === storedAssignment) ? storedAssignment : "",
-    };
-  }
-
-  if (regionalFieldOfficeAssignments.includes(normalizedStoredOffice as (typeof regionalFieldOfficeAssignments)[number])) {
-    return {
-      office: "Regional Field Office",
-      assignment: regionalFieldOfficeAssignments.includes(storedAssignment as (typeof regionalFieldOfficeAssignments)[number])
-        ? storedAssignment
-        : normalizedStoredOffice,
-    };
-  }
-
-  return { office: "", assignment: "" };
+export function accountTevDivision(office: string, assignment: string, division = ""): TevDivision | null {
+  const selectedDivision = division.trim() || accountProfileSelection({ office, assignment, profileFieldsVersion: 3 }).division;
+  if (selectedDivision === "Field Operations Division") return "Field Operations Division";
+  return tevDivisions.includes(selectedDivision as TevDivision) ? selectedDivision as TevDivision : null;
 }
 
 function stringValue(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-// Version 2 stored Office in `office` and Assignment under its former
-// `projectProgram` field. Version 3 keeps the same values in clearly named fields.
-export function accountOffice(profile: AccountProfileFields) {
-  const version = typeof profile.profileFieldsVersion === "number" ? profile.profileFieldsVersion : 0;
-  let office: string;
-  if (version >= 2) {
-    office = stringValue(profile.office) || stringValue(profile.projectProgram);
-  } else {
-    office = stringValue(profile.projectProgram)
-      || stringValue(profile.unit)
-      || stringValue(profile.office);
-  }
-  return canonicalFieldOperationsOffice(office) || null;
+function profileVersion(profile: AccountProfileFields) {
+  return typeof profile.profileFieldsVersion === "number" ? profile.profileFieldsVersion : 0;
 }
 
-export function accountAssignment(profile: AccountProfileFields) {
-  const version = typeof profile.profileFieldsVersion === "number" ? profile.profileFieldsVersion : 0;
+function rawAccountOffice(profile: AccountProfileFields) {
+  const version = profileVersion(profile);
+  if (version >= 2) return stringValue(profile.office) || stringValue(profile.projectProgram);
+  return stringValue(profile.projectProgram) || stringValue(profile.unit) || stringValue(profile.office);
+}
+
+function fieldOperationsAssignmentAlias(value: string) {
+  const normalized = value.trim().toUpperCase();
+  const assignment = normalized.startsWith("FOD-") ? normalized.slice(4) : normalized;
+  return ["AGRISTAT", "AMIA", "DRRM"].find((option) => option === assignment) ?? "";
+}
+
+function legacyAccountAssignment(profile: AccountProfileFields) {
+  const version = profileVersion(profile);
   const assignment = version >= 3
     ? stringValue(profile.assignment)
     : version === 2
       ? stringValue(profile.projectProgram) || stringValue(profile.unit)
       : stringValue(profile.unit) || stringValue(profile.office) || stringValue(profile.projectProgram);
   if (assignment === fieldOperationsCombinedAssignment) return "";
-  return fieldOperationsAssignmentAlias(assignment)
-    || assignment
-    || fieldOperationsAssignmentAlias(rawAccountOffice(profile));
-}
-
-function rawAccountOffice(profile: AccountProfileFields) {
-  const version = typeof profile.profileFieldsVersion === "number" ? profile.profileFieldsVersion : 0;
-  return version >= 2
-    ? stringValue(profile.office) || stringValue(profile.projectProgram)
-    : stringValue(profile.projectProgram) || stringValue(profile.unit) || stringValue(profile.office);
+  return fieldOperationsAssignmentAlias(assignment) || assignment || fieldOperationsAssignmentAlias(rawAccountOffice(profile));
 }
 
 function canonicalFieldOperationsOffice(value: string) {
@@ -300,16 +314,112 @@ function canonicalFieldOperationsOffice(value: string) {
     : normalized;
 }
 
-function fieldOperationsAssignmentAlias(value: string) {
-  const normalized = value.trim().toUpperCase();
-  const assignment = normalized.startsWith("FOD-") ? normalized.slice(4) : normalized;
-  return ["AGRISTAT", "AMIA", "DRRM"].find((option) => option === assignment) ?? "";
+function normalizeLegacyUnit(value: string) {
+  const aliases: Record<string, string> = {
+    GAD: "Gender and Development",
+    "HVCDP Program": "HVCD Program",
+    NUPAP: "NUPA Program",
+    "Halal Project": "Halal Projects",
+  };
+  return aliases[value] ?? value;
+}
+
+function legacyProfileSelection(profile: AccountProfileFields): Pick<AccountProfileSelection, "office" | "division" | "unit"> {
+  const rawOffice = canonicalFieldOperationsOffice(rawAccountOffice(profile));
+  const assignment = legacyAccountAssignment(profile);
+  if (rawOffice === "Field Operations Division") {
+    const unit = normalizeLegacyUnit(assignment);
+    return {
+      office: "Division",
+      division: "Field Operations Division",
+      unit: fieldOperationsUnitOptions.includes(unit as (typeof fieldOperationsUnitOptions)[number]) ? unit : "",
+    };
+  }
+  if (rawOffice === "Regional Field Office") {
+    const executiveDivision = assignment === "Regional Executive Director"
+      ? "Office of the Regional Executive Director"
+      : assignment;
+    if (executiveOfficeDivisionOptions.includes(executiveDivision as (typeof executiveOfficeDivisionOptions)[number])) {
+      return { office: "Office of the Regional Executive Director", division: executiveDivision, unit: executiveDivision };
+    }
+    if (accountDivisionOptions.includes(assignment as (typeof accountDivisionOptions)[number])) {
+      return { office: "Division", division: assignment, unit: assignment };
+    }
+    const mappedDivision = divisionByLegacyAssignment[assignment.toUpperCase()];
+    if (mappedDivision) return { office: "Division", division: mappedDivision, unit: assignment };
+  }
+  if (accountDivisionOptions.includes(rawOffice as (typeof accountDivisionOptions)[number])) {
+    const possibleUnit = normalizeLegacyUnit(assignment);
+    const allowedUnits = unitsForOfficeDivision("Division", rawOffice);
+    return {
+      office: "Division",
+      division: rawOffice,
+      unit: allowedUnits.includes(possibleUnit) ? possibleUnit : rawOffice,
+    };
+  }
+  if (executiveOfficeDivisionOptions.includes(rawOffice as (typeof executiveOfficeDivisionOptions)[number])) {
+    return { office: "Office of the Regional Executive Director", division: rawOffice, unit: rawOffice };
+  }
+  if (rawOffice === "Division") {
+    const division = accountDivisionOptions.includes(assignment as (typeof accountDivisionOptions)[number])
+      ? assignment
+      : accountDivisionOptions.find((option) => unitsForOfficeDivision("Division", option).includes(assignment)) ?? "";
+    return { office: "Division", division, unit: assignment };
+  }
+  if (rawOffice === "Office of the Regional Executive Director") {
+    const division = executiveOfficeDivisionOptions.includes(assignment as (typeof executiveOfficeDivisionOptions)[number])
+      ? assignment
+      : "Office of the Regional Executive Director";
+    return { office: rawOffice, division, unit: division };
+  }
+  return { office: "", division: "", unit: "" };
+}
+
+export function accountOffice(profile: AccountProfileFields) {
+  return profileVersion(profile) >= 4
+    ? stringValue(profile.office) || null
+    : legacyProfileSelection(profile).office || null;
+}
+
+export function accountDivision(profile: AccountProfileFields) {
+  return profileVersion(profile) >= 4
+    ? stringValue(profile.division)
+    : legacyProfileSelection(profile).division;
+}
+
+export function accountUnit(profile: AccountProfileFields) {
+  return profileVersion(profile) >= 4
+    ? stringValue(profile.unit)
+    : legacyProfileSelection(profile).unit;
+}
+
+export function accountAssignment(profile: AccountProfileFields) {
+  return accountUnit(profile) || accountDivision(profile);
+}
+
+export function accountProfileSelection(profile: AccountProfileFields): AccountProfileSelection {
+  const selected = profileVersion(profile) >= 4
+    ? { office: stringValue(profile.office), division: stringValue(profile.division), unit: stringValue(profile.unit) }
+    : legacyProfileSelection(profile);
+  if (!accountOfficeOptions.includes(selected.office as (typeof accountOfficeOptions)[number])) {
+    return { office: "", division: "", unit: "", assignment: "" };
+  }
+  const validDivisions = divisionsForOffice(selected.office) as readonly string[];
+  if (!validDivisions.includes(selected.division)) {
+    return { office: selected.office, division: "", unit: "", assignment: "" };
+  }
+  const validUnits = unitsForOfficeDivision(selected.office, selected.division) as readonly string[];
+  const unit = validUnits.includes(selected.unit) ? selected.unit : "";
+  return { ...selected, unit, assignment: unit || selected.division };
 }
 
 export function migratedAccountProfileFields(profile: AccountProfileFields) {
+  const selection = accountProfileSelection(profile);
   return {
-    office: accountOffice(profile),
-    assignment: accountAssignment(profile),
-    profileFieldsVersion: 3,
+    office: selection.office,
+    division: selection.division,
+    unit: selection.unit,
+    assignment: selection.assignment,
+    profileFieldsVersion: 4,
   };
 }

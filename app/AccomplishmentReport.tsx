@@ -4,14 +4,14 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import type { User } from "firebase/auth";
 import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { accountAssignment, accountOffice, fieldOperationsAssignments } from "@/lib/account-profile";
+import { accountDivision, accountOffice, accountOfficeOptions, accountUnit, divisionsForOffice, executiveOfficeDivisionOptions, fieldOperationsAssignments, unitsForOfficeDivision } from "@/lib/account-profile";
 import { divisionSignatory, tevDivisions } from "@/lib/mytev";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { normalizeAccountRole, type AccountRole } from "@/lib/user-roles";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./myar.css";
 
-type Unit = "AMIA" | "AGRISTAT" | "DRRM" | (typeof fieldOperationsAssignments)[number] | (typeof tevDivisions)[number] | "Regional Executive Director" | "RTD for Operations" | "RTD for Research and Regulations";
+type Unit = string;
 type Profile = { name: string; position: string; unit: Unit; immediateSupervisor: string };
 type Report = {
   id: string;
@@ -61,10 +61,35 @@ const arSignatoryOptions = [
   })),
 ].sort((first, second) => first.label.localeCompare(second.label));
 const legacyNotedSignatory = { name: "MELODY M. GUIMARY", position: "Chief", division: "Field Operations Division" };
-const isReportUnit = (value: string): value is Unit => ["AMIA", "AGRISTAT", "DRRM", ...fieldOperationsAssignments, ...tevDivisions, "Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"].includes(value);
+const reportUnits = new Set([
+  ...accountOfficeOptions.flatMap((office) => divisionsForOffice(office).flatMap((division) => unitsForOfficeDivision(office, division))),
+  ...fieldOperationsAssignments,
+  ...tevDivisions,
+  ...executiveOfficeDivisionOptions,
+  "Regional Executive Director",
+]);
+const isReportUnit = (value: string): value is Unit => reportUnits.has(value);
 
-function defaultImmediateSupervisor(office: string, assignment: string, accountRole: AccountRole) {
+function defaultImmediateSupervisor(office: string, division: string, assignment: string, accountRole: AccountRole) {
   const isAdmin = accountRole !== "regular";
+  if (office === "Division") {
+    if (division === "Field Operations Division") return "division:Field Operations Division";
+    if (division === "Agribusiness and Marketing Assistance Division" || division === "Regional Agricultural Engineering Division") {
+      return isAdmin ? "role:RTD for Operations" : `division:${division}`;
+    }
+    if (["Research Division", "Integrated Laboratories Division", "Regulatory Division"].includes(division)) {
+      return isAdmin ? "role:RTD for Research and Regulations" : `division:${division}`;
+    }
+    if (["Planning, Monitoring and Evaluation Division", "Administrative Division", "Finance Division"].includes(division)) {
+      return isAdmin ? "role:Regional Executive Director" : `division:${division}`;
+    }
+    return `division:${division}`;
+  }
+  if (office === "Office of the Regional Executive Director") {
+    if (division === "Office of the Regional Executive Director") return "role:Regional Executive Director";
+    if (division === "RTD for Operations") return isAdmin ? "role:Regional Executive Director" : "role:RTD for Operations";
+    if (division === "RTD for Research and Regulations") return isAdmin ? "role:Regional Executive Director" : "role:RTD for Research and Regulations";
+  }
   if (office === "Field Operations Division" && fieldOperationsAssignments.includes(assignment as (typeof fieldOperationsAssignments)[number])) return "division:Field Operations Division";
 
   if (office === "Regional Field Office") {
@@ -338,11 +363,12 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       const unsubscribeProfile = onSnapshot(doc(db, "users", user.uid), (profileSnapshot) => {
         if (!current) return;
         const data = profileSnapshot.data();
-        const assignment = data ? accountAssignment(data) : "";
+        const division = data ? accountDivision(data) : "";
+        const assignment = data ? accountUnit(data) || division : "";
         const office = data ? accountOffice(data) ?? "" : "";
         const accountRole = normalizeAccountRole(data?.accountRole, user.email);
         if (profileSnapshot.exists() && data && typeof data.name === "string" && typeof data.position === "string" && isReportUnit(assignment)) {
-          setProfile({ name: data.name, position: data.position, unit: assignment, immediateSupervisor: defaultImmediateSupervisor(office, assignment, accountRole) });
+          setProfile({ name: data.name, position: data.position, unit: assignment, immediateSupervisor: defaultImmediateSupervisor(office, division, assignment, accountRole) });
         } else {
           setProfile(null);
         }
@@ -402,7 +428,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       return;
     }
     if (!preparedProfile?.name.trim() || !preparedProfile.position.trim() || !preparedProfile.unit) {
-      setMessage({ kind: "error", text: "Complete your name, position, and Assignment in Profile before creating a report." });
+      setMessage({ kind: "error", text: "Complete your name, position, Division, and Unit / Program / Project in Profile before creating a report." });
       return;
     }
     const cleanActivities = activities.map((activity) => activity.trim());
@@ -459,7 +485,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
     {showForm && <section className="content-section ar-entry-section">
       <div className="section-heading"><div><p className="eyebrow">{editingReport ? "myAR · Edit activities" : "myAR · Data entry"}</p><h2>{editingReport ? "Edit Report Activities" : "Accomplishment Report"}</h2><p className="muted">{editingReport ? "Update the activities for this saved report." : "Enter the reporting period and activities. Your profile details fill the report automatically."}</p></div><button type="button" className="ghost-button" disabled={saving} onClick={cancelEdit}>{editingReport ? "Cancel Edit" : "Cancel"}</button></div>
       {message && <p className={`auth-message auth-message-${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
-      {loading ? <p className="muted">Loading your profile and reports…</p> : !preparedProfile ? <div className="ar-profile-notice"><strong>Profile details needed</strong><p>Add your name, position, and Assignment in Profile to prepare an accomplishment report.</p><button type="button" className="ghost-button" onClick={cancelEdit}>Back to Saved Reports</button></div> : <>
+      {loading ? <p className="muted">Loading your profile and reports…</p> : !preparedProfile ? <div className="ar-profile-notice"><strong>Profile details needed</strong><p>Add your name, position, Division, and Unit / Program / Project in Profile to prepare an accomplishment report.</p><button type="button" className="ghost-button" onClick={cancelEdit}>Back to Saved Reports</button></div> : <>
         <form className="ar-form" onSubmit={saveReport}>
           <div className="ar-form-fields">
             <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} required disabled={!!editingReport} /></label>

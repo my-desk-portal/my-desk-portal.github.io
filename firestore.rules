@@ -52,11 +52,12 @@ service cloud.firestore {
         : legacyProjectProgram is string && legacyProjectProgram.size() > 0 ? legacyProjectProgram
         : legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit
         : office;
-      return rawOffice == "Field Operations Division (ILD)"
-        || rawOffice in ["AGRISTAT", "AMIA", "DRRM", "FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"]
-        || (rawOffice is string && rawOffice.matches("^FOD-.*"))
-        ? "Field Operations Division"
-        : rawOffice;
+      return version >= 4 ? office
+        : rawOffice == "Field Operations Division (ILD)"
+          || rawOffice in ["AGRISTAT", "AMIA", "DRRM", "FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"]
+          || (rawOffice is string && rawOffice.matches("^FOD-.*"))
+          ? "Field Operations Division"
+          : rawOffice;
     }
     function profileAssignment(profile) {
       let version = profile.get("profileFieldsVersion", 0);
@@ -64,7 +65,9 @@ service cloud.firestore {
       let projectProgram = profile.get("projectProgram", "");
       let legacyUnit = profile.get("unit", "");
       let legacyOffice = profile.get("office", "");
-      let rawAssignment = version >= 3 ? assignment
+      let division = profile.get("division", "");
+      let rawAssignment = version >= 4 ? (legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit : division)
+        : version >= 3 ? assignment
         : version == 2 && projectProgram is string && projectProgram.size() > 0 ? projectProgram
         : version == 2 && legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit
         : legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit
@@ -80,6 +83,16 @@ service cloud.firestore {
         : legacyOffice in ["DRRM", "FOD-DRRM"] ? "DRRM"
         : "";
     }
+    function profileDivision(profile) {
+      let version = profile.get("profileFieldsVersion", 0);
+      let office = profileOffice(profile);
+      let division = profile.get("division", "");
+      let assignment = profileAssignment(profile);
+      return version >= 4 ? division
+        : office == "Field Operations Division" ? "Field Operations Division"
+        : office == "Regional Field Office" ? assignment
+        : office;
+    }
     function signedInOffice() {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
       return exists(userPath) ? profileOffice(get(userPath).data) : null;
@@ -87,6 +100,10 @@ service cloud.firestore {
     function signedInUnit() {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
       return exists(userPath) ? profileAssignment(get(userPath).data) : null;
+    }
+    function signedInDivision() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userPath) ? profileDivision(get(userPath).data) : null;
     }
     function personnelScopeOffice(profile) {
       return profileOffice(profile);
@@ -97,9 +114,12 @@ service cloud.firestore {
     function samePersonnelScope(firstProfile, secondProfile) {
       let firstOffice = personnelScopeOffice(firstProfile);
       let secondOffice = personnelScopeOffice(secondProfile);
+      let firstDivision = profileDivision(firstProfile);
+      let secondDivision = profileDivision(secondProfile);
       let firstAssignment = personnelScopeAssignment(firstProfile);
       let secondAssignment = personnelScopeAssignment(secondProfile);
       return firstOffice == secondOffice
+        && firstDivision == secondDivision
         && firstAssignment is string && firstAssignment.size() > 0
         && firstAssignment == secondAssignment;
     }
@@ -203,9 +223,11 @@ service cloud.firestore {
         : office;
     }
     function appearanceDivisionForProfile(profile) {
+      let version = profile.get("profileFieldsVersion", 0);
       let office = profileOffice(profile);
       let assignment = profileAssignment(profile);
-      return office == "Regional Field Office"
+      return version >= 4 ? profileDivision(profile)
+        : office == "Regional Field Office"
         ? assignment
         : office == "Field Operations Division" && assignment in ["AGRISTAT", "AMIA", "DRRM"]
           ? appearanceDivisionForOffice(assignment)
@@ -227,7 +249,7 @@ service cloud.firestore {
       return isSuperAdmin() || (isChiefCertificateAdmin()
         && data.get("division", "") == appearanceDivisionForProfile(get(currentUserPath()).data));
     }
-    function validCertificateDecisionUpdate() {
+    function validCertificateDecisionUpdate(allowAppearanceSignature) {
       let profile = get(currentUserPath()).data;
       let oldStatus = resource.data.get("status", "Pending");
       let newStatus = request.resource.data.get("status", "");
@@ -243,9 +265,16 @@ service cloud.firestore {
         && request.resource.data.signerName == profile.get("name", "")
         && request.resource.data.signerDesignation == profile.get("designation", "")
         && request.resource.data.signerOffice == profileOffice(profile)
-        && (signatureAsset == "" || (newStatus == "Approved"
+        && (signatureAsset == "" || (allowAppearanceSignature
+          && resource.data.get("recordType", "appearance") == "appearance"
+          && newStatus == "Approved"
           && signatureAsset == "field_operations_division_chief_signature.png"
-          && request.resource.data.signerOffice == "Field Operations Division"
+          && profile.get("profileFieldsVersion", 0) == 4
+          && profile.get("office", "") == "Division"
+          && profile.get("division", "") == "Field Operations Division"
+          && profile.get("unit", "") == "Field Operations Division"
+          && profile.get("accountRole", "") == "admin"
+          && request.resource.data.signerOffice == "Division"
           && request.resource.data.signerDesignation == "Chief"));
     }
     function isValidPermitDecisionUpdate() {
@@ -270,15 +299,32 @@ service cloud.firestore {
         && newDecision.get("signerName", "") == get(currentUserPath()).data.get("name", "")
         && newDecision.diff(oldDecision).affectedKeys().hasOnly(["status", "decidedAt", "decidedBy", "signerName", "approvedPermitNo"]);
     }
-    function validProfileOfficeAssignment(office, assignment) {
-      return (office == "Field Operations Division"
-          && assignment in ["4K", "AGRISTAT", "AMIA", "APCO - ADN", "APCO - ADS", "APCO - PDI", "APCO - SDN", "APCO - SDS", "Corn Program", "DRRM", "ELCAC", "Extension and Partnership", "F2C2", "GAD", "HVCDP Program", "Livestock Program", "NUPAP", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD"])
-        || (office == "Regional Field Office"
-          && assignment in ["Administrative Division", "Agribusiness and Marketing Assistance Division", "Field Operations Division", "Finance Division", "Integrated Laboratories Division", "Planning, Monitoring and Evaluation Division", "Regional Agricultural Engineering Division", "Regulatory Division", "Research Division", "Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"]);
+    function validProfileOfficeDivisionUnit(office, division, unit) {
+      return (office == "Division" && division == "Administrative Division"
+          && unit in ["Administrative Division", "General Services Section", "Human Resource Section"])
+        || (office == "Division" && division == "Agribusiness and Marketing Assistance Division"
+          && unit == "Agribusiness and Marketing Assistance Division")
+        || (office == "Division" && division == "Field Operations Division"
+          && unit in ["4K", "AGRISTAT", "AMIA", "DRRM", "APCO - ADN", "APCO - ADS", "APCO - SDN", "APCO - SDS", "APCO - PDI", "CFIDP", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "Field Operations Division", "Gender and Development", "Halal Projects", "HVCD Program", "IPM", "Livestock Program", "NUPA Program", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Soybean Program"])
+        || (office == "Division" && division == "Finance Division"
+          && unit in ["Budget Section", "Accounting Section", "Finance Division"])
+        || (office == "Division" && division == "Integrated Laboratories Division"
+          && unit in ["Integrated Laboratories Division", "NHSP"])
+        || (office == "Division" && division == "Planning, Monitoring and Evaluation Division"
+          && unit in ["Information and Communications Technology Unit", "Planning, Monitoring and Evaluation Division"])
+        || (office == "Division" && division == "Regional Agricultural Engineering Division"
+          && unit == "Regional Agricultural Engineering Division")
+        || (office == "Division" && division == "Regulatory Division"
+          && unit == "Regional Agricultural Engineering Division")
+        || (office == "Division" && division == "Research Division"
+          && unit in ["Del Monte RES", "Modernization and ORDA", "Research Division", "Tagbina RES", "Trento RES"])
+        || (office == "Office of the Regional Executive Director"
+          && division in ["Office of the Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"]
+          && unit == division);
     }
     function validUserProfile(data) {
-      return data.keys().hasAll(["name", "position", "office", "assignment", "profileFieldsVersion", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin"])
-        && data.keys().hasOnly(["name", "position", "office", "assignment", "profileFieldsVersion", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole", "accountStatus", "isRootSuperAdmin", "emailVerified", "registrationStage", "welcomeNotificationSeenAt", "createdAt"])
+      return data.keys().hasAll(["name", "position", "office", "division", "unit", "profileFieldsVersion", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin"])
+        && data.keys().hasOnly(["name", "position", "office", "division", "unit", "profileFieldsVersion", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole", "accountStatus", "isRootSuperAdmin", "emailVerified", "registrationStage", "welcomeNotificationSeenAt", "createdAt"])
         && data.emailVerified is bool
         && data.isRootSuperAdmin is bool
         && data.accountRole in ["superadmin", "admin", "regular"]
@@ -301,11 +347,14 @@ service cloud.firestore {
         && data.office is string
         && data.office.size() > 0
         && data.office.size() <= 120
-        && data.assignment is string
-        && data.assignment.size() > 0
-        && data.assignment.size() <= 120
-        && validProfileOfficeAssignment(data.office, data.assignment)
-        && data.profileFieldsVersion == 3
+        && data.division is string
+        && data.division.size() > 0
+        && data.division.size() <= 120
+        && data.unit is string
+        && data.unit.size() > 0
+        && data.unit.size() <= 120
+        && validProfileOfficeDivisionUnit(data.office, data.division, data.unit)
+        && data.profileFieldsVersion == 4
         && (!data.keys().hasAny(["registrationStage"]) || data.registrationStage == "complete");
     }
     function validRegistrationMarker(data) {
@@ -353,9 +402,9 @@ service cloud.firestore {
       // Users may edit their own profile and mark their email verified, but cannot approve themselves or change their role.
       allow update: if (isEmailVerified()
           && request.auth.uid == userId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name", "position", "office", "assignment", "projectProgram", "profileFieldsVersion", "unit", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin", "registrationStage", "welcomeNotificationSeenAt", "createdAt"])
-          && request.resource.data.keys().hasAll(["name", "position", "office", "assignment", "profileFieldsVersion", "emailVerified"])
-          && !request.resource.data.keys().hasAny(["unit", "projectProgram"])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name", "position", "office", "division", "unit", "assignment", "projectProgram", "profileFieldsVersion", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin", "registrationStage", "welcomeNotificationSeenAt", "createdAt"])
+          && request.resource.data.keys().hasAll(["name", "position", "office", "division", "unit", "profileFieldsVersion", "emailVerified"])
+          && !request.resource.data.keys().hasAny(["assignment", "projectProgram"])
           && request.resource.data.emailVerified == true
           && request.resource.data.get("registrationStage", "complete") == "complete"
           && (request.resource.data.get("accountRole", "") == resource.data.get("accountRole", "")
@@ -383,11 +432,14 @@ service cloud.firestore {
           && request.resource.data.office is string
           && request.resource.data.office.size() > 0
           && request.resource.data.office.size() <= 120
-          && request.resource.data.assignment is string
-          && request.resource.data.assignment.size() > 0
-          && request.resource.data.assignment.size() <= 120
-          && validProfileOfficeAssignment(request.resource.data.office, request.resource.data.assignment)
-          && request.resource.data.profileFieldsVersion == 3
+          && request.resource.data.division is string
+          && request.resource.data.division.size() > 0
+          && request.resource.data.division.size() <= 120
+          && request.resource.data.unit is string
+          && request.resource.data.unit.size() > 0
+          && request.resource.data.unit.size() <= 120
+          && validProfileOfficeDivisionUnit(request.resource.data.office, request.resource.data.division, request.resource.data.unit)
+          && request.resource.data.profileFieldsVersion == 4
           && (!request.resource.data.keys().hasAny(["gender"]) || request.resource.data.gender in ["Male", "Female"])
           && (!request.resource.data.keys().hasAny(["firstName"]) || (request.resource.data.firstName is string && request.resource.data.firstName.size() <= 60))
           && (!request.resource.data.keys().hasAny(["middleName"]) || (request.resource.data.middleName is string && request.resource.data.middleName.size() <= 60))
@@ -396,12 +448,15 @@ service cloud.firestore {
           && (!request.resource.data.keys().hasAny(["address"]) || (request.resource.data.address is string && request.resource.data.address.size() > 0 && request.resource.data.address.size() <= 200))
           && (!request.resource.data.keys().hasAny(["taxIdentificationNo"]) || (request.resource.data.taxIdentificationNo is string && request.resource.data.taxIdentificationNo.size() > 0 && request.resource.data.taxIdentificationNo.size() <= 30))
           && (!request.resource.data.keys().hasAny(["designation"]) || (request.resource.data.designation is string && request.resource.data.designation.size() <= 2000)))
-        || (isSuperAdmin()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["office", "assignment", "projectProgram", "profileFieldsVersion", "unit"])
-          && request.resource.data.office == profileOffice(resource.data)
-          && request.resource.data.assignment == profileAssignment(resource.data)
-          && request.resource.data.profileFieldsVersion == 3
-          && !request.resource.data.keys().hasAny(["unit", "projectProgram"]))
+        || (isEmailVerified()
+          && request.auth.token.email == "rjamescute2@gmail.com"
+          && resource.data.get("profileFieldsVersion", 0) < 4
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["office", "division", "unit", "assignment", "projectProgram", "profileFieldsVersion"])
+          && request.resource.data.office == ""
+          && request.resource.data.division == ""
+          && request.resource.data.unit == ""
+          && request.resource.data.profileFieldsVersion == 4
+          && !request.resource.data.keys().hasAny(["assignment", "projectProgram"]))
         || (isSuperAdmin()
           && userId != request.auth.uid
           && resource.data.get("isRootSuperAdmin", false) != true
@@ -748,10 +803,15 @@ service cloud.firestore {
     match /permits/{permitId} {
       allow read: if isVerifiedUser();
       allow create: if isVerifiedUser()
-        && request.resource.data.keys().hasAll(["ownerId", "ownerOffice", "ownerAssignment"])
+        && request.resource.data.keys().hasAll(["ownerId", "ownerOffice", "ownerDivision", "ownerUnit", "ownerDesignation", "ownerAssignment"])
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerOffice is string
         && request.resource.data.ownerOffice == signedInOffice()
+        && request.resource.data.ownerDivision is string
+        && request.resource.data.ownerDivision == signedInDivision()
+        && request.resource.data.ownerUnit is string
+        && request.resource.data.ownerUnit == signedInUnit()
+        && request.resource.data.ownerDesignation == get(currentUserPath()).data.get("designation", "")
         && request.resource.data.ownerAssignment is string
         && request.resource.data.ownerAssignment == signedInUnit()
         && !request.resource.data.keys().hasAny(["personStatuses", "lastDecisionKey"]);
@@ -809,7 +869,7 @@ service cloud.firestore {
           && resource.data.get("status", "Pending") != "Approved"
           && request.resource.data.get("status", "Pending") == resource.data.get("status", "Pending"))
         || (canReviewAppearanceCertificate(resource.data)
-          && validCertificateDecisionUpdate());
+          && validCertificateDecisionUpdate(true));
       allow delete: if isVerifiedUser()
         && resource.data.get("status", "Pending") != "Approved"
         && (resource.data.ownerId == request.auth.uid || canReviewAppearanceCertificate(resource.data));
@@ -912,7 +972,7 @@ service cloud.firestore {
         && request.resource.data.speakers[0].gender == request.resource.data.speakerGender
         && request.resource.data.speakers[0].position == request.resource.data.speakerPosition
         && request.resource.data.speakers[0].office == request.resource.data.speakerOffice)
-        || (canReviewUnitCertificate(resource.data) && validCertificateDecisionUpdate());
+        || (canReviewUnitCertificate(resource.data) && validCertificateDecisionUpdate(false));
       allow delete: if isVerifiedUser()
         && resource.data.get("status", "Pending") != "Approved"
         && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));
@@ -950,7 +1010,7 @@ service cloud.firestore {
         && request.resource.data.participantNames is list
         && request.resource.data.participantNames.size() > 0
         && request.resource.data.participantNames.size() <= 100)
-        || (canReviewUnitCertificate(resource.data) && validCertificateDecisionUpdate());
+        || (canReviewUnitCertificate(resource.data) && validCertificateDecisionUpdate(false));
       allow delete: if isVerifiedUser()
         && resource.data.get("status", "Pending") != "Approved"
         && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));
@@ -995,7 +1055,7 @@ service cloud.firestore {
         && request.resource.data.participantGenders is list
         && request.resource.data.participantGenders.size() == request.resource.data.participantNames.size()
         && request.resource.data.participantGenders.hasOnly(["female", "male"]))
-        || (canReviewUnitCertificate(resource.data) && validCertificateDecisionUpdate());
+        || (canReviewUnitCertificate(resource.data) && validCertificateDecisionUpdate(false));
       allow delete: if isVerifiedUser()
         && resource.data.get("status", "Pending") != "Approved"
         && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));

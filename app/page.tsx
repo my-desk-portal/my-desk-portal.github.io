@@ -37,7 +37,7 @@ import {
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import { filterPersonnelForAccount, loadPersonnel as loadAccountPersonnel, loadPermitAdminSignatories, personnelDisplayName, type PersonnelEntry, type PermitAdminSignatory } from "@/lib/personnel";
 import { accountRoleForEmail, normalizeAccountRole, normalizeAccountStatus, SUPERADMIN_EMAIL, type AccountRole, type AccountStatus } from "@/lib/user-roles";
-import { accountOffice, accountAssignment, accountDesignation, accountDesignationOptions, accountOfficeOptions, accountPositionOptions, accountProfileSelection, assignmentsForOffice, fieldOperationsCombinedAssignment, migratedAccountProfileFields } from "@/lib/account-profile";
+import { accountOffice, accountAssignment, accountDesignation, accountDesignationOptions, accountOfficeOptions, accountPositionOptions, accountProfileSelection, assignmentsForOffice, divisionsForOffice, unitsForOfficeDivision, fieldOperationsAssignments, fieldOperationsCombinedAssignment } from "@/lib/account-profile";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import type { CalendarOfActivitiesApprovalNotification, CalendarOfActivitiesNotification } from "./CalendarOfActivities";
 import { calendarOfActivitiesApprovalNotificationsCollection, calendarOfActivitiesNotificationsCollection } from "@/lib/calendar-of-activities-storage";
@@ -79,7 +79,7 @@ function isPermitAdmin(email?: string | null, accountRole?: unknown) {
 type Unit = string;
 type AccountAssignment = string;
 type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string; approvedPermitNo?: string };
-type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personIds?: string[]; recipientIds?: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; ownerId?: string; ownerOffice?: string; ownerAssignment?: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
+type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personIds?: string[]; recipientIds?: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; ownerId?: string; ownerOffice?: string; ownerDivision?: string; ownerUnit?: string; ownerDesignation?: string; ownerAssignment?: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
 type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; participantPositions?: string[]; participantOffices?: string[]; participantUserIds?: string[]; participantIds?: string[]; recipientIds?: string[]; signatoryName?: string; signatoryDesignation?: string; ownerId: string; ownerUnit?: string; createdAt?: unknown };
 
 const specialOrderSignatories = [
@@ -188,23 +188,22 @@ function formatDate(date: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${date}T00:00:00`));
 }
 
-async function migrateAccountProfileFieldsForSuperAdmin(excludedUserId?: string) {
+async function migrateAccountProfileFieldsForSuperAdmin() {
   if (!db) return;
   const snapshot = await getDocs(collection(db, "users"));
-  const legacyProfiles = snapshot.docs.filter((item) => {
-    if (item.id === excludedUserId) return false;
-    const data = item.data();
-    const normalized = migratedAccountProfileFields(data);
-    return data.profileFieldsVersion !== 3 || !data.office || !data.assignment
-      || Object.prototype.hasOwnProperty.call(data, "unit")
-      || Object.prototype.hasOwnProperty.call(data, "projectProgram")
-      || data.office !== normalized.office
-      || data.assignment !== normalized.assignment;
-  });
+  const legacyProfiles = snapshot.docs.filter((item) => item.data().profileFieldsVersion !== 4
+    && item.data().registrationStage !== "detailsRequired");
   for (let offset = 0; offset < legacyProfiles.length; offset += 450) {
     const batch = writeBatch(db);
     legacyProfiles.slice(offset, offset + 450).forEach((item) => {
-      batch.set(item.ref, { ...migratedAccountProfileFields(item.data()), unit: deleteField(), projectProgram: deleteField() }, { merge: true });
+      batch.set(item.ref, {
+        office: "",
+        division: "",
+        unit: "",
+        profileFieldsVersion: 4,
+        assignment: deleteField(),
+        projectProgram: deleteField(),
+      }, { merge: true });
     });
     await batch.commit();
   }
@@ -398,7 +397,8 @@ function RegistrationDetails({ user, onSubmitted }: { user: User; onSubmitted: (
   const [position, setPosition] = useState("");
   const [customPosition, setCustomPosition] = useState(false);
   const [office, setOffice] = useState("");
-  const [assignment, setAssignment] = useState("");
+  const [division, setDivision] = useState("");
+  const [unit, setUnit] = useState("");
   const [designation, setDesignation] = useState("");
   const [address, setAddress] = useState("");
   const [taxIdentificationNo, setTaxIdentificationNo] = useState("");
@@ -417,7 +417,8 @@ function RegistrationDetails({ user, onSubmitted }: { user: User; onSubmitted: (
     const normalizedLastName = clean(lastName);
     const normalizedPosition = clean(position);
     const normalizedOffice = clean(office);
-    const normalizedAssignment = clean(assignment);
+    const normalizedDivision = clean(division);
+    const normalizedUnit = clean(unit);
     const normalizedDesignation = clean(accountDesignation(designation));
     const normalizedAddress = clean(address);
     const normalizedTin = formatTaxIdentificationNo(taxIdentificationNo);
@@ -425,7 +426,7 @@ function RegistrationDetails({ user, onSubmitted }: { user: User; onSubmitted: (
       setMessage({ kind: "error", text: "Verify your email address before completing your account." });
       return;
     }
-    if (!normalizedFirstName || !normalizedLastName || !gender || !normalizedPosition || !normalizedOffice || !normalizedAssignment || !normalizedDesignation || !normalizedAddress || !normalizedTin) {
+    if (!normalizedFirstName || !normalizedLastName || !gender || !normalizedPosition || !normalizedOffice || !normalizedDivision || !normalizedUnit || !normalizedDesignation || !normalizedAddress || !normalizedTin) {
       setMessage({ kind: "error", text: "Complete all required fields before submitting your account for approval." });
       return;
     }
@@ -440,8 +441,12 @@ function RegistrationDetails({ user, onSubmitted }: { user: User; onSubmitted: (
       setMessage({ kind: "error", text: "Enter a 9-digit tax identification number in 123-123-123 format." });
       return;
     }
-    if (!assignmentsForOffice(normalizedOffice).some((option) => option === normalizedAssignment)) {
-      setMessage({ kind: "error", text: "Choose an Assignment that belongs to the selected Office." });
+    if (!(divisionsForOffice(normalizedOffice) as readonly string[]).includes(normalizedDivision)) {
+      setMessage({ kind: "error", text: "Choose a Division that belongs to the selected Office." });
+      return;
+    }
+    if (!(unitsForOfficeDivision(normalizedOffice, normalizedDivision) as readonly string[]).includes(normalizedUnit)) {
+      setMessage({ kind: "error", text: "Choose a Unit / Program / Project that belongs to the selected Division." });
       return;
     }
 
@@ -461,9 +466,10 @@ function RegistrationDetails({ user, onSubmitted }: { user: User; onSubmitted: (
         gender,
         position: normalizedPosition,
         office: normalizedOffice,
-        assignment: normalizedAssignment,
+        division: normalizedDivision,
+        unit: normalizedUnit,
         designation: normalizedDesignation,
-        profileFieldsVersion: 3,
+        profileFieldsVersion: 4,
         address: normalizedAddress,
         taxIdentificationNo: normalizedTin,
         emailVerified: true,
@@ -499,8 +505,9 @@ function RegistrationDetails({ user, onSubmitted }: { user: User; onSubmitted: (
         <label>Gender<select autoComplete="sex" value={gender} onChange={(event) => setGender(event.target.value)} required disabled={busy}><option value="">Select gender</option><option value="Female">Female</option><option value="Male">Male</option></select></label>
         <label>Position{customPosition ? <div className="password-field"><input autoComplete="organization-title" maxLength={120} list="registration-position-options" value={position} onChange={(event) => setPosition(event.target.value)} placeholder="Enter your Position" required disabled={busy} /><datalist id="registration-position-options">{accountPositionOptions.map((option) => <option key={option} value={option} />)}</datalist><button type="button" className="password-toggle plain-action position-list-toggle" aria-label="Choose a Position from the list" disabled={busy} onClick={() => { setPosition(""); setCustomPosition(false); }}>List</button></div> : <select autoComplete="organization-title" value={position} onChange={(event) => { const nextPosition = event.target.value; if (nextPosition === "__other__") { setPosition(""); setCustomPosition(true); } else setPosition(nextPosition); }} required disabled={busy}><option value="">Select your Position</option>{accountPositionOptions.map((option) => <option key={option} value={option}>{option}</option>)}<option value="__other__">Others</option></select>}</label>
         <div className="registration-account-fields">
-          <label>Office<select value={office} onChange={(event) => { const nextOffice = event.target.value; setOffice(nextOffice); setAssignment((current) => assignmentsForOffice(nextOffice).some((option) => option === current) ? current : ""); }} required disabled={busy}><option value="">Select your Office</option>{accountOfficeOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-          <label>Assignment<select value={assignment} onChange={(event) => setAssignment(event.target.value)} required disabled={busy || !office}><option value="">{office ? "Select your Assignment" : "Select an Office first"}</option>{assignmentsForOffice(office).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+          <label>Office<select value={office} onChange={(event) => { setOffice(event.target.value); setDivision(""); setUnit(""); }} required disabled={busy}><option value="">Select your Office</option>{accountOfficeOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+          <label>Division<select value={division} onChange={(event) => { setDivision(event.target.value); setUnit(""); }} required disabled={busy || !office}><option value="">{office ? "Select your Division" : "Select an Office first"}</option>{divisionsForOffice(office).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+          <label>Unit / Program / Project<select value={unit} onChange={(event) => setUnit(event.target.value)} required disabled={busy || !division}><option value="">{division ? "Select your Unit / Program / Project" : "Select a Division first"}</option>{unitsForOfficeDivision(office, division).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
           <label>Designation<DesignationPicker id="registration-designation" value={designation} onChange={setDesignation} disabled={busy} required /></label>
         </div>
         <label className="registration-details-wide">Address<input autoComplete="street-address" maxLength={200} value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Street, Building, City, Province" required disabled={busy} /></label>
@@ -534,10 +541,10 @@ function DesignationPicker({ value, onChange, disabled, id = "profile-designatio
       <option value="__other__">Others</option>
     </select>;
 }
-function PermitForm({ user, office, assignment, onSaved, onCancel, onError }: { user: User; office: string; assignment: string; onSaved: (permit: Permit) => void; onCancel: () => void; onError: (message: string) => void }) {
+function PermitForm({ user, office, assignment, division = "", unit = "", designation = "", onSaved, onCancel, onError }: { user: User; office: string; assignment: string; division?: string; unit?: string; designation?: string; onSaved: (permit: Permit) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [people, setPeople] = useState<{ name: string; userId: string }[]>([{ name: "", userId: "" }]);
-  const [purpose, setPurpose] = useState("");
+  const [purpose, setPurpose] = useState(""); // Purpose of the permit
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
   const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
@@ -578,13 +585,24 @@ function PermitForm({ user, office, assignment, onSaved, onCancel, onError }: { 
     const selectedPeople = people.map((person) => ({ ...person, name: person.name.trim(), unit: permitUnitForPersonnel(personnel.find((candidate) => candidate.userId === person.userId)) })).filter((person) => person.name);
     if (!selectedPeople.length) { onError("Select at least one personnel name."); return; }
     const missingUnit = selectedPeople.find((person) => !person.unit);
-    if (missingUnit) { onError(`Update ${missingUnit.name}'s Office and Assignment in Profile before creating this Permit Slip.`); return; }
+    if (missingUnit) { onError(`Update ${missingUnit.name}'s Office, Division, and Unit / Program / Project in Profile before creating this Permit Slip.`); return; }
     const nameList = selectedPeople.map((person) => person.name);
     const personIds = selectedPeople.map((person) => person.userId);
     const personUnits = selectedPeople.map((person) => person.unit as Unit);
     const firestore = db;
     setBusy(true); onError("");
     try {
+      const submitterSnapshot = await getDoc(doc(firestore, "users", user.uid));
+      if (!submitterSnapshot.exists()) throw new Error("Complete your Office, Division, and Unit / Program / Project in Profile before creating this Permit Slip.");
+      const submitterData = submitterSnapshot.data();
+      const savedProfile = accountProfileSelection(submitterData);
+      const ownerOffice = savedProfile.office || office;
+      const ownerDivision = savedProfile.division || division;
+      const ownerUnit = savedProfile.unit || unit || assignment;
+      const ownerDesignation = accountDesignation(submitterData.designation) || designation;
+      if (!ownerOffice || !ownerDivision || !ownerUnit || !ownerDesignation) {
+        throw new Error("Complete your Office, Division, Unit / Program / Project, and Designation in Profile before creating this Permit Slip.");
+      }
       const year = new Date(`${date}T00:00:00`).getFullYear();
       const permit = await runTransaction(firestore, async (transaction) => {
         const unitCounterRefs = units.map((counterUnit) => doc(firestore, "permitCounters", `${counterUnit}-${year}`));
@@ -594,7 +612,7 @@ function PermitForm({ user, office, assignment, onSaved, onCancel, onError }: { 
         const permitNos = nameList.map((_, index) => `${year}-${String(firstNumber + index).padStart(4, "0")}`);
         const lastNumber = firstNumber + nameList.length - 1;
         const permitRef = doc(collection(firestore, "permits"));
-        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, personIds, recipientIds: [...new Set(personIds.filter((id) => id && id !== user.uid))], personUnits, unit: personUnits[0], purpose: purpose.trim(), ownerId: user.uid, ownerOffice: office, ownerAssignment: assignment, createdAt: serverTimestamp() };
+        const record = { permitNo: permitNos[0], permitNos, date, names: nameList, personIds, recipientIds: [...new Set(personIds.filter((id) => id && id !== user.uid))], personUnits, unit: personUnits[0], purpose: purpose.trim(), ownerId: user.uid, ownerOffice, ownerDivision, ownerUnit, ownerDesignation, ownerAssignment: savedProfile.assignment || ownerUnit, createdAt: serverTimestamp() };
         unitCounterRefs.forEach((counterRef, index) => transaction.set(counterRef, { lastNumber, unit: units[index], year }));
         transaction.set(yearCounterRef, { lastNumber, year });
         transaction.set(permitRef, record);
@@ -662,20 +680,23 @@ function timestampMillis(value: unknown) {
 
 type PermitNotification = { permit: Permit; personIndex: number; permitNo: string; name: string; date: string; status: "Approved" | "Disapproved"; decidedAt?: unknown };
 type PendingPermitNotification = { permitId: string; statusKey: string; permitNo: string; name: string; date: string; purpose: string; submittedAt: number };
-type PermitNotificationAccount = { office: string; assignment: string; designation: string; accountRole: AccountRole };
-type PendingAccountApprovalNotification = { userId: string; name: string; office: string; assignment: string };
+type PermitNotificationAccount = { office: string; division: string; unit: string; assignment: string; designation: string; accountRole: AccountRole };
+type PendingAccountApprovalNotification = { userId: string; name: string; office: string; division: string; unit: string };
 const permitNotificationVisibilityMs = 4 * 60 * 60 * 1000;
 
-function permitApprovalRoute(ownerOffice: string, ownerAssignment: string): "fod" | null {
-  if (ownerOffice === "Field Operations Division" && assignmentsForOffice(ownerOffice).some((assignment) => assignment === ownerAssignment)) return "fod";
+function permitApprovalRoute(ownerOffice: string, ownerDivision: string, ownerUnit: string): "fod" | null {
+  if (ownerOffice === "Division" && ownerDivision === "Field Operations Division"
+    && fieldOperationsAssignments.includes(ownerUnit as (typeof fieldOperationsAssignments)[number])) return "fod";
+  if (ownerOffice === "Field Operations Division" && assignmentsForOffice(ownerOffice).some((unit) => unit === ownerUnit)) return "fod";
   return null;
 }
 
 function permitNotificationAccountMatches(owner: PermitNotificationAccount, reviewer: PermitNotificationAccount) {
   if (owner.accountRole !== "regular" || reviewer.accountRole !== "admin") return false;
-  return permitApprovalRoute(owner.office, owner.assignment) === "fod"
-    && reviewer.office === "Regional Field Office"
-    && reviewer.assignment === "Field Operations Division"
+  return permitApprovalRoute(owner.office, owner.division, owner.unit) === "fod"
+    && reviewer.office === "Division"
+    && reviewer.division === "Field Operations Division"
+    && reviewer.unit === "Field Operations Division"
     && reviewer.designation === "Chief";
 }
 
@@ -838,7 +859,8 @@ function PermitNotificationCenter({ isAdmin, isSuperAdmin, userId, notifications
         <span className="notification-status notification-status-pending">Awaiting review</span>
         <strong>{notification.name}</strong>
         <span className="notification-detail"><span className="notification-detail-label">Office</span><span>{notification.office || "Not provided"}</span></span>
-        <span className="notification-detail"><span className="notification-detail-label">Assignment</span><span>{notification.assignment || "Not provided"}</span></span>
+        <span className="notification-detail"><span className="notification-detail-label">Division</span><span>{notification.division || "Not provided"}</span></span>
+        <span className="notification-detail"><span className="notification-detail-label">Unit / Program / Project</span><span>{notification.unit || "Not provided"}</span></span>
         <span className="notification-view-label">Open Users' Master List</span>
       </button></li>)}</ul></>}
       {isAdmin ? visiblePendingNotifications.length === 0 ? null : <><p className="notification-section-title">Filed Permit Slips</p><ul>{visiblePendingNotifications.map((notification) => <li key={`${notification.permitId}-${notification.permitNo}`}><button type="button" className="notification-item" onClick={() => { setOpen(false); onAdminOpen(notification); }}>
@@ -937,24 +959,19 @@ function PermitNotificationCenter({ isAdmin, isSuperAdmin, userId, notifications
 
 type PermitFooterSignatory = { kind: "fod" | "shared-program"; name: string; designation: string; assignment: string };
 
-function permitFooterSignatory(ownerOffice: string, ownerAssignment: string, admins: PermitAdminSignatory[]): PermitFooterSignatory | null {
-  const ownerProfile = accountProfileSelection({ office: ownerOffice, assignment: ownerAssignment, profileFieldsVersion: 3 });
-  const route = permitApprovalRoute(ownerProfile.office ?? "", ownerProfile.assignment ?? "");
-  if (route === "fod") {
-    const usesSharedProgramSignatory = ["AGRISTAT", "AMIA", "DRRM"].includes(ownerProfile.assignment ?? "");
-    const admin = usesSharedProgramSignatory
-      ? admins.find((profile) => profile.office === "Field Operations Division" && profile.assignment === fieldOperationsCombinedAssignment)
-      : admins.find((profile) => profile.office === "Regional Field Office"
-        && profile.assignment === "Field Operations Division"
-        && profile.designation === "Chief");
-    return admin ? {
-      kind: usesSharedProgramSignatory ? "shared-program" : "fod",
-      name: admin.name,
-      designation: admin.designation,
-      assignment: admin.assignment,
-    } : null;
-  }
-  return null;
+function permitFooterSignatory(ownerOffice: string, ownerDivision: string, ownerUnit: string, admins: PermitAdminSignatory[]): PermitFooterSignatory | null {
+  if (permitApprovalRoute(ownerOffice, ownerDivision, ownerUnit) !== "fod") return null;
+  const usesSharedProgramSignatory = ["AGRISTAT", "AMIA", "DRRM"].includes(ownerUnit);
+  const admin = admins.find((profile) => profile.office === "Division"
+    && profile.division === "Field Operations Division"
+    && profile.unit === "Field Operations Division"
+    && profile.designation === "Chief");
+  return admin ? {
+    kind: usesSharedProgramSignatory ? "shared-program" : "fod",
+    name: admin.name,
+    designation: admin.designation,
+    assignment: admin.unit,
+  } : null;
 }
 
 function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers, ownerOffice, ownerAssignment, adminSignatories }: { permit: Permit; name: string; permitNo: string; decisionKey: string; approvedPermitNumbers: Record<string, string>; ownerOffice: string; ownerAssignment: string; adminSignatories: PermitAdminSignatory[] }) {
@@ -964,13 +981,27 @@ function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers
   const displayNumber = isApproved ? (decision?.approvedPermitNo ?? approvedPermitNumbers[displayPermitNumber(permitNo)] ?? displayPermitNumber(permitNo)) || "—" : "Pending";
   const permitOwnerOffice = permit.ownerOffice ?? ownerOffice;
   const permitOwnerAssignment = permit.ownerAssignment ?? ownerAssignment;
-  const ownerProfile = accountProfileSelection({ office: permitOwnerOffice, assignment: permitOwnerAssignment, profileFieldsVersion: 3 });
-  const approvalRoute = permitApprovalRoute(ownerProfile.office ?? "", ownerProfile.assignment ?? "");
-  const usesSharedProgramSignatory = approvalRoute === "fod" && ["AGRISTAT", "AMIA", "DRRM"].includes(ownerProfile.assignment ?? "");
-  const signatory = permitFooterSignatory(permitOwnerOffice, permitOwnerAssignment, adminSignatories);
-  const signatureAsset = approvalRoute === "fod" && !usesSharedProgramSignatory
-    ? "/field_operations_division_chief_signature.png"
-    : "/agristat_and_drrm_focal_persons_amia_project_leader.png";
+  const hasVersionFourOwner = typeof permit.ownerDivision === "string" && typeof permit.ownerUnit === "string";
+  const ownerProfile = hasVersionFourOwner
+    ? accountProfileSelection({ office: permitOwnerOffice, division: permit.ownerDivision, unit: permit.ownerUnit, profileFieldsVersion: 4 })
+    : accountProfileSelection({ office: permitOwnerOffice, assignment: permitOwnerAssignment, profileFieldsVersion: 3 });
+  const permitOwnerDivision = ownerProfile.division;
+  const permitOwnerUnit = ownerProfile.unit || permitOwnerAssignment;
+  const approvalRoute = permitApprovalRoute(ownerProfile.office, permitOwnerDivision, permitOwnerUnit);
+  const usesSharedProgramSignatory = approvalRoute === "fod" && ["AGRISTAT", "AMIA", "DRRM"].includes(permitOwnerUnit);
+  const signatory = permitFooterSignatory(ownerProfile.office, permitOwnerDivision, permitOwnerUnit, adminSignatories);
+  const usesRequestedSignatureProfile = ownerProfile.office === "Division"
+    && permitOwnerDivision === "Field Operations Division"
+    && permitOwnerUnit === "Field Operations Division";
+  const signatureAsset = usesRequestedSignatureProfile
+    ? permit.ownerDesignation === "AGRISTAT/DRRM/AMIA Project Leader"
+      ? "/agristat_and_drrm_focal_persons_amia_project_leader.png"
+      : permit.ownerDesignation === "Chief" ? "/field_operations_division_chief_signature.png" : ""
+    : !hasVersionFourOwner && approvalRoute === "fod"
+      ? usesSharedProgramSignatory
+        ? "/agristat_and_drrm_focal_persons_amia_project_leader.png"
+        : "/field_operations_division_chief_signature.png"
+      : "";
   const requiresConfiguredSignatory = approvalRoute !== null;
   return <article className="permit-document">
     <header className="permit-header">
@@ -1063,7 +1094,7 @@ function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers
 
     <div className="permit-approval">
       <div className="permit-approved-label">Approved:</div>
-      {decision?.status === "Approved" && <div className="permit-digital-signature"><img src={publicAsset(signatureAsset)} alt="Permit Slip approval signature" /><div><span>Digitally Signed By</span><strong>{decision.signerName?.trim().toLocaleUpperCase("en") || "ADMIN"}</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div></div>}
+      {decision?.status === "Approved" && <div className="permit-digital-signature">{signatureAsset && <img src={publicAsset(signatureAsset)} alt="Permit Slip approval signature" />}<div><span>Digitally Signed By</span><strong>{decision.signerName?.trim().toLocaleUpperCase("en") || "ADMIN"}</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div></div>}
       {decision?.status === "Disapproved" && <div className="permit-disapproved-stamp"><strong>Disapproved</strong><span>By {decision.signerName?.trim().toLocaleUpperCase("en") || "ADMIN"}</span><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div>}
       <div className="permit-approved-name">{signatory?.name.toLocaleUpperCase("en") || (requiresConfiguredSignatory ? "" : "GERLIE B. ANTIPASO")}</div>
       {signatory?.kind === "fod"
@@ -1096,8 +1127,8 @@ function PrintPreview({ permit, approvedPermitNumbers, onClose, ownerOffice, own
 
   async function waitForImages(container: HTMLElement) {
     await Promise.all(Array.from(container.querySelectorAll("img")).map(async (image) => {
-      if (!image.complete) await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("A permit logo could not be loaded.")); });
-      if (image.naturalWidth === 0) throw new Error("A permit logo could not be loaded.");
+      if (!image.complete) await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("The Special Order letterhead could not be loaded.")); });
+      if (image.naturalWidth === 0) throw new Error("The Special Order letterhead could not be loaded.");
       if (image.decode) await image.decode();
     }));
   }
@@ -1182,7 +1213,7 @@ function PrintPreview({ permit, approvedPermitNumbers, onClose, ownerOffice, own
   </div>;
 }
 
-function SpecialOrderForm({ user, ownerOffice, ownerUnit, onSaved, onCancel, onError }: { user: User; ownerOffice: string; ownerUnit: string | null; onSaved: (order: SpecialOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
+function SpecialOrderForm({ user, ownerOffice, ownerDivision, ownerUnit, onSaved, onCancel, onError }: { user: User; ownerOffice: string; ownerDivision?: string; ownerUnit: string | null; onSaved: (order: SpecialOrder) => void; onCancel: () => void; onError: (message: string) => void }) {
   const [subject, setSubject] = useState("");
   const [activityTitle, setActivityTitle] = useState("");
   const [organizer, setOrganizer] = useState("");
@@ -1202,7 +1233,7 @@ function SpecialOrderForm({ user, ownerOffice, ownerUnit, onSaved, onCancel, onE
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), ownerOffice, ownerUnit ?? "", { includeAdminAccounts: true });
+        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), ownerOffice, ownerUnit ?? "", { includeAdminAccounts: true, division: ownerDivision });
         if (!cancelled) {
           setPersonnel(entries);
           setPersonnelStatus("ready");
@@ -1213,7 +1244,7 @@ function SpecialOrderForm({ user, ownerOffice, ownerUnit, onSaved, onCancel, onE
     }
     void loadPersonnel();
     return () => { cancelled = true; };
-  }, [ownerOffice, ownerUnit]);
+  }, [ownerOffice, ownerDivision, ownerUnit]);
 
   function updateParticipant(index: number, updates: Partial<(typeof participants)[number]>) {
     setParticipants((current) => current.map((participant, participantIndex) => participantIndex === index ? { ...participant, ...updates } : participant));
@@ -1224,7 +1255,7 @@ function SpecialOrderForm({ user, ownerOffice, ownerUnit, onSaved, onCancel, onE
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!db) return;
-    if (!ownerUnit) { onError("Your Assignment is still loading. Try saving again in a moment."); return; }
+    if (!ownerUnit) { onError("Your Unit / Program / Project is still loading. Try saving again in a moment."); return; }
     const participantRecords = participants.map((participant) => {
       const selectedPerson = participant.manual ? undefined : personnel.find((person) => person.userId === participant.userId);
       return {
@@ -1259,18 +1290,22 @@ function SpecialOrderForm({ user, ownerOffice, ownerUnit, onSaved, onCancel, onE
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated personnel.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><div className="wide-field special-order-activity-fields"><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label></div><div className="special-order-schedule-fields"><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div></div><label className="wide-field">Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder="Street, Building, City, Province" required /></label><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); updateParticipant(index, { userId: selectedId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.office ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => { const enabled = event.target.checked; updateParticipant(index, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", office: "" }); }} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}</div>)}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { userId: "", manual: false, name: "", position: "", office: "" }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Reload the page to try again.</span>}</div><label className="wide-field">Signatory<select value={signatorySelection} onChange={(event) => setSignatorySelection(event.target.value)} required><option value="" disabled>Select a signatory</option>{specialOrderSignatoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div></form></section>;
+  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated personnel.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><div className="wide-field special-order-activity-fields"><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label></div><div className="special-order-schedule-fields"><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div></div><label className="wide-field">Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder="Street, Building, City, Province" required /></label><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => { return <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); updateParticipant(index, { userId: selectedId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.office ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => { const enabled = event.target.checked; updateParticipant(index, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", office: "" }); }} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant remove-action" aria-label={`Remove personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
+      </div>;
+    })}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { name: "", position: "", office: "", userId: "", manual: false }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload the page to try again.</span>}</div>
+    <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
+  </form></section>;
 }
 
 function SpecialOrderList({ orders, ownerId, preparedByNames, fallbackPreparedBy, deletingId, copyingId, onNew, onEdit, onPrint, onCopy, onDelete }: { orders: SpecialOrder[]; ownerId: string; preparedByNames: Record<string, string>; fallbackPreparedBy: string; deletingId: string | null; copyingId: string | null; onNew: () => void; onEdit: (order: SpecialOrder) => void; onPrint: (order: SpecialOrder) => void; onCopy: (order: SpecialOrder) => void; onDelete: (order: SpecialOrder) => void }) {
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(orders);
-  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} available to your Assignment.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Special Order</button></div> : <div className="permit-table"><RecordPagination totalRecords={orders.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Special Order" /><div className="table-head special-order-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span>Prepared By</span><span></span></div>{visibleRecords.map((order) => { const isOwner = order.ownerId === ownerId; return <div className="table-row special-order-list-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span>{preparedByNames[order.ownerId] || (isOwner ? fallbackPreparedBy : "") || "—"}</span><span className="permit-row-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPrint(order)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span></div>; })}</div>}</section>;
+  return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} available to your Unit / Program / Project.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Special Order</button></div> : <div className="permit-table"><RecordPagination totalRecords={orders.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Special Order" /><div className="table-head special-order-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span>Prepared By</span><span></span></div>{visibleRecords.map((order) => { const isOwner = order.ownerId === ownerId; return <div className="table-row special-order-list-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span>{preparedByNames[order.ownerId] || (isOwner ? fallbackPreparedBy : "") || "—"}</span><span className="permit-row-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPrint(order)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span></div>; })}</div>}</section>;
 }
 
 type EditableSpecialOrderParticipant = { name: string; position: string; office: string; userId: string; manual: boolean };
 const normalizeSpecialOrderPersonnelName = (name: string) => name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 
-function SpecialOrderParticipantEditor({ order, userId, office, assignment, onCancel, onSaved }: { order: SpecialOrder; userId: string; office: string; assignment: string; onCancel: () => void; onSaved: (order: SpecialOrder) => void }) {
+function SpecialOrderParticipantEditor({ order, userId, office, division, assignment, onCancel, onSaved }: { order: SpecialOrder; userId: string; office: string; division?: string; assignment: string; onCancel: () => void; onSaved: (order: SpecialOrder) => void }) {
   const [activityTitle, setActivityTitle] = useState(order.activityTitle ?? "");
   const [organizer, setOrganizer] = useState(order.organizer ?? "");
   const [dateFrom, setDateFrom] = useState(order.dateFrom ?? "");
@@ -1297,7 +1332,7 @@ function SpecialOrderParticipantEditor({ order, userId, office, assignment, onCa
     let cancelled = false;
     async function loadPersonnel() {
       try {
-        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), office, assignment, { includeAdminAccounts: true });
+        const entries = filterPersonnelForAccount(await loadAccountPersonnel(), office, assignment, { includeAdminAccounts: true, division });
         if (!cancelled) {
           setPersonnel(entries);
           setParticipants((current) => current.map((participant) => {
@@ -1319,7 +1354,7 @@ function SpecialOrderParticipantEditor({ order, userId, office, assignment, onCa
     }
     void loadPersonnel();
     return () => { cancelled = true; };
-  }, [office, assignment]);
+  }, [office, division, assignment]);
 
   function updateParticipant(index: number, update: Partial<EditableSpecialOrderParticipant>) {
     setParticipants((current) => current.map((participant, participantIndex) => participantIndex === index ? { ...participant, ...update } : participant));
@@ -1766,11 +1801,12 @@ export default function Home() {
   const [profilePosition, setProfilePosition] = useState("");
   const [profilePositionIsCustom, setProfilePositionIsCustom] = useState(false);
   const [profileDesignation, setProfileDesignation] = useState("");
-  const [profileAssignment, setProfileAssignment] = useState("");
+  const [profileDivision, setProfileDivision] = useState("");
+  const [profileUnit, setProfileUnit] = useState("");
   const [profileOffice, setProfileOffice] = useState("");
   const [profileAddress, setProfileAddress] = useState("");
   const [profileTaxIdentificationNo, setProfileTaxIdentificationNo] = useState("");
-  const [accountProfile, setAccountProfile] = useState<{ userId: string; office: string | null; assignment: string | null; name: string; designation: string; accountRole: AccountRole; accountStatus: AccountStatus } | null>(null);
+  const [accountProfile, setAccountProfile] = useState<{ userId: string; office: string | null; division: string | null; unit: string | null; assignment: string | null; name: string; designation: string; accountRole: AccountRole; accountStatus: AccountStatus } | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
@@ -1910,7 +1946,8 @@ export default function Home() {
     setProfilePosition("");
     setProfilePositionIsCustom(false);
     setProfileDesignation("");
-    setProfileAssignment("");
+    setProfileDivision("");
+    setProfileUnit("");
     setProfileOffice("");
     setProfileAddress("");
     setProfileTaxIdentificationNo("");
@@ -1931,7 +1968,8 @@ export default function Home() {
         }
         if (typeof profile.designation === "string") setProfileDesignation(accountDesignation(profile.designation));
         const profileSelection = accountProfileSelection(profile);
-        setProfileAssignment(profileSelection.assignment);
+        setProfileDivision(profileSelection.division);
+        setProfileUnit(profileSelection.unit);
         setProfileOffice(profileSelection.office);
         if (typeof profile.address === "string") setProfileAddress(profile.address);
         if (typeof profile.taxIdentificationNo === "string") setProfileTaxIdentificationNo(formatTaxIdentificationNo(profile.taxIdentificationNo));
@@ -1963,7 +2001,8 @@ export default function Home() {
     const lastName = clean(profileLastName);
     const gender = profileGender;
     const office = clean(profileOffice);
-    const assignment = clean(profileAssignment);
+    const division = clean(profileDivision);
+    const unit = clean(profileUnit);
     const address = clean(profileAddress);
     const taxIdentificationNo = formatTaxIdentificationNo(profileTaxIdentificationNo);
     const middleInitial = middleName ? `${middleName.charAt(0).toUpperCase()}.` : "";
@@ -1995,8 +2034,12 @@ export default function Home() {
       setProfileMessage({ kind: "error", text: "Select your Office." });
       return;
     }
-    if (!assignmentsForOffice(office).some((option) => option === assignment)) {
-      setProfileMessage({ kind: "error", text: "Select an Assignment for your Office." });
+    if (!(divisionsForOffice(office) as readonly string[]).includes(division)) {
+      setProfileMessage({ kind: "error", text: "Select a Division for your Office." });
+      return;
+    }
+    if (!(unitsForOfficeDivision(office, division) as readonly string[]).includes(unit)) {
+      setProfileMessage({ kind: "error", text: "Select a Unit / Program / Project for your Division." });
       return;
     }
     if (!/^\d{3}-\d{3}-\d{3}$/.test(taxIdentificationNo)) {
@@ -2023,7 +2066,7 @@ export default function Home() {
     let profileDataSaved = false;
     let accountNameSaved = false;
     try {
-      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, designation, office, assignment, profileFieldsVersion: 3, unit: deleteField(), projectProgram: deleteField(), address, taxIdentificationNo }, { merge: true });
+      await setDoc(doc(db, "users", user.uid), { name, firstName, middleName, lastName, gender, position, designation, office, division, unit, profileFieldsVersion: 4, assignment: deleteField(), projectProgram: deleteField(), address, taxIdentificationNo }, { merge: true });
       profileDataSaved = true;
       setProfileRevision((revision) => revision + 1);
       await updateProfile(user, { displayName: name });
@@ -2034,7 +2077,8 @@ export default function Home() {
       setProfileLastName(lastName);
       setProfilePosition(position);
       setProfileDesignation(designation);
-      setProfileAssignment(assignment);
+      setProfileDivision(division);
+      setProfileUnit(unit);
       setProfileOffice(office);
       setProfileAddress(address);
       setProfileTaxIdentificationNo(taxIdentificationNo);
@@ -2110,7 +2154,7 @@ export default function Home() {
         if (!db) { setUser(verifiedUser); window.clearTimeout(startupTimeout); setLoading(false); return; }
         try {
           const profileRef = doc(db, "users", verifiedUser.uid);
-          const profileSnapshot = await getDoc(profileRef);
+          let profileSnapshot = await getDoc(profileRef);
           if (thisAuthChange !== authChange) return;
           if (!profileSnapshot.exists()) {
             setUser(null);
@@ -2119,7 +2163,7 @@ export default function Home() {
             setLoading(false);
             return;
           }
-          const profileData = profileSnapshot.data();
+          let profileData = profileSnapshot.data();
           if (profileData.registrationStage === "detailsRequired") {
             setUser(null);
             setAccountProfile(null);
@@ -2129,32 +2173,23 @@ export default function Home() {
           }
           const isBootstrapSuperAdmin = verifiedUser.email?.trim().toLowerCase() === SUPERADMIN_EMAIL;
           if (isBootstrapSuperAdmin) {
-            void migrateAccountProfileFieldsForSuperAdmin(verifiedUser.uid).catch((cause) => {
-              console.warn("Could not migrate account profile fields during Super Admin sign-in.", cause);
-            });
+            try {
+              await migrateAccountProfileFieldsForSuperAdmin();
+              profileSnapshot = await getDoc(profileRef);
+              if (profileSnapshot.exists()) profileData = profileSnapshot.data();
+            } catch (cause) {
+              console.warn("Could not initialize account Division fields during Super Admin sign-in.", cause);
+            }
           }
           const accountRole = normalizeAccountRole(profileData.accountRole, verifiedUser.email);
           const accountStatus = isBootstrapSuperAdmin ? "Approved" : normalizeAccountStatus(profileData.accountStatus);
           if (thisAuthChange !== authChange) return;
           const accountPatch: Record<string, unknown> = {};
-          const normalizedProfile = migratedAccountProfileFields(profileData);
-          const normalizedProfileIsComplete = assignmentsForOffice(normalizedProfile.office ?? "")
-            .some((option) => option === normalizedProfile.assignment);
-          if (profileData.profileFieldsVersion !== 3 || !profileData.office || !profileData.assignment
-            || Object.prototype.hasOwnProperty.call(profileData, "unit")
-            || Object.prototype.hasOwnProperty.call(profileData, "projectProgram")
-            || profileData.office !== normalizedProfile.office
-            || profileData.assignment !== normalizedProfile.assignment) {
-            if (normalizedProfileIsComplete) Object.assign(accountPatch, normalizedProfile);
-          }
-          if (Object.prototype.hasOwnProperty.call(accountPatch, "office")) {
-            accountPatch.unit = deleteField();
-            accountPatch.projectProgram = deleteField();
-          }
-          if (profileData.emailVerified !== true) accountPatch.emailVerified = true;
-          if ((isBootstrapSuperAdmin && profileData.accountRole !== "superadmin") || (!profileData.accountRole && accountRole)) accountPatch.accountRole = accountRole;
-          if (isBootstrapSuperAdmin && profileData.accountStatus !== "Approved") accountPatch.accountStatus = "Approved";
-          if (isBootstrapSuperAdmin && profileData.isRootSuperAdmin !== true) accountPatch.isRootSuperAdmin = true;
+          const canPatchProfile = profileData.profileFieldsVersion === 4;
+          if (canPatchProfile && profileData.emailVerified !== true) accountPatch.emailVerified = true;
+          if (canPatchProfile && ((isBootstrapSuperAdmin && profileData.accountRole !== "superadmin") || (!profileData.accountRole && accountRole))) accountPatch.accountRole = accountRole;
+          if (canPatchProfile && isBootstrapSuperAdmin && profileData.accountStatus !== "Approved") accountPatch.accountStatus = "Approved";
+          if (canPatchProfile && isBootstrapSuperAdmin && profileData.isRootSuperAdmin !== true) accountPatch.isRootSuperAdmin = true;
           if (Object.keys(accountPatch).length) {
             if (isBootstrapSuperAdmin) {
               try {
@@ -2167,10 +2202,13 @@ export default function Home() {
             }
           }
           if (thisAuthChange !== authChange) return;
-           setAccountProfile({
+          const profileSelection = accountProfileSelection(profileData);
+          setAccountProfile({
             userId: verifiedUser.uid,
-            office: accountOffice(profileData),
-            assignment: accountAssignment(profileData) || null,
+            office: profileSelection.office || null,
+            division: profileSelection.division || null,
+            unit: profileSelection.unit || null,
+            assignment: profileSelection.assignment || null,
             name: typeof profileData.name === "string" ? profileData.name : verifiedUser.displayName ?? "",
             designation: accountDesignation(profileData.designation),
             accountRole,
@@ -2231,14 +2269,15 @@ export default function Home() {
       }
       const data = snapshot.data();
       const accountStatus = user.email?.trim().toLowerCase() === SUPERADMIN_EMAIL ? "Approved" : normalizeAccountStatus(data.accountStatus);
-      setAccountProfile({ userId: user.uid, office: accountOffice(data), assignment: accountAssignment(data) || null, name: typeof data.name === "string" ? data.name : user.displayName ?? "", designation: accountDesignation(data.designation), accountRole: normalizeAccountRole(data.accountRole, user.email), accountStatus });
+      const profileSelection = accountProfileSelection(data);
+      setAccountProfile({ userId: user.uid, office: profileSelection.office || null, division: profileSelection.division || null, unit: profileSelection.unit || null, assignment: profileSelection.assignment || null, name: typeof data.name === "string" ? data.name : user.displayName ?? "", designation: accountDesignation(data.designation), accountRole: normalizeAccountRole(data.accountRole, user.email), accountStatus });
       if (accountStatus !== "Approved") {
         setUser(null);
         setApprovalUser(user);
         setApprovalStatus(accountStatus);
       }
     }, () => {
-      setAccountProfile({ userId: user.uid, office: null, assignment: null, name: user.displayName ?? "", designation: "", accountRole: accountRoleForEmail(user.email), accountStatus: "Approved" });
+      setAccountProfile({ userId: user.uid, office: null, division: null, unit: null, assignment: null, name: user.displayName ?? "", designation: "", accountRole: accountRoleForEmail(user.email), accountStatus: "Approved" });
     });
   }, [user]);
   useEffect(() => {
@@ -2329,22 +2368,6 @@ export default function Home() {
     return () => { ownerUnsubscribe(); recipientUnsubscribe(); personnelUnsubscribe(); };
   }, [user, playNotificationTone]);
   useEffect(() => {
-    if (!user || !db) return;
-    const firestore = db;
-    const ownerIds = [...new Set(permits.map((permit) => permit.ownerId).filter((ownerId): ownerId is string => typeof ownerId === "string" && ownerId !== user.uid && !permitPreparedByNameLookups.current.has(ownerId)))];
-    ownerIds.forEach((ownerId) => permitPreparedByNameLookups.current.add(ownerId));
-    if (!ownerIds.length) return;
-    void Promise.all(ownerIds.map(async (ownerId) => {
-      try {
-        const profile = await getDoc(doc(firestore, "users", ownerId));
-        const name = profile.exists() && typeof profile.data().name === "string" ? profile.data().name.trim() : "";
-        return [ownerId, name] as const;
-      } catch {
-        return [ownerId, ""] as const;
-      }
-    })).then((profiles) => setPermitPreparedByNames((current) => ({ ...current, ...Object.fromEntries(profiles) })));
-  }, [permits, user]);
-  useEffect(() => {
     if (!user || !db) { setApprovedPermitNumbers({}); return; }
     return onSnapshot(collection(db, "approvedPermitCalendar"), (snapshot) => {
       const approvedNumbers = snapshot.docs
@@ -2365,9 +2388,12 @@ export default function Home() {
       const accounts: Record<string, PermitNotificationAccount> = {};
       snapshot.docs.forEach((item) => {
         const data = item.data();
+        const profile = accountProfileSelection(data);
         accounts[item.id] = {
-          office: accountOffice(data) ?? "",
-          assignment: accountAssignment(data) ?? "",
+          office: profile.office,
+          division: profile.division,
+          unit: profile.unit,
+          assignment: profile.assignment,
           designation: accountDesignation(data.designation),
           accountRole: normalizeAccountRole(data.accountRole, typeof data.email === "string" ? data.email : null),
         };
@@ -2382,11 +2408,13 @@ export default function Home() {
     const accountRole = user && accountProfile?.userId === user.uid ? accountProfile.accountRole : undefined;
     const reviewer: PermitNotificationAccount | null = user && accountProfile?.userId === user.uid ? {
       office: accountProfile.office ?? "",
+      division: accountProfile.division ?? "",
+      unit: accountProfile.unit ?? "",
       assignment: accountProfile.assignment ?? "",
       designation: accountProfile.designation,
       accountRole: normalizeAccountRole(accountRole, user.email),
     } : null;
-    if (!user || !db || !reviewer || reviewer.accountRole !== "admin" || !permitNotificationAccounts) {
+    if (!user || !db || !isPermitAdmin(user.email, accountRole)) {
       setPendingPermitNotifications([]);
       return;
     }
@@ -2400,13 +2428,16 @@ export default function Home() {
         const ownerId = typeof data.ownerId === "string" ? data.ownerId : "";
         const ownerAccount = permitNotificationAccounts[ownerId];
         if (!ownerAccount) return [];
+        const ownerOffice = typeof data.ownerOffice === "string" ? data.ownerOffice : ownerAccount.office;
+        const ownerDivision = typeof data.ownerDivision === "string" ? data.ownerDivision : "";
+        const ownerUnit = typeof data.ownerUnit === "string" ? data.ownerUnit : "";
+        const ownerAssignment = typeof data.ownerAssignment === "string" ? data.ownerAssignment : ownerAccount.assignment;
         const owner: PermitNotificationAccount = {
           ...ownerAccount,
-          ...accountProfileSelection({
-            office: typeof data.ownerOffice === "string" ? data.ownerOffice : ownerAccount.office,
-            assignment: typeof data.ownerAssignment === "string" ? data.ownerAssignment : ownerAccount.assignment,
-            profileFieldsVersion: 3,
-          }),
+          ...accountProfileSelection(ownerDivision && ownerUnit
+            ? { office: ownerOffice, division: ownerDivision, unit: ownerUnit, profileFieldsVersion: 4 }
+            : { office: ownerOffice, assignment: ownerAssignment, profileFieldsVersion: 3 }),
+          designation: typeof data.ownerDesignation === "string" ? accountDesignation(data.ownerDesignation) : ownerAccount.designation,
         };
         if (!permitNotificationAccountMatches(owner, reviewer)) return [];
         const names = Array.isArray(data.names) ? data.names as string[] : typeof data.name === "string" ? [data.name] : [];
@@ -2430,13 +2461,10 @@ export default function Home() {
       }
       setPendingPermitNotifications(pending);
     }, () => setError("Could not load Permit Slip notifications. Refresh and try again."));
-  }, [user, accountProfile, permitNotificationAccounts, playNotificationTone]);
+  }, [user, accountProfile, playNotificationTone]);
   useEffect(() => {
     const accountRole = user && accountProfile?.userId === user.uid ? accountProfile.accountRole : undefined;
-    if (!user || !db || normalizeAccountRole(accountRole, user.email) !== "superadmin") {
-      setPendingAccountApprovals([]);
-      return;
-    }
+    if (!user || !db || !isPermitAdmin(user.email, accountRole)) { setPendingAccountApprovals([]); return; }
     let hasInitialSnapshot = false;
     let previousPendingUserIds = new Set<string>();
     return onSnapshot(query(collection(db, "users"), where("emailVerified", "==", true)), { includeMetadataChanges: true }, (snapshot) => {
@@ -2450,7 +2478,8 @@ export default function Home() {
           userId: item.id,
           name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : "New account",
           office: profile.office,
-          assignment: profile.assignment,
+          division: profile.division,
+          unit: profile.unit,
         } satisfies PendingAccountApprovalNotification];
       }).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
       if (hasInitialSnapshot && !snapshot.metadata.fromCache && pending.some((notification) => !previousPendingUserIds.has(notification.userId) && !pendingWriteUserIds.has(notification.userId))) {
@@ -2614,7 +2643,7 @@ export default function Home() {
   async function copySpecialOrder(order: SpecialOrder) {
     if (!db || !user) return;
     const ownerUnit = accountProfile && accountProfile.userId === user.uid ? accountProfile.assignment : null;
-    if (!ownerUnit) { setError("Your Assignment is still loading. Try copying again in a moment."); return; }
+    if (!ownerUnit) { setError("Your Unit / Program / Project is still loading. Try copying again in a moment."); return; }
     setCopyingSpecialOrderId(order.id);
     setError("");
     try {
@@ -2722,7 +2751,7 @@ export default function Home() {
   const isAdmin = isPermitAdmin(user.email, accountRole);
   const isSuperAdmin = accountRole === "superadmin";
   const canAccessCertificateApproval = isSuperAdmin || (accountRole === "admin" && activeAccountProfile?.designation === "Chief");
-  const accountUnit = activeAccountProfile?.assignment ?? null;
+  const accountUnit = activeAccountProfile?.unit || activeAccountProfile?.assignment || null;
   const canAccessAmiaDocumentTracking = accountUnit === "AMIA" || accountUnit === "Field Operations Division";
   const userPermitNotifications = permits.flatMap((permit) => permit.names.flatMap((name, personIndex) => {
     const decision = permit.personStatuses?.[permitDecisionKey(permit, personIndex)];
@@ -2763,9 +2792,9 @@ export default function Home() {
   <label>Gender<select value={profileGender} onChange={(event) => setProfileGender(event.target.value)} required disabled={profileLoading || profileSaving}><option value="" disabled>Select gender</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
   <label>Position{profilePositionIsCustom ? <div className="password-field"><input autoComplete="organization-title" maxLength={120} list="profile-position-options" value={profilePosition} onChange={(event) => { const nextPosition = event.target.value; setProfilePosition(nextPosition); if (accountPositionOptions.some((option) => option === nextPosition)) setProfilePositionIsCustom(false); }} placeholder="Enter your Position" disabled={profileLoading || profileSaving} /><datalist id="profile-position-options">{accountPositionOptions.map((option) => <option key={option} value={option} />)}</datalist><button type="button" className="password-toggle plain-action position-list-toggle" aria-label="Choose a Position from the list" disabled={profileLoading || profileSaving} onClick={() => { setProfilePosition(""); setProfilePositionIsCustom(false); }}>List</button></div> : <select autoComplete="organization-title" value={profilePosition} onChange={(event) => { const nextPosition = event.target.value; if (nextPosition === "__other__") { setProfilePosition(""); setProfilePositionIsCustom(true); } else setProfilePosition(nextPosition); }} disabled={profileLoading || profileSaving}><option value="">Select your Position</option>{accountPositionOptions.map((option) => <option key={option} value={option}>{option}</option>)}<option value="__other__">Others</option></select>}</label>
   <div className="profile-designation-field"><label htmlFor="profile-designation-toggle">Designation</label><DesignationPicker value={profileDesignation} onChange={setProfileDesignation} disabled={profileLoading || profileSaving} /></div>
-  <label>Office<select value={profileOffice} onChange={(event) => { const nextOffice = event.target.value; setProfileOffice(nextOffice); setProfileAssignment((current) => assignmentsForOffice(nextOffice).some((option) => option === current) ? current : ""); }} required disabled={profileLoading || profileSaving}><option value="" disabled>Select your Office</option>{accountOfficeOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-  <label>Assignment<select value={profileAssignment} onChange={(event) => setProfileAssignment(event.target.value)} required disabled={profileLoading || profileSaving || !profileOffice}><option value="" disabled>{profileOffice ? "Select your Assignment" : "Select an Office first"}</option>{assignmentsForOffice(profileOffice).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
-  <label>Address<input autoComplete="street-address" maxLength={200} value={profileAddress} onChange={(event) => setProfileAddress(event.target.value)} placeholder="Street, Building, City, Province" required disabled={profileLoading || profileSaving} /></label>
+<label>Office<select value={profileOffice} onChange={(event) => { const nextOffice = event.target.value; setProfileOffice(nextOffice); setProfileDivision(""); setProfileUnit(""); }} required disabled={profileLoading || profileSaving}><option value="" disabled>Select your Office</option>{accountOfficeOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+<label>Division<select value={profileDivision} onChange={(event) => { setProfileDivision(event.target.value); setProfileUnit(""); }} required disabled={profileLoading || profileSaving || !profileOffice}><option value="" disabled>{profileOffice ? "Select your Division" : "Select an Office first"}</option>{divisionsForOffice(profileOffice).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+<label>Unit / Program / Project<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value)} required disabled={profileLoading || profileSaving || !profileDivision}><option value="" disabled>{profileDivision ? "Select your Unit / Program / Project" : "Select a Division first"}</option>{unitsForOfficeDivision(profileOffice, profileDivision).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
   <div className="profile-contact-row">
   <label>Tax Identification No.<input type="text" inputMode="numeric" autoComplete="off" maxLength={11} value={profileTaxIdentificationNo} onChange={(event) => updateTaxIdentificationNo(event, setProfileTaxIdentificationNo)} onKeyDown={(event) => handleTaxIdentificationNoKeyDown(event, setProfileTaxIdentificationNo)} required disabled={profileLoading || profileSaving} /></label>
   <label>Email<input type="email" value={user.email ?? ""} readOnly /></label>

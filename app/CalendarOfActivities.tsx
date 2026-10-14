@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { collection, deleteField, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type DocumentReference } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { accountAssignment, accountDesignation, accountOffice } from "@/lib/account-profile";
+import { accountDesignation, accountProfileSelection } from "@/lib/account-profile";
 import { isApprovedAdminAccount, personnelMatchesAccountScope } from "@/lib/personnel";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { isSuperadminRole } from "@/lib/user-roles";
@@ -63,7 +63,7 @@ type CalendarOfActivities = {
   approvedBy?: CalendarOfActivitiesApprover;
   createdAt?: unknown;
 };
-type Profile = { name: string; position: string; office: string; unit: Unit };
+type Profile = { name: string; position: string; office: string; division: string; unit: Unit };
 type CalendarOfActivitiesAdminSignatory = { userId: string; name: string; designation: string; position: string; assignment: string };
 type CalendarOfActivitiesApprover = { name: string; designation: "Regional Executive Director" | "RTD for Operations" };
 type Account = { id: string; name: string; adminAccount: boolean; designation: string; position: string; assignment: string };
@@ -454,9 +454,9 @@ function CalendarOfActivitiesForm({ user, profile, accounts, adminAccounts, plan
 function CalendarOfActivitiesList({ plans, currentUserId, onNew, onEdit, onView, onDelete, onStatusChange, deletingId, updatingStatusId, adminRecordsOnly = false }: { plans: CalendarOfActivities[]; currentUserId: string; onNew: () => void; onEdit: (plan: CalendarOfActivities) => void; onView: (plan: CalendarOfActivities) => void; onDelete: (plan: CalendarOfActivities) => void; onStatusChange: (plan: CalendarOfActivities, status: CalendarOfActivitiesStatus) => void; deletingId: string | null; updatingStatusId: string | null; adminRecordsOnly?: boolean }) {
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(plans);
   return <section className="content-section calendar-of-activities-list-section">
-    <div className="section-heading"><div><p className="eyebrow">{adminRecordsOnly ? "Approved records" : "Assignment records"}</p><h2>{adminRecordsOnly ? "Calendar of Activities Records" : "Calendar of Activities"}</h2><p className="muted">{adminRecordsOnly ? `${plans.length} approved calendar ${plans.length === 1 ? "record" : "records"}.` : `${plans.length} calendar ${plans.length === 1 ? "record" : "records"} available to your Assignment.`}</p></div>{!adminRecordsOnly && <button type="button" className="primary-button" onClick={onNew}>Add</button>}</div>
-    {plans.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>{adminRecordsOnly ? "No approved records yet" : "No calendars of activities yet"}</h3>{!adminRecordsOnly && <><p>Create a monthly calendar and notify responsible colleagues in your Assignment.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Calendar of Activities</button></>}</div> : <div className="permit-table calendar-of-activities-list">
-      <div className="table-head calendar-of-activities-list-head"><span>Month and Year</span><span>Assignment</span><span>Activities</span><span>Status</span></div>
+    <div className="section-heading"><div><p className="eyebrow">{adminRecordsOnly ? "Approved records" : "Unit / Program / Project records"}</p><h2>{adminRecordsOnly ? "Calendar of Activities Records" : "Calendar of Activities"}</h2><p className="muted">{adminRecordsOnly ? `${plans.length} approved calendar ${plans.length === 1 ? "record" : "records"}.` : `${plans.length} calendar ${plans.length === 1 ? "record" : "records"} available to your Unit / Program / Project.`}</p></div>{!adminRecordsOnly && <button type="button" className="primary-button" onClick={onNew}>Add</button>}</div>
+    {plans.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>{adminRecordsOnly ? "No approved records yet" : "No calendars of activities yet"}</h3>{!adminRecordsOnly && <><p>Create a monthly calendar and notify responsible colleagues in your Unit / Program / Project.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Add a Calendar of Activities</button></>}</div> : <div className="permit-table calendar-of-activities-list">
+      <div className="table-head calendar-of-activities-list-head"><span>Month and Year</span><span>Unit / Program / Project</span><span>Activities</span><span>Status</span></div>
       {visibleRecords.map((plan) => {
         const status = calendarOfActivitiesStatus(plan);
         return <div className="table-row calendar-of-activities-list-row" key={plan.id}>
@@ -503,12 +503,13 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
           return;
         }
         const profileSnapshot = await getDoc(doc(firestore, "users", user.uid));
-        if (!profileSnapshot.exists()) throw new Error("Complete your name, position, and Assignment in Profile before creating a calendar.");
+        if (!profileSnapshot.exists()) throw new Error("Complete your name, position, Office, Division, and Unit / Program / Project in Profile before creating a calendar.");
         const profileData = profileSnapshot.data();
-        const assignment = accountAssignment(profileData);
-        const office = accountOffice(profileData) ?? "";
-        if (!assignment || !office) throw new Error("Set your Office and Assignment in Profile to view its Calendar of Activities.");
-        const loadedProfile: Profile = { name: typeof profileData.name === "string" ? profileData.name : "", position: typeof profileData.position === "string" ? profileData.position : "", office, unit: assignment };
+        const selection = accountProfileSelection(profileData);
+        const { office, division } = selection;
+        const unit = selection.unit || selection.division;
+        if (!office || !division || !unit) throw new Error("Set your Office, Division, and Unit / Program / Project in Profile to view its Calendar of Activities.");
+        const loadedProfile: Profile = { name: typeof profileData.name === "string" ? profileData.name : "", position: typeof profileData.position === "string" ? profileData.position : "", office, division, unit };
         if (!cancelled) setProfile(loadedProfile);
         const [allAccountsSnapshot, unitPlansSnapshot, ownedPlansSnapshot] = await Promise.all([
           getDocs(collection(firestore, "users")),
@@ -528,19 +529,24 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
         }));
         const admins = allAccountsSnapshot.docs.filter((item) => isApprovedAdminAccount(item.data().accountRole, item.data().accountStatus)).map((item) => {
           const data = item.data();
-          return { id: item.id, name: String(data.name ?? "").trim(), adminAccount: true, designation: accountDesignation(data.designation), position: typeof data.position === "string" ? data.position.trim() : "", assignment: accountAssignment(data) };
+          const accountProfile = accountProfileSelection(data);
+          return { id: item.id, name: String(data.name ?? "").trim(), adminAccount: true, designation: accountDesignation(data.designation), position: typeof data.position === "string" ? data.position.trim() : "", assignment: accountProfile.unit || accountProfile.division };
         }).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
         const colleagues = allAccountsSnapshot.docs.filter((item) => {
           if (item.id === user.uid || isSuperadminRole(item.data().accountRole)) return false;
           const person = item.data();
-          return personnelMatchesAccountScope(accountOffice(person) ?? "", accountAssignment(person), loadedProfile.office, loadedProfile.unit, {
+          const personProfile = accountProfileSelection(person);
+          return personnelMatchesAccountScope(personProfile.office, personProfile.unit || personProfile.division, loadedProfile.office, loadedProfile.unit, {
             includeAdminAccounts: true,
             accountRole: person.accountRole,
             accountStatus: person.accountStatus,
+            division: loadedProfile.division,
+            candidateDivision: personProfile.division,
           });
         }).map((item) => {
           const data = item.data();
-          return { id: item.id, name: String(data.name ?? "").trim(), adminAccount: isApprovedAdminAccount(data.accountRole, data.accountStatus), designation: accountDesignation(data.designation), position: typeof data.position === "string" ? data.position.trim() : "", assignment: accountAssignment(data) };
+          const accountProfile = accountProfileSelection(data);
+          return { id: item.id, name: String(data.name ?? "").trim(), adminAccount: isApprovedAdminAccount(data.accountRole, data.accountStatus), designation: accountDesignation(data.designation), position: typeof data.position === "string" ? data.position.trim() : "", assignment: accountProfile.unit || accountProfile.division };
         }).filter((account) => account.name).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
         const rowsById = new Map<string, CalendarOfActivities>([...unitPlansSnapshot.docs, ...ownedPlansSnapshot.docs].map((item): [string, CalendarOfActivities] => [item.id, { id: item.id, ...item.data() } as CalendarOfActivities]));
         receivedPlans.forEach((item) => {
@@ -628,7 +634,7 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
 
   return <>
     {error && <div className="error-message calendar-of-activities-error" role="alert">{error}</div>}
-    {loading ? <section className="content-section"><p className="muted">Loading Calendar of Activities records…</p></section> : mode === "prepared" && !profile ? <section className="content-section calendar-of-activities-profile-notice"><h2>Profile details needed</h2><p>Set your Assignment in Profile to view your office’s Calendar of Activities.</p></section> : mode === "prepared" && (view === "new" || (view === "edit" && editingPlan)) ? <CalendarOfActivitiesForm key={view === "edit" ? editingPlan!.id : "new"} user={user} profile={profile!} accounts={accounts} adminAccounts={adminAccounts} plan={view === "edit" ? editingPlan! : undefined} onSaved={(plan) => { if (view === "edit") setPlans((current) => current.map((item) => item.id === plan.id ? plan : item)); else setPlans((current) => [plan, ...current]); setEditingPlan(null); setView("list"); }} onCancel={() => { setEditingPlan(null); setView("list"); }} onError={setError} /> : <CalendarOfActivitiesList plans={plans} currentUserId={user.uid} onNew={() => { if (!profile?.name.trim() || !profile.position.trim()) { setError("Complete your name and position in Profile before preparing a new Calendar of Activities."); return; } setError(""); setEditingPlan(null); setView("new"); }} onEdit={(plan) => { setError(""); setEditingPlan(plan); setView("edit"); }} onView={setPreview} onDelete={setPendingDelete} onStatusChange={(plan, status) => void updateCalendarOfActivitiesStatus(plan, status)} deletingId={deletingId} updatingStatusId={updatingStatusId} adminRecordsOnly={mode === "approved-records"} />}
+    {loading ? <section className="content-section"><p className="muted">Loading Calendar of Activities records…</p></section> : mode === "prepared" && !profile ? <section className="content-section calendar-of-activities-profile-notice"><h2>Profile details needed</h2><p>Set your Office, Division, and Unit / Program / Project in Profile to view your office’s Calendar of Activities.</p></section> : mode === "prepared" && (view === "new" || (view === "edit" && editingPlan)) ? <CalendarOfActivitiesForm key={view === "edit" ? editingPlan!.id : "new"} user={user} profile={profile!} accounts={accounts} adminAccounts={adminAccounts} plan={view === "edit" ? editingPlan! : undefined} onSaved={(plan) => { if (view === "edit") setPlans((current) => current.map((item) => item.id === plan.id ? plan : item)); else setPlans((current) => [plan, ...current]); setEditingPlan(null); setView("list"); }} onCancel={() => { setEditingPlan(null); setView("list"); }} onError={setError} /> : <CalendarOfActivitiesList plans={plans} currentUserId={user.uid} onNew={() => { if (!profile?.name.trim() || !profile.position.trim()) { setError("Complete your name and position in Profile before preparing a new Calendar of Activities."); return; } setError(""); setEditingPlan(null); setView("new"); }} onEdit={(plan) => { setError(""); setEditingPlan(plan); setView("edit"); }} onView={setPreview} onDelete={setPendingDelete} onStatusChange={(plan, status) => void updateCalendarOfActivitiesStatus(plan, status)} deletingId={deletingId} updatingStatusId={updatingStatusId} adminRecordsOnly={mode === "approved-records"} />}
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Confirm Calendar of Activities Deletion?" description="Are you sure you want to delete this Calendar of Activities? This action cannot be undone, and its activity notifications will also be removed." busy={Boolean(pendingDelete && deletingId === pendingDelete.id)} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void deleteCalendarOfActivities(pendingDelete); }} />
     {preview && <CalendarOfActivitiesPreview plan={preview} onClose={() => setPreview(null)} />}
   </>;

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type QueryConstraint } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { accountDivisionForApproval, accountOffice, hasAccountDesignation } from "@/lib/account-profile";
+import { accountDivisionForApproval, accountOffice, hasAccountDesignation, unitsForOfficeDivision } from "@/lib/account-profile";
 import type { AccountRole } from "@/lib/user-roles";
 import { makeDocumentNotification } from "@/lib/document-notifications";
 import { CertificateStatusBadge, certificateWorkflowStatus, type CertificateWorkflowFields, type CertificateWorkflowStatus } from "./CertificateWorkflow";
@@ -48,8 +48,9 @@ function officeDivision(office: string) {
   return office;
 }
 
-function unitsForOffice(office: string, assignment: string) {
-  return [assignment || office];
+function unitsForOffice(office: string, division: string) {
+  const certificateUnits = new Set(["AMIA", "AGRISTAT", "DRRM"]);
+  return unitsForOfficeDivision(office, division).filter((unit) => certificateUnits.has(unit));
 }
 
 function displaySchedule(record: CertificateQueueRecord) {
@@ -75,10 +76,12 @@ function displaySchedule(record: CertificateQueueRecord) {
   return schedule;
 }
 
-export default function CertificateApproval({ user, role, office, assignment, designation, accountName }: {
+export default function CertificateApproval({ user, role, office, division, unit, assignment, designation, accountName }: {
   user: User;
   role: AccountRole;
   office?: string | null;
+  division?: string | null;
+  unit?: string | null;
   assignment?: string | null;
   designation?: string;
   accountName?: string;
@@ -92,19 +95,19 @@ export default function CertificateApproval({ user, role, office, assignment, de
   const [deleting, setDeleting] = useState(false);
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
   const isChiefAdmin = role === "admin" && hasAccountDesignation(designation, "Chief");
-  const reviewDivision = accountDivisionForApproval(office ?? "", assignment ?? "");
+  const reviewDivision = accountDivisionForApproval(office ?? "", unit ?? assignment ?? "", division ?? "");
 
   const accessMessage = useMemo(() => {
-    if (role === "admin" && (!office || !assignment || !reviewDivision)) return "Set your Office and Assignment in Profile to view certificates assigned to your division.";
+    if (role === "admin" && (!office || !reviewDivision)) return "Set your Office and Division in Profile to view certificates assigned to your division.";
     return "";
-  }, [assignment, office, reviewDivision, role]);
+  }, [office, reviewDivision, role]);
 
   useEffect(() => {
     let active = true;
     setRecords([]);
     setError("");
     setMessage("");
-    if (!db || (role === "admin" && (!isChiefAdmin || !office || !assignment || !reviewDivision))) {
+    if (!db || (role === "admin" && (!isChiefAdmin || !office || !reviewDivision))) {
       setLoading(false);
       return () => { active = false; };
     }
@@ -120,7 +123,8 @@ export default function CertificateApproval({ user, role, office, assignment, de
             if (name === "certificatesOfAppearance") {
               constraints.push(where("division", "==", officeDivision(reviewDivision)));
             } else {
-              const units = unitsForOffice(office!, assignment ?? "");
+              const units = unitsForOffice(office!, reviewDivision);
+              if (!units.length) return [];
               constraints.push(units.length === 1 ? where("unit", "==", units[0]) : where("unit", "in", units));
             }
           }
@@ -166,7 +170,7 @@ export default function CertificateApproval({ user, role, office, assignment, de
     }
     void loadRecords();
     return () => { active = false; };
-  }, [user.uid, role, office, assignment, reviewDivision, isChiefAdmin]);
+  }, [user.uid, role, office, division, unit, assignment, reviewDivision, isChiefAdmin]);
 
   async function decide(record: CertificateQueueRecord, status: Exclude<CertificateWorkflowStatus, "Pending">) {
     if (!db || certificateWorkflowStatus(record.status) === "Approved") return;
@@ -176,7 +180,14 @@ export default function CertificateApproval({ user, role, office, assignment, de
     setMessage("");
     const signerOffice = office ?? "";
     const signerDesignation = designation ?? "";
-    const useChiefSignature = isChiefAdmin && signerDesignation.trim() === "Chief" && signerOffice === "Field Operations Division" && status === "Approved";
+    const useChiefSignature = record.collectionName === "certificatesOfAppearance"
+      && record.recordType !== "blank"
+      && isChiefAdmin
+      && signerOffice === "Division"
+      && division === "Field Operations Division"
+      && unit === "Field Operations Division"
+      && signerDesignation.trim() === "Chief"
+      && status === "Approved";
     const decision = {
       status,
       decidedAt: serverTimestamp(),

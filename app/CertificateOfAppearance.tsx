@@ -5,12 +5,12 @@ import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc,
 import type { User } from "firebase/auth";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { db } from "@/lib/firebase";
-import { accountDivisionForApproval, accountOffice, accountAssignment, hasAccountDesignation } from "@/lib/account-profile";
+import { accountOffice, accountProfileSelection, hasAccountDesignation } from "@/lib/account-profile";
 import { makeDocumentNotification } from "@/lib/document-notifications";
 import type { AccountRole } from "@/lib/user-roles";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
-import { CertificateApprovalSignature, CertificateStatusBadge, certificateWorkflowStatus, type CertificateWorkflowFields } from "./CertificateWorkflow";
+import { CertificateApprovalSignature, CertificateStatusBadge, certificateWorkflowStatus, hasFieldOperationsChiefApprovalSignature, type CertificateWorkflowFields } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./certificate-of-appearance.css";
 import "./certificate-workflow.css";
@@ -99,10 +99,9 @@ async function findAppearanceApprovalAdmins(division: string) {
   const admins = new Set<string>();
   for (const profile of snapshot.docs) {
     const data = profile.data();
-    const office = accountOffice(data)?.trim();
-    const assignment = accountAssignment(data)?.trim();
-    const isAssignedDivision = office
-      && accountDivisionForApproval(office, assignment ?? "").toLocaleLowerCase("en") === targetDivision;
+    const profileSelection = accountProfileSelection(data);
+    const isAssignedDivision = profileSelection.office
+      && profileSelection.division.toLocaleLowerCase("en") === targetDivision;
     if (data.accountRole === "admin" && data.accountStatus === "Approved" && hasAccountDesignation(data.designation, "Chief") && isAssignedDivision) {
       admins.add(profile.id);
     }
@@ -490,10 +489,7 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
       page.drawImage(signatoryImage, { x: 260, y, width: 271.5, height: 32 });
     }
 
-    const isFieldOperationsChiefApproval = certificateWorkflowStatus(record.status) === "Approved"
-      && record.signatureAsset === fieldOperationsChiefSignature
-      && record.signerDesignation?.trim() === "Chief"
-      && record.signerOffice === "Field Operations Division";
+    const isFieldOperationsChiefApproval = hasFieldOperationsChiefApprovalSignature(record);
     if (isFieldOperationsChiefApproval) {
       const signatureResponse = await fetch(publicAsset(`/${fieldOperationsChiefSignature}`));
       if (!signatureResponse.ok) throw new Error("The Field Operations Division Chief signature could not be loaded.");
@@ -717,10 +713,7 @@ function CertificateNamesForm({ record, onCancel, onSubmit, saving, error }: { r
 }
 
 function CertificatePaper({ record, person }: { record: CertificateRecord; person: CertificatePerson }) {
-  const showApprovalSignature = certificateWorkflowStatus(record.status) === "Approved"
-    && record.signatureAsset === fieldOperationsChiefSignature
-    && record.signerDesignation?.trim() === "Chief"
-    && record.signerOffice === "Field Operations Division";
+  const showApprovalSignature = hasFieldOperationsChiefApprovalSignature(record);
   return <article className="coa-certificate-card">
     <img className="coa-letterhead" src={blankCertificateAsset} alt="" />
     <h1 className="coa-title">CERTIFICATE OF APPEARANCE</h1>

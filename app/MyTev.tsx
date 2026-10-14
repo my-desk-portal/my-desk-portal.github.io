@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { accountOffice, accountAssignment, accountTevDivision } from "@/lib/account-profile";
+import { accountProfileSelection, accountTevDivision } from "@/lib/account-profile";
 import { isApprovedAdminAccount, personnelMatchesAccountScope } from "@/lib/personnel";
 import { isSuperadminRole } from "@/lib/user-roles";
 import { loadPdfTools } from "@/lib/pdf-tools";
@@ -434,7 +434,7 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
         <label className="mytev-division-field">Division<select value={divisionName} disabled={Boolean(initialRecord) || profileDivision !== null} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division}>{division}</option>)}</select></label>
       </div></section>
       {!initialRecord && <section className="mytev-form-group mytev-personnel-group">
-        <div className="mytev-form-group-heading"><div><h3>Personnel for this TEV</h3><p>Add personnel from your Office and Assignment. Each person receives the same travel details with their own profile information on the TEV.</p></div><button type="button" className="ghost-button" disabled={selectedPersonnelIds.length >= maxTevPersonnel} onClick={addPersonnelSlot}>+ Add another personnel</button></div>
+        <div className="mytev-form-group-heading"><div><h3>Personnel for this TEV</h3><p>Add personnel from your Office, Division, and Unit / Program / Project. Each person receives the same travel details with their own profile information on the TEV.</p></div><button type="button" className="ghost-button" disabled={selectedPersonnelIds.length >= maxTevPersonnel} onClick={addPersonnelSlot}>+ Add another personnel</button></div>
         {selectedPersonnelIds.length > 0 && <div className="mytev-personnel-list">{selectedPersonnelIds.map((selectedId, index) => <div className="mytev-personnel-entry" key={`tev-personnel-${index}`}>
           <label>Add a Personnel for this TEV<select aria-label={`Personnel for this TEV ${index + 1}`} value={selectedId} onChange={(event) => updateSelectedPersonnel(index, event.target.value)} disabled={saving}>
             <option value="">Select a personnel</option>
@@ -607,9 +607,10 @@ export default function MyTevModule({ user }: { user: User }) {
     ]).then(([profileSnapshot, recordsSnapshot, accountsSnapshot]) => {
       if (!active) return;
       const data = profileSnapshot.exists() ? profileSnapshot.data() : {};
-      const accountUnit = accountAssignment(data);
-      const currentOffice = accountOffice(data) ?? "";
-      setProfileDivision(accountTevDivision(currentOffice, accountUnit));
+      const currentProfile = accountProfileSelection(data);
+      const accountUnit = currentProfile.unit || currentProfile.division;
+      const currentOffice = currentProfile.office;
+      setProfileDivision(accountTevDivision(currentOffice, accountUnit, currentProfile.division));
       setProfile({
         name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : user.displayName ?? "",
         address: typeof data.address === "string" ? data.address.trim() : "",
@@ -621,19 +622,22 @@ export default function MyTevModule({ user }: { user: User }) {
         const accountData = account.data();
         if (account.id === user.uid || isSuperadminRole(accountData.accountRole)) return [];
         const adminAccount = isApprovedAdminAccount(accountData.accountRole, accountData.accountStatus);
+        const personnelProfile = accountProfileSelection(accountData);
         const accountProfile: TevProfile = {
           name: typeof accountData.name === "string" ? accountData.name.trim() : "",
           address: typeof accountData.address === "string" ? accountData.address.trim() : "",
           taxIdentificationNo: typeof accountData.taxIdentificationNo === "string" ? formatTaxIdentificationNo(accountData.taxIdentificationNo) : "",
           position: typeof accountData.position === "string" ? accountData.position.trim() : "",
-          unit: accountAssignment(accountData),
+          unit: personnelProfile.unit || personnelProfile.division,
         };
-        const office = accountOffice(accountData) ?? "";
+        const office = personnelProfile.office;
         if (!accountProfile.name || (!accountProfile.unit && !adminAccount)) return [];
         if (!personnelMatchesAccountScope(office, accountProfile.unit, currentOffice, accountUnit, {
           includeAdminAccounts: true,
           accountRole: accountData.accountRole,
           accountStatus: accountData.accountStatus,
+          division: currentProfile.division,
+          candidateDivision: personnelProfile.division,
         })) return [];
         const profileComplete = Boolean(office && accountProfile.address && accountProfile.taxIdentificationNo && accountProfile.position);
         return [{ userId: account.id, profile: accountProfile, office, profileComplete, adminAccount }];
