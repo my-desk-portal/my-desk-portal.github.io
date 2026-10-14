@@ -212,9 +212,12 @@ service cloud.firestore {
     function canReviewUnitCertificate(data) {
       let office = signedInOffice();
       let assignment = signedInUnit();
+      let division = profileDivision(get(currentUserPath()).data);
       return isSuperAdmin() || (isChiefCertificateAdmin()
         && (data.get("unit", "") == office
-          || data.get("unit", "") == assignment));
+          || data.get("unit", "") == assignment
+          || (division == "Field Operations Division"
+            && data.get("unit", "") in ["AMIA", "AGRISTAT", "DRRM"])));
     }
     function appearanceDivisionForOffice(office) {
       return office in ["AMIA", "FOD-AMIA"] ? "Agribusiness and Marketing Assistance Division"
@@ -249,6 +252,14 @@ service cloud.firestore {
       return isSuperAdmin() || (isChiefCertificateAdmin()
         && data.get("division", "") == appearanceDivisionForProfile(get(currentUserPath()).data));
     }
+    function isRegularFieldOperationsCertificateOwner(ownerId) {
+      let ownerPath = /databases/$(database)/documents/users/$(ownerId);
+      return ownerId is string
+        && ownerId.size() > 0
+        && exists(ownerPath)
+        && get(ownerPath).data.get("accountRole", "") in ["regular", "user"]
+        && profileDivision(get(ownerPath).data) == "Field Operations Division";
+    }
     function validCertificateDecisionUpdate(allowAppearanceSignature) {
       let profile = get(currentUserPath()).data;
       let oldStatus = resource.data.get("status", "Pending");
@@ -274,6 +285,7 @@ service cloud.firestore {
           && profile.get("division", "") == "Field Operations Division"
           && profile.get("unit", "") == "Field Operations Division"
           && profile.get("accountRole", "") == "admin"
+          && isRegularFieldOperationsCertificateOwner(resource.data.get("ownerId", ""))
           && request.resource.data.signerOffice == "Division"
           && request.resource.data.signerDesignation == "Chief"));
     }

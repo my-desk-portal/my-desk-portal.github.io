@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type QueryConstraint } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
-import { accountDivisionForApproval, accountOffice, hasAccountDesignation, unitsForOfficeDivision } from "@/lib/account-profile";
+import { accountDivision, accountDivisionForApproval, accountOffice, hasAccountDesignation, unitsForOfficeDivision } from "@/lib/account-profile";
 import type { AccountRole } from "@/lib/user-roles";
 import { makeDocumentNotification } from "@/lib/document-notifications";
 import { CertificateStatusBadge, certificateWorkflowStatus, type CertificateWorkflowFields, type CertificateWorkflowStatus } from "./CertificateWorkflow";
@@ -180,8 +180,21 @@ export default function CertificateApproval({ user, role, office, division, unit
     setMessage("");
     const signerOffice = office ?? "";
     const signerDesignation = designation ?? "";
+    let ownerProfile: Record<string, unknown> | null = null;
+    if (record.ownerId && record.ownerId !== user.uid) {
+      try {
+        const ownerSnapshot = await getDoc(doc(db, "users", record.ownerId));
+        if (ownerSnapshot.exists()) ownerProfile = ownerSnapshot.data();
+      } catch {
+        // Approval can continue without the owner's profile, but the special signature requires it.
+      }
+    }
+    const ownerRole = ownerProfile?.accountRole;
+    const isRegularFieldOperationsOwner = (ownerRole === "regular" || ownerRole === "user")
+      && accountDivision(ownerProfile ?? {}) === "Field Operations Division";
     const useChiefSignature = record.collectionName === "certificatesOfAppearance"
       && record.recordType !== "blank"
+      && isRegularFieldOperationsOwner
       && isChiefAdmin
       && signerOffice === "Division"
       && division === "Field Operations Division"

@@ -48,7 +48,7 @@ export function hasFieldOperationsChiefApprovalSignature(record: CertificateWork
   return certificateWorkflowStatus(record.status) === "Approved"
     && record.signatureAsset === fieldOperationsChiefSignature
     && record.signerDesignation?.trim() === "Chief"
-    && (record.signerOffice === "Division" || record.signerOffice === "Field Operations Division");
+    && record.signerOffice === "Division";
 }
 
 export function CertificateApprovalSignature({ record }: { record: CertificateWorkflowFields }) {
