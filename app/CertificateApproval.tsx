@@ -225,7 +225,6 @@ export default function CertificateApproval({ user, role, office, division, unit
     const isRegularFieldOperationsOwner = (ownerRole === "regular" || ownerRole === "user")
       && accountDivision(ownerProfile ?? {}) === "Field Operations Division";
     const useChiefSignature = record.collectionName === "certificatesOfAppearance"
-      && record.recordType !== "blank"
       && isRegularFieldOperationsOwner
       && isChiefAdmin
       && signerProfile.profileFieldsVersion === 4
@@ -247,7 +246,8 @@ export default function CertificateApproval({ user, role, office, division, unit
     try {
       const batch = writeBatch(db);
       batch.update(doc(db, record.collectionName, record.id), decision);
-      if (record.ownerId && record.ownerId !== user.uid) {
+      const isBlankAppearanceCertificate = record.collectionName === "certificatesOfAppearance" && record.recordType === "blank";
+      if (record.ownerId && record.ownerId !== user.uid && !isBlankAppearanceCertificate) {
         try {
           const ownerProfile = await getDoc(doc(db, "users", record.ownerId));
           const ownerRole = ownerProfile.exists() ? ownerProfile.data().accountRole : null;

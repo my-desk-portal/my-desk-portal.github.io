@@ -277,7 +277,7 @@ service cloud.firestore {
         && request.resource.data.signerDesignation == profile.get("designation", "")
         && request.resource.data.signerOffice == profileOffice(profile)
         && (signatureAsset == "" || (allowAppearanceSignature
-          && resource.data.get("recordType", "appearance") == "appearance"
+          && resource.data.get("recordType", "appearance") in ["appearance", "blank"]
           && newStatus == "Approved"
           && signatureAsset == "field_operations_division_chief_signature.png"
           && profile.get("profileFieldsVersion", 0) == 4
