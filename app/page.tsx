@@ -2414,7 +2414,7 @@ export default function Home() {
       designation: accountProfile.designation,
       accountRole: normalizeAccountRole(accountRole, user.email),
     } : null;
-    if (!user || !db || !isPermitAdmin(user.email, accountRole)) {
+    if (!user || !db || !reviewer || !isPermitAdmin(user.email, accountRole) || !permitNotificationAccounts) {
       setPendingPermitNotifications([]);
       return;
     }
@@ -2461,7 +2461,7 @@ export default function Home() {
       }
       setPendingPermitNotifications(pending);
     }, () => setError("Could not load Permit Slip notifications. Refresh and try again."));
-  }, [user, accountProfile, playNotificationTone]);
+  }, [user, accountProfile, permitNotificationAccounts, playNotificationTone]);
   useEffect(() => {
     const accountRole = user && accountProfile?.userId === user.uid ? accountProfile.accountRole : undefined;
     if (!user || !db || !isPermitAdmin(user.email, accountRole)) { setPendingAccountApprovals([]); return; }
