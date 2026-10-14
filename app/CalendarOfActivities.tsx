@@ -422,7 +422,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, adminAccounts, plan
       <div className="calendar-of-activities-rows wide-field"><div className="calendar-of-activities-rows-heading"><strong>Activities</strong><span>Set one responsible person or add several for each row.</span></div>
         {activities.map((activity, index) => <fieldset className="calendar-of-activities-row" key={index}>
           <legend>Activity {index + 1}</legend>
-          <div className="calendar-of-activities-dates"><label>Date From<input type="date" min={dateBounds?.first} max={dateBounds?.last} value={activity.dateFrom} disabled={!dateBounds} onChange={(event) => {
+          <label>Date From<input type="date" min={dateBounds?.first} max={dateBounds?.last} value={activity.dateFrom} disabled={!dateBounds} onChange={(event) => {
             const value = event.target.value;
             if (dateBounds && value && (value < dateBounds.first || value > dateBounds.last)) return;
             updateActivity(index, { dateFrom: value, dateTo: activity.dateTo && value > activity.dateTo ? value : activity.dateTo });
@@ -430,7 +430,7 @@ function CalendarOfActivitiesForm({ user, profile, accounts, adminAccounts, plan
             const value = event.target.value;
             if (dateBounds && value && (value < dateBounds.first || value > dateBounds.last)) return;
             updateActivity(index, { dateTo: value });
-          }} required /></label></div>
+          }} required /></label>
           <label className="calendar-of-activities-entry">Activity<textarea rows={1} maxLength={400} value={activity.activity} onChange={(event) => updateActivity(index, { activity: event.target.value })} required /></label>
           <label className="calendar-of-activities-entry calendar-of-activities-location">Location<input maxLength={180} value={activity.location} onChange={(event) => updateActivity(index, { location: event.target.value })} required /></label>
           <div className="calendar-of-activities-responsible-field"><span className="calendar-of-activities-responsible-label">Responsible Personnel</span><div className="calendar-of-activities-responsible-add"><select aria-label={`Choose responsible personnel for activity ${index + 1}`} value={activity.nextResponsibleId} onChange={(event) => updateActivity(index, { nextResponsibleId: event.target.value })} disabled={!accounts.length}><option value="">{accounts.length ? "Select a personnel" : "No other accounts listed under this office"}</option>{accounts.filter((account) => !activity.responsiblePeople.some((person) => person.userId === account.id)).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select><button type="button" className="ghost-button" onClick={() => addResponsiblePerson(index)} disabled={!activity.nextResponsibleId}>Add personnel</button></div>
@@ -442,9 +442,9 @@ function CalendarOfActivitiesForm({ user, profile, accounts, adminAccounts, plan
         {activities.length >= maximumActivities && <small className="calendar-of-activities-limit-note">A calendar can contain up to {maximumActivities} activities.</small>}
       </div>
       <div className="calendar-of-activities-signatories wide-field">
-        <label>Checked By<select value={checkedById} onChange={(event) => setCheckedById(event.target.value)} required disabled={saving || !adminAccounts.length}><option value="">Select an Admin</option>{adminAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
-        <label>Noted By<select value={notedById} onChange={(event) => setNotedById(event.target.value)} required disabled={saving || !adminAccounts.length}><option value="">Select an Admin</option>{adminAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
-        <label>Approved By<select value={approvedByDesignation} onChange={(event) => setApprovedByDesignation(event.target.value as CalendarOfActivitiesApprover["designation"] | "")} required disabled={saving}><option value="">Select an approver</option>{calendarOfActivitiesApprovers.map((signatory) => <option key={signatory.designation} value={signatory.designation}>{signatory.designation}</option>)}</select></label>
+        <label>Checked By<select value={checkedById} onChange={(event) => setCheckedById(event.target.value)} required disabled={saving || !adminAccounts.length}><option value="">Select a Designated Personnel</option>{adminAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+        <label>Noted By<select value={notedById} onChange={(event) => setNotedById(event.target.value)} required disabled={saving || !adminAccounts.length}><option value="">Select a Designated Personnel</option>{adminAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+        <label>Approved By<select value={approvedByDesignation} onChange={(event) => setApprovedByDesignation(event.target.value as CalendarOfActivitiesApprover["designation"] | "")} required disabled={saving}><option value="">Select a Designated Personnel</option>{calendarOfActivitiesApprovers.map((signatory) => <option key={signatory.designation} value={signatory.designation}>{signatory.designation}</option>)}</select></label>
       </div>
       <div className="form-actions"><button className="primary-button" disabled={saving}>{saving ? "Saving…" : plan ? "Save changes" : "Save"}</button></div>
     </form>

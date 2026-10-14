@@ -88,11 +88,6 @@ function defaultImmediateSupervisor(office: string, assignment: string, accountR
   return "division:Field Operations Division";
 }
 
-function currentMonth() {
-  const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit" }).formatToParts(new Date());
-  return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}`;
-}
-
 function manilaDateKey(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
   return `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}-${parts.find((part) => part.type === "day")?.value}`;
@@ -247,8 +242,8 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   const [reports, setReports] = useState<Report[]>([]);
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(reports);
   const [showForm, setShowForm] = useState(false);
-  const [month, setMonth] = useState(currentMonth);
-  const [cycle, setCycle] = useState<1 | 2>(1);
+  const [month, setMonth] = useState("");
+  const [cycle, setCycle] = useState<1 | 2 | "">("");
   const [activities, setActivities] = useState([""]);
   const [draggedActivityIndex, setDraggedActivityIndex] = useState<number | null>(null);
   const [dropActivityIndex, setDropActivityIndex] = useState<number | null>(null);
@@ -260,8 +255,8 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   const [signatorySelection, setSignatorySelection] = useState("");
   const [today, setToday] = useState(manilaDateKey);
   const lastDay = lastDayOfMonth(month);
-  const startDay = cycle === 1 ? 1 : 16;
-  const endDay = cycle === 1 ? 15 : lastDay;
+  const startDay = cycle === 1 ? 1 : cycle === 2 ? 16 : 0;
+  const endDay = cycle === 1 ? 15 : cycle === 2 ? lastDay : 0;
   const preparedProfile = profile;
   const selectedSignatory = arSignatoryOptions.find((option) => option.value === signatorySelection);
   const previewReport = selectedReport ? applyCurrentProfile(selectedReport, profile) : null;
@@ -282,8 +277,8 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   function startNewReport() {
     setEditingReport(null);
     setSignatorySelection(profile?.immediateSupervisor ?? "");
-    setMonth(currentMonth());
-    setCycle(1);
+    setMonth("");
+    setCycle("");
     setActivities([""]);
     setMessage(null);
     setShowForm(true);
@@ -308,8 +303,8 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   function cancelEdit() {
     setEditingReport(null);
     setSignatorySelection("");
-    setMonth(currentMonth());
-    setCycle(1);
+    setMonth("");
+    setCycle("");
     setActivities([""]);
     setMessage(null);
     setShowForm(false);
@@ -398,6 +393,10 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       setMessage({ kind: "error", text: "Database is not configured." });
       return;
     }
+    if (!month || cycle === "") {
+      setMessage({ kind: "error", text: "Select a month and half-month cycle." });
+      return;
+    }
     if (!editingReport && reports.some((report) => report.month === month && report.cycle === cycle)) {
       setMessage({ kind: "error", text: `A report for ${reportPeriod({ month, startDay, endDay })} is already saved. Edit the existing report instead.` });
       return;
@@ -464,7 +463,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
         <form className="ar-form" onSubmit={saveReport}>
           <div className="ar-form-fields">
             <label>Month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} required disabled={!!editingReport} /></label>
-            <label>Half-month Cycle<select value={cycle} onChange={(event) => setCycle(Number(event.target.value) as 1 | 2)} disabled={!!editingReport}><option value={1}>1–15</option><option value={2}>16–{lastDay}</option></select></label>
+            <label>Half-month Cycle<select value={cycle} onChange={(event) => setCycle(event.target.value ? Number(event.target.value) as 1 | 2 : "")} disabled={!!editingReport} required><option value="" disabled>Select a half-month cycle</option><option value={1}>1–15</option><option value={2}>16–{lastDay}</option></select></label>
             <label>Immediate Supervisor<select value={signatorySelection} disabled><option value="" disabled>Selecting from Profile…</option><optgroup label="Divisions">{arSignatoryOptions.filter((option) => option.value.startsWith("division:")).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup><optgroup label="Regional Officials">{arSignatoryOptions.filter((option) => option.value.startsWith("role:")).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup></select></label>
           </div>
           {duplicateReport && <p className="auth-message auth-message-error" role="status">A report for {reportPeriod({ month, startDay, endDay })} is already saved. Edit it from Saved Reports.</p>}

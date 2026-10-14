@@ -95,8 +95,10 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
 
   const headers = readRow(rows[0]);
   const columns = new Map([...headers].map(([index, value]) => [normalizeHeader(value), index] as const));
+  const assignmentColumn = columns.get("assignment");
+  if (!columns.has("unit") && assignmentColumn !== undefined) columns.set("unit", assignmentColumn);
   if (requiredColumns.some((column) => !columns.has(column))) {
-    throw new Error("Use the Appreciation_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Name, Gender, Position, Office, and Distribution Place.");
+    throw new Error("Use the Appreciation_Importing_Template.xlsx columns: Assignment, Title, Destination, Date From, Date To, Name, Gender, Position, Office, and Distribution Place.");
   }
 
   const valueFor = (values: Map<number, string>, column: typeof requiredColumns[number]) => values.get(columns.get(column)!)?.trim() ?? "";
@@ -109,7 +111,7 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
     if (![...values.values()].some((value) => value.trim())) return;
     const unit = valueFor(values, "unit").toUpperCase();
     if (unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT appreciation template on hold.`);
-    if (unit !== "DRRM" && unit !== "AMIA") throw new Error(`Row ${rowNumber}: Unit must be AMIA or DRRM.`);
+    if (unit !== "DRRM" && unit !== "AMIA") throw new Error(`Row ${rowNumber}: Assignment must be AMIA or DRRM.`);
     const rawGender = valueFor(values, "gender").trim().toLowerCase();
     const speakerGender = rawGender === "f" || rawGender === "female" ? "female" : rawGender === "m" || rawGender === "male" ? "male" : "";
     const speakerName = valueFor(values, "name");
@@ -122,7 +124,7 @@ export function parseAppreciationImportWorkbook(bytes: Uint8Array): ImportedAppr
     const rawDistributionPlace = valueFor(values, "distributionplace");
     const distributionPlace = rawDistributionPlace || eventDestination;
     if (!speakerName || !speakerGender || !speakerPosition || !speakerOffice || !eventTitle || !eventDestination || !eventDateFrom || !eventDateTo) {
-      throw new Error(`Row ${rowNumber}: complete the Unit, speaker details, event, date, and destination fields.`);
+      throw new Error(`Row ${rowNumber}: complete the Assignment, speaker details, event, date, and destination fields.`);
     }
     if (!isWithinImportTemplateDateRange(eventDateFrom) || !isWithinImportTemplateDateRange(eventDateTo)) {
       throw new Error(`Row ${rowNumber}: Date From and Date To must be between January 1, 2026 and December 31, 2027.`);

@@ -23,8 +23,6 @@ type AppreciationRecord = {
   eventTitle: string;
   eventDateFrom: string;
   eventDateTo: string;
-  eventTimeFrom: string;
-  eventTimeTo: string;
   eventDestination: string;
   distributionSameAsDestination: boolean;
   distributionPlace: string;
@@ -77,13 +75,6 @@ function displayDateRange(from: string, to: string) {
   if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) return `${startMonth} ${start.getDate()} - ${end.getDate()}, ${end.getFullYear()}`;
   if (start.getFullYear() === end.getFullYear()) return `${displayDate(from)} - ${endMonth} ${end.getDate()}, ${end.getFullYear()}`;
   return `${displayDate(from)} - ${displayDate(to)}`;
-}
-
-function displayTime(value: string) {
-  const [hourText, minutes] = value.split(":");
-  const hourValue = Number(hourText);
-  if (!Number.isFinite(hourValue) || !minutes) return value;
-  return `${hourValue % 12 || 12}:${minutes} ${hourValue >= 12 ? "PM" : "AM"}`;
 }
 
 function ordinalDate(value: string) {
@@ -186,8 +177,6 @@ export default function AppreciationCertificate({ user }: { user: User }) {
       eventTitle: String(form.get("event-title") ?? "").trim(),
       eventDateFrom: String(form.get("event-date-from") ?? ""),
       eventDateTo: String(form.get("event-date-to") ?? ""),
-      eventTimeFrom: String(form.get("event-time-from") ?? ""),
-      eventTimeTo: String(form.get("event-time-to") ?? ""),
       eventDestination,
       distributionSameAsDestination: sameAsDestination,
       distributionPlace,
@@ -411,12 +400,11 @@ function AppreciationForm({ onCancel, onSubmit, saving, error }: { onCancel: () 
     <form className="permit-form appreciation-form" onSubmit={onSubmit}>
       <label className="wide-field">Unit<select name="unit" defaultValue="AMIA"><option value="AGRISTAT" disabled>FOD-AGRISTAT</option><option value="AMIA">FOD-AMIA</option><option value="DRRM">FOD-DRRM</option></select><small>AGRISTAT appreciation template on hold.</small></label>
       <AppreciationSpeakersFieldset speakers={speakers} onChange={updateSpeaker} onAdd={() => setSpeakers((current) => [...current, { name: "", gender: "", position: "", office: "" }])} onRemove={(index) => setSpeakers((current) => current.filter((_, row) => row !== index))} />
-      <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
+      <label>Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
+      <label>Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
       <div className="wide-field appreciation-schedule">
         <div className="appreciation-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => { setEventDateFrom(event.target.value); if (eventDateTo && eventDateTo < event.target.value) setEventDateTo(""); }} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} value={eventDateTo} onChange={(event) => setEventDateTo(event.target.value)} required /></label></div>
-        <div className="appreciation-time-range"><label>Time Conducted (From)<input name="event-time-from" type="time" defaultValue="08:00" required /></label><span>to</span><label>Time Conducted (To)<input name="event-time-to" type="time" defaultValue="17:00" required /></label></div>
       </div>
-      <label className="wide-field">Event&apos;s Destination<input name="event-destination" maxLength={240} value={eventDestination} onChange={(event) => setEventDestination(event.target.value)} required /></label>
       <label className="wide-field appreciation-checkbox"><input name="distribution-same" type="checkbox" value="yes" checked={sameLocation} onChange={(event) => setSameLocation(event.target.checked)} />Event&apos;s Destination is the same as where the certificate will be awarded</label>
       {!sameLocation && <label className="wide-field">Certificate Distribution Place<input name="distribution-place" maxLength={240} value={distributionPlace} onChange={(event) => setDistributionPlace(event.target.value)} required placeholder="Enter distribution place" /></label>}
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
@@ -519,7 +507,7 @@ function AppreciationPaper({ record, speaker }: { record: AppreciationRecord; sp
       <div className="appreciation-speaker-name appreciation-speaker-name-amia">{speaker.name}</div>
       <div className="appreciation-speaker-role appreciation-speaker-role-amia"><em>{speaker.position}</em>,{" "}<strong>{speaker.office}</strong></div>
       <div className="appreciation-body appreciation-body-amia" ref={bodyRef}>
-        <p>in appreciation of {possessive} invaluable expertise and insight on {possessive} field as a <strong>RESOURCE SPEAKER</strong> in the <strong><em>{record.eventTitle}</em></strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at {record.eventDestination}.</p>
+        <p>in appreciation of {possessive} invaluable expertise and insight on {possessive} field as a <strong>RESOURCE SPEAKER</strong> in the <strong><em>{record.eventTitle}</em></strong> conducted on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> at {record.eventDestination}.</p>
         <p>Given this {ordinalDate(record.eventDateTo)} in at <strong>{countryLocation(record.distributionPlace)}</strong>.</p>
         <footer className="appreciation-signatory appreciation-signatory-amia"><strong>ENGR. RICARDO M. OÑATE JR.</strong><em>Regional Executive Director</em></footer>
       </div>
@@ -531,7 +519,7 @@ function AppreciationPaper({ record, speaker }: { record: AppreciationRecord; sp
     <div className="appreciation-speaker-name">{speaker.name}</div>
     <div className="appreciation-speaker-role"><em>{speaker.position}</em>, {speaker.office}</div>
     <div className="appreciation-body" ref={bodyRef}>
-      <p>For {objectPronoun} exemplary service, commitment, and invaluable shared insights as <strong>RESOURCE SPEAKER</strong> for <strong>{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> from <strong>{displayTime(record.eventTimeFrom)}</strong> to <strong>{displayTime(record.eventTimeTo)}</strong> at <strong>{record.eventDestination}</strong>.</p>
+      <p>For {objectPronoun} exemplary service, commitment, and invaluable shared insights as <strong>RESOURCE SPEAKER</strong> for <strong>{record.eventTitle}</strong> held on <strong>{displayDateRange(record.eventDateFrom, record.eventDateTo)}</strong> at <strong>{record.eventDestination}</strong>.</p>
       <p>Given this {ordinalDate(record.eventDateTo)} at <strong>{countryLocation(record.distributionPlace)}</strong>.</p>
       <footer className="appreciation-signatory"><strong>ENGR. RICARDO M. O&#209;ATE JR.</strong><em>Regional Executive Director</em></footer>
     </div>

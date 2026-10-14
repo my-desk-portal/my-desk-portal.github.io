@@ -684,8 +684,8 @@ function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () =
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Appearance</h2><p className="muted">Enter the event details and one or more attendees. Two certificates fit on each A4 page.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="coa-error" role="alert">{error}</p>}
     <form className="permit-form coa-form" onSubmit={onSubmit}>
-      <label className="wide-field">Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
-      <label className="wide-field">Event&apos;s Destination<input name="destination" maxLength={180} required /></label>
+      <label>Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
+      <label>Event&apos;s Destination<input name="destination" maxLength={180} required /></label>
       <div className="wide-field coa-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => setEventDateFrom(event.target.value)} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} required /></label></div>
       <fieldset className="wide-field coa-people-fieldset"><legend>Attendees</legend>{people.map((person, index) => <div className="coa-person-row" key={index}>
         <label>Name<input name="person-name" maxLength={160} value={person.name} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} placeholder={`Person ${index + 1}`} required /></label>

@@ -90,8 +90,10 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
 
   const headers = readRow(rows[0]);
   const columns = new Map([...headers].map(([index, value]) => [normalizeHeader(value), index] as const));
+  const assignmentColumn = columns.get("assignment");
+  if (!columns.has("unit") && assignmentColumn !== undefined) columns.set("unit", assignmentColumn);
   if (requiredColumns.some((column) => !columns.has(column))) {
-    throw new Error("Use the Participation_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Name, Gender, and Distribution Place.");
+    throw new Error("Use the Participation_Importing_Template.xlsx columns: Assignment, Title, Destination, Date From, Date To, Name, Gender, and Distribution Place.");
   }
 
   const grouped = new Map<string, ImportedParticipationRecord>();
@@ -104,7 +106,7 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
 
     const unitValue = valueFor(values, "unit").toUpperCase().replace(/^FOD-/, "");
     if (unitValue === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT participation template on hold.`);
-    if (unitValue !== "AMIA" && unitValue !== "DRRM") throw new Error(`Row ${rowNumber}: Unit must be AMIA or DRRM.`);
+    if (unitValue !== "AMIA" && unitValue !== "DRRM") throw new Error(`Row ${rowNumber}: Assignment must be AMIA or DRRM.`);
     const unit = unitValue;
     const rawGender = valueFor(values, "gender").toLowerCase();
     const participantGender = rawGender === "f" || rawGender === "female" ? "female" : rawGender === "m" || rawGender === "male" ? "male" : "";
@@ -116,7 +118,7 @@ export function parseParticipationImportWorkbook(bytes: Uint8Array): ImportedPar
     const name = valueFor(values, "name");
     const distributionPlace = valueFor(values, "distributionplace") || eventDestination;
     if (!eventTitle || !eventDestination || !name || !participantGender || !eventDateFrom || !eventDateTo) {
-      throw new Error(`Row ${rowNumber}: complete the Unit, Name, Gender, event, date, and destination fields.`);
+      throw new Error(`Row ${rowNumber}: complete the Assignment, Name, Gender, event, date, and destination fields.`);
     }
     if (!isWithinImportTemplateDateRange(eventDateFrom) || !isWithinImportTemplateDateRange(eventDateTo)) {
       throw new Error(`Row ${rowNumber}: Date From and Date To must be between January 1, 2026 and December 31, 2027.`);

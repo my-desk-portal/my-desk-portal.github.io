@@ -25,11 +25,10 @@
 .calendar-of-activities-rows-heading strong{color:var(--ink);font-size:14px}
 .calendar-of-activities-rows-heading span{color:var(--muted);font-size:12px}
 .calendar-of-activities-limit-note{color:var(--muted);font-size:11px}
-.calendar-of-activities-row{align-items:start;border:1px solid var(--line);display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);margin:0;min-width:0;padding:17px}
+.calendar-of-activities-row{align-items:start;border:1px solid var(--line);display:grid;gap:14px;grid-template-columns:minmax(0,.9fr) minmax(0,.9fr) minmax(0,2fr) minmax(0,1.2fr);margin:0;min-width:0;padding:17px}
 .calendar-of-activities-row legend{color:var(--accent-dark);font-family:'DM Mono',monospace;font-size:11px;padding:0 7px}
-.calendar-of-activities-dates{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
 .calendar-of-activities-entry{grid-column:span 1}
-.calendar-of-activities-location{grid-column:1/-1}
+.calendar-of-activities-location{grid-column:span 1}
 .calendar-of-activities-entry textarea{height:42px;line-height:1.4;resize:none}
 .calendar-of-activities-responsible-field{display:grid;gap:8px;grid-column:1/-1;min-width:0}
 .calendar-of-activities-responsible-label{color:var(--ink);font-size:12px;font-weight:700}
@@ -39,6 +38,7 @@
 .calendar-of-activities-responsible-list li span{overflow-wrap:anywhere}
 .calendar-of-activities-responsible-list li button:not(.remove-action){background:transparent;border:0;color:#8c342b;cursor:pointer;font:inherit;font-size:11px;font-weight:700;padding:2px}
 .calendar-of-activities-row>.remove-participant{grid-column:1/-1;justify-self:start}
+@media(min-width:721px) and (max-width:900px){.calendar-of-activities-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .calendar-of-activities-prepared-summary{border-left:3px solid var(--accent);display:grid;gap:3px;padding:6px 0 6px 12px}
 .calendar-of-activities-prepared-summary span,.calendar-of-activities-prepared-summary em{color:var(--muted);font-size:12px;font-style:normal}
 .calendar-of-activities-prepared-summary strong{color:var(--ink);font-size:13px;text-transform:uppercase}

@@ -87,8 +87,10 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
 
   const headers = readRow(rows[0]);
   const columns = new Map([...headers].map(([index, value]) => [normalizeHeader(value), index] as const));
+  const assignmentColumn = columns.get("assignment");
+  if (!columns.has("unit") && assignmentColumn !== undefined) columns.set("unit", assignmentColumn);
   if (requiredColumns.some((column) => !columns.has(column))) {
-    throw new Error("Use the Completion_Importing_Template.xlsx columns: Unit, Title, Destination, Date From, Date To, Name, and Distribution Place.");
+    throw new Error("Use the Completion_Importing_Template.xlsx columns: Assignment, Title, Destination, Date From, Date To, Name, and Distribution Place.");
   }
 
   const grouped = new Map<string, ImportedCompletionRecord>();
@@ -101,7 +103,7 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
 
     const unit = valueFor(values, "unit").toUpperCase();
     if (unit === "AGRISTAT") throw new Error(`Row ${rowNumber}: AGRISTAT completion template on hold.`);
-    if (unit !== "DRRM" && unit !== "AMIA") throw new Error(`Row ${rowNumber}: Unit must be AMIA or DRRM.`);
+    if (unit !== "DRRM" && unit !== "AMIA") throw new Error(`Row ${rowNumber}: Assignment must be AMIA or DRRM.`);
     const eventTitle = valueFor(values, "title");
     const eventDestination = valueFor(values, "destination");
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
@@ -109,7 +111,7 @@ export function parseCompletionImportWorkbook(bytes: Uint8Array): ImportedComple
     const name = valueFor(values, "name");
     const distributionPlace = valueFor(values, "distributionplace") || eventDestination;
     if (!eventTitle || !eventDestination || !name || !eventDateFrom || !eventDateTo) {
-      throw new Error(`Row ${rowNumber}: complete the Unit, event, date, destination, and Name fields.`);
+      throw new Error(`Row ${rowNumber}: complete the Assignment, event, date, destination, and Name fields.`);
     }
     if (!isWithinImportTemplateDateRange(eventDateFrom) || !isWithinImportTemplateDateRange(eventDateTo)) {
       throw new Error(`Row ${rowNumber}: Date From and Date To must be between January 1, 2026 and December 31, 2027.`);
