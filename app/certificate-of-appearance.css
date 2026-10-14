@@ -32,8 +32,13 @@
 .coa-copy{font-size:2.15cqi;left:8.5%;line-height:1.2;right:8.5%;top:38.5%}
 .coa-copy p{margin:0 0 1.7cqi;text-align:justify}
 .coa-name,.coa-office{text-transform:uppercase}
+.coa-disapproval-stamp{background:#fffdfb;border:double .35cqi #a33b30;bottom:8%;color:#a33b30;display:grid;font-family:Cambria,'Times New Roman',serif;font-size:1.3cqi;gap:.3cqi;justify-items:end;left:8.5%;line-height:1.12;max-width:36%;padding:.7cqi 1cqi;position:absolute;text-align:right;transform:rotate(-2deg);z-index:4}
+.coa-disapproval-stamp strong{font-size:1.45cqi;overflow-wrap:anywhere}
+.coa-disapproval-stamp small{font-size:1.05cqi}
 .coa-signatory-block{position:absolute;right:8.5%;top:80%;width:36%;z-index:5}
 .coa-signatory-block.is-approved{display:grid;gap:1.1cqi;top:65%}
+.coa-signatory-block.is-disapproved{display:grid;gap:.8cqi;top:63%}
+.coa-signatory-block>.coa-disapproval-stamp{bottom:auto;box-sizing:border-box;left:auto;max-width:none;position:relative;right:auto;top:auto;transform:none;width:100%}
 .coa-signatory{display:grid;font-size:2.05cqi;gap:.4cqi;line-height:1.14;text-align:right;width:100%}
 .coa-signatory-block>.coa-signatory{position:static;right:auto;top:auto}
 .coa-signatory-block.is-approved>.coa-signatory{text-align:right}

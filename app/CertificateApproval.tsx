@@ -1,19 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, type QueryConstraint } from "firebase/firestore";
 import type { User } from "firebase/auth";
+import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { db } from "@/lib/firebase";
 import { accountDivision, accountDivisionForApproval, accountOffice, hasAccountDesignation, unitsForOfficeDivision } from "@/lib/account-profile";
 import type { AccountRole } from "@/lib/user-roles";
 import { makeDocumentNotification } from "@/lib/document-notifications";
-import { CertificateStatusBadge, certificateWorkflowStatus, type CertificateWorkflowFields, type CertificateWorkflowStatus } from "./CertificateWorkflow";
+import { blankAppearancePurpose } from "@/lib/certificate-title";
+import { makeBlankCertificatePdf } from "@/lib/blank-certificate-pdf";
+import { tevDivisions, type TevDivision } from "@/lib/mytev";
+import { loadPdfTools } from "@/lib/pdf-tools";
+import { CertificateApprovalSignature, CertificateDisapprovalStamp, CertificateStatusBadge, certificateWorkflowStatus, hasFieldOperationsChiefApprovalSignature, type CertificateWorkflowFields, type CertificateWorkflowStatus } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./certificate-approval.css";
+import "./certificate-of-appearance.css";
 import "./certificate-workflow.css";
 
 type CertificateCollection = "certificatesOfAppearance" | "completionCertificates" | "appreciationCertificates" | "participationCertificates";
+type AppearancePerson = { name: string; gender?: string; office?: string };
 type CertificateQueueRecord = CertificateWorkflowFields & {
   id: string;
   collectionName: CertificateCollection;
@@ -24,6 +31,11 @@ type CertificateQueueRecord = CertificateWorkflowFields & {
   recordType?: string;
   ownerOffice?: string;
   eventTitle?: string;
+  purpose?: string;
+  office?: string;
+  people?: AppearancePerson[];
+  signatoryName?: string;
+  designation?: string;
   eventDateFrom?: string;
   eventDateTo?: string;
   eventDate?: string;
@@ -42,6 +54,40 @@ const certificateCollections: { name: CertificateCollection; label: string }[] =
 ];
 
 const fieldOperationsCertificateOwnerUnits = new Set(unitsForOfficeDivision("Division", "Field Operations Division"));
+const appearanceLetterhead = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/certificate-of-appearance-blank.jpg`;
+const certificateDivisionDisplayNames: Record<string, string> = {
+  "Planning, Monitoring and Evaluation Division": "PMED",
+  "Agribusiness and Marketing Assistance Division": "AMAD",
+  "Regional Agricultural Engineering Division": "RAED",
+};
+
+function appearanceDisplayDate(value: string) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-PH", { month: "long", day: "numeric", year: "numeric" }).format(new Date(`${value}T00:00:00`));
+}
+
+function appearanceDisplayDateRange(from?: string, to?: string) {
+  const startValue = from ?? "";
+  const endValue = to ?? from ?? "";
+  if (!startValue) return appearanceDisplayDate(endValue);
+  if (!endValue || startValue === endValue) return appearanceDisplayDate(startValue);
+  const startDate = new Date(`${startValue}T00:00:00`);
+  const endDate = new Date(`${endValue}T00:00:00`);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return `${appearanceDisplayDate(startValue)} - ${appearanceDisplayDate(endValue)}`;
+  const startMonth = new Intl.DateTimeFormat("en-PH", { month: "long" }).format(startDate);
+  const endMonth = new Intl.DateTimeFormat("en-PH", { month: "long" }).format(endDate);
+  if (startDate.getFullYear() === endDate.getFullYear() && startDate.getMonth() === endDate.getMonth()) {
+    return `${startMonth} ${startDate.getDate()} - ${endDate.getDate()}, ${endDate.getFullYear()}`;
+  }
+  if (startDate.getFullYear() === endDate.getFullYear()) {
+    return `${appearanceDisplayDate(startValue)} - ${endMonth} ${endDate.getDate()}, ${endDate.getFullYear()}`;
+  }
+  return `${appearanceDisplayDate(startValue)} - ${appearanceDisplayDate(endValue)}`;
+}
+
+function appearancePronoun(gender?: string) {
+  return gender === "female" ? "her" : gender === "male" ? "him" : "them";
+}
 
 function officeDivision(office: string) {
   if (office === "AMIA" || office === "FOD-AMIA") return "Agribusiness and Marketing Assistance Division";
@@ -115,9 +161,76 @@ export default function CertificateApproval({ user, role, office, division, unit
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<CertificateQueueRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [blankPreviewRecord, setBlankPreviewRecord] = useState<CertificateQueueRecord | null>(null);
+  const [blankPreviewUrl, setBlankPreviewUrl] = useState("");
+  const [blankPreviewLoading, setBlankPreviewLoading] = useState(false);
+  const [blankPreviewRendering, setBlankPreviewRendering] = useState(false);
+  const [blankPreviewPrinting, setBlankPreviewPrinting] = useState(false);
+  const [blankPreviewError, setBlankPreviewError] = useState("");
+  const [appearancePreviewRecord, setAppearancePreviewRecord] = useState<CertificateQueueRecord | null>(null);
+  const [appearancePreviewError, setAppearancePreviewError] = useState("");
+  const [appearancePreviewDownloading, setAppearancePreviewDownloading] = useState(false);
+  const [appearancePreviewPrinting, setAppearancePreviewPrinting] = useState(false);
+  const blankPreviewRequest = useRef(0);
+  const blankPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const appearancePreviewPagesRef = useRef<HTMLDivElement>(null);
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
   const isChiefAdmin = role === "admin" && hasAccountDesignation(designation, "Chief");
   const reviewDivision = accountDivisionForApproval(office ?? "", unit ?? assignment ?? "", division ?? "");
+
+  useEffect(() => () => {
+    if (blankPreviewUrl) URL.revokeObjectURL(blankPreviewUrl);
+  }, [blankPreviewUrl]);
+
+  useEffect(() => {
+    const canvas = blankPreviewCanvasRef.current;
+    if (!blankPreviewUrl || !canvas) return;
+    const renderCanvas = canvas;
+    let cancelled = false;
+    let cancelRender: (() => void) | null = null;
+    let loadingTask: PDFDocumentLoadingTask | null = null;
+    setBlankPreviewRendering(true);
+    setBlankPreviewError("");
+    renderCanvas.width = 1;
+    renderCanvas.height = 1;
+
+    async function renderBlankPreview() {
+      try {
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        if (cancelled) return;
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
+        const response = await fetch(blankPreviewUrl);
+        if (!response.ok) throw new Error("The blank Certificate of Appearance PDF could not be loaded.");
+        if (cancelled) return;
+        const data = new Uint8Array(await response.arrayBuffer());
+        if (cancelled) return;
+        loadingTask = pdfjs.getDocument({ data });
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        const page = await pdf.getPage(1);
+        if (cancelled) return;
+        const viewport = page.getViewport({ scale: 2.5 });
+        renderCanvas.width = Math.ceil(viewport.width);
+        renderCanvas.height = Math.ceil(viewport.height);
+        const task = page.render({ canvas: renderCanvas, viewport });
+        cancelRender = () => task.cancel();
+        await task.promise;
+        if (!cancelled) setBlankPreviewRendering(false);
+      } catch (cause) {
+        if (!cancelled) {
+          setBlankPreviewRendering(false);
+          setBlankPreviewError(cause instanceof Error ? cause.message : "The blank Certificate of Appearance preview could not be rendered.");
+        }
+      }
+    }
+
+    void renderBlankPreview();
+    return () => {
+      cancelled = true;
+      cancelRender?.();
+      if (loadingTask) void loadingTask.destroy();
+    };
+  }, [blankPreviewUrl]);
 
   const accessMessage = useMemo(() => {
     if (role === "admin" && (!office || !reviewDivision)) return "Set your Office and Division in Profile to view certificates assigned to your division.";
@@ -351,6 +464,135 @@ export default function CertificateApproval({ user, role, office, division, unit
     }
   }
 
+  async function viewBlankAppearance(record: CertificateQueueRecord) {
+    const divisionName = record.division ?? "";
+    const requestId = ++blankPreviewRequest.current;
+    setBlankPreviewRecord(record);
+    setBlankPreviewUrl("");
+    setBlankPreviewError("");
+    setBlankPreviewLoading(true);
+    if (!tevDivisions.includes(divisionName as TevDivision)) {
+      setBlankPreviewError("The saved certificate has an invalid division.");
+      setBlankPreviewLoading(false);
+      return;
+    }
+    try {
+      const bytes = await makeBlankCertificatePdf({ ...record, division: divisionName });
+      if (blankPreviewRequest.current !== requestId) return;
+      const pdfData = new Uint8Array(bytes).buffer as ArrayBuffer;
+      setBlankPreviewRendering(true);
+      setBlankPreviewUrl(URL.createObjectURL(new Blob([pdfData], { type: "application/pdf" })));
+    } catch (cause) {
+      if (blankPreviewRequest.current === requestId) {
+        setBlankPreviewError(cause instanceof Error ? cause.message : "The blank Certificate of Appearance PDF could not be created.");
+      }
+    } finally {
+      if (blankPreviewRequest.current === requestId) setBlankPreviewLoading(false);
+    }
+  }
+
+  function closeBlankPreview() {
+    blankPreviewRequest.current += 1;
+    setBlankPreviewRecord(null);
+    setBlankPreviewUrl("");
+    setBlankPreviewError("");
+    setBlankPreviewLoading(false);
+    setBlankPreviewRendering(false);
+  }
+
+  function downloadBlankPreviewPdf() {
+    if (!blankPreviewRecord || !blankPreviewUrl) return;
+    const divisionSlug = (blankPreviewRecord.division ?? "appearance")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+    const downloadLink = document.createElement("a");
+    downloadLink.href = blankPreviewUrl;
+    downloadLink.download = `certificate-of-appearance-blank-${divisionSlug}.pdf`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
+  }
+
+  function viewAppearance(record: CertificateQueueRecord) {
+    setAppearancePreviewError(record.people?.length ? "" : "This appearance certificate has no attendees to preview.");
+    setAppearancePreviewRecord(record);
+  }
+
+  async function waitForAppearanceImages() {
+    if (!appearancePreviewPagesRef.current) throw new Error("The certificate preview is unavailable.");
+    await Promise.all(Array.from(appearancePreviewPagesRef.current.querySelectorAll("img"), async (image) => {
+      if (!image.complete) await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("The Certificate of Appearance blank could not be loaded."));
+      });
+      if (!image.naturalWidth) throw new Error("The Certificate of Appearance blank could not be loaded.");
+      if (image.decode) await image.decode();
+    }));
+    if (document.fonts?.ready) await document.fonts.ready;
+  }
+
+  async function downloadAppearancePreviewPdf() {
+    setAppearancePreviewDownloading(true);
+    setAppearancePreviewError("");
+    try {
+      const { html2canvas, jsPDF } = await loadPdfTools();
+      await waitForAppearanceImages();
+      const sheets = Array.from(appearancePreviewPagesRef.current!.querySelectorAll<HTMLElement>(".coa-print-sheet"));
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      for (let index = 0; index < sheets.length; index += 1) {
+        const canvas = await html2canvas(sheets[index], { backgroundColor: "#fff", logging: false, scale: 3, useCORS: true });
+        if (index > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, 210, 297);
+      }
+      pdf.save(`certificate-of-appearance-${appearancePreviewRecord?.eventDateFrom || appearancePreviewRecord?.eventDate || "record"}.pdf`);
+    } catch (cause) {
+      setAppearancePreviewError(cause instanceof Error ? cause.message : "Unable to create the PDF.");
+    } finally {
+      setAppearancePreviewDownloading(false);
+    }
+  }
+
+  async function printAppearancePreview() {
+    setAppearancePreviewPrinting(true);
+    setAppearancePreviewError("");
+    try {
+      await waitForAppearanceImages();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      window.print();
+    } catch (cause) {
+      setAppearancePreviewError(cause instanceof Error ? cause.message : "Unable to prepare the certificates for printing.");
+    } finally {
+      setAppearancePreviewPrinting(false);
+    }
+  }
+
+  function closeAppearancePreview() {
+    setAppearancePreviewRecord(null);
+    setAppearancePreviewError("");
+  }
+
+  async function printBlankPreview() {
+    setBlankPreviewPrinting(true);
+    setBlankPreviewError("");
+    try {
+      if (blankPreviewLoading || blankPreviewRendering || !blankPreviewCanvasRef.current) {
+        throw new Error("Wait for the Certificate of Appearance preview to finish loading.");
+      }
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      window.print();
+    } catch (cause) {
+      setBlankPreviewError(cause instanceof Error ? cause.message : "Unable to prepare the certificate for printing.");
+    } finally {
+      setBlankPreviewPrinting(false);
+    }
+  }
+
+  const appearancePreviewPages: AppearancePerson[][] = [];
+  for (let index = 0; index < (appearancePreviewRecord?.people?.length ?? 0); index += 2) {
+    appearancePreviewPages.push(appearancePreviewRecord!.people!.slice(index, index + 2));
+  }
+
   return <>
     <section className="content-section certificate-approval-section">
       <div className="section-heading">
@@ -365,16 +607,20 @@ export default function CertificateApproval({ user, role, office, division, unit
         <div className="certificate-approval-head"><span>Type of Certificate</span><span>Title</span><span>Schedule</span><span>Destination</span><span>Status</span><span>Action</span></div>
         {visibleRecords.map((record) => {
           const status = certificateWorkflowStatus(record.status);
-          const approved = status === "Approved";
           const rowKey = `${record.collectionName}:${record.id}`;
           const canManage = role === "superadmin" || isChiefAdmin;
+          const isAppearanceCertificate = record.collectionName === "certificatesOfAppearance";
+          const isBlankAppearanceTitle = isAppearanceCertificate && record.eventTitle === "Blank Certificate of Appearance";
+          const purpose = blankAppearancePurpose(record.purpose);
           return <div className="certificate-approval-row" key={rowKey}>
             <strong>{record.certificateType}</strong>
-            <span>{record.eventTitle || `Certificate of ${record.certificateType}`}</span>
+            {isBlankAppearanceTitle
+              ? <span><strong>Blank CA</strong>{purpose ? ` - Purpose: ${purpose}` : ""}</span>
+              : <span>{record.eventTitle || `Certificate of ${record.certificateType}`}</span>}
             <span>{displaySchedule(record)}</span>
             <span>{record.destination || record.eventDestination || "—"}</span>
             <span><CertificateStatusBadge record={record} /></span>
-            <div className="certificate-approval-actions">{canManage && !approved && <>
+            <div className="certificate-approval-actions">{isAppearanceCertificate && <button type="button" className="row-action" disabled={blankPreviewLoading} onClick={() => isBlankAppearanceTitle ? void viewBlankAppearance(record) : viewAppearance(record)}>View</button>}{canManage && status === "Pending" && <>
               <button type="button" className="row-action" disabled={savingKey !== null || deleting} onClick={() => void decide(record, "Approved")}>{savingKey === rowKey ? "Saving..." : "Approve"}</button>
               <button type="button" className="row-action" disabled={savingKey !== null || deleting || status === "Disapproved"} onClick={() => void decide(record, "Disapproved")}>Disapprove</button>
               <button type="button" className="delete-button" disabled={savingKey !== null || deleting} onClick={() => setPendingDelete(record)}>Delete</button>
@@ -383,6 +629,37 @@ export default function CertificateApproval({ user, role, office, division, unit
         })}
       </div><RecordPagination totalRecords={records.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Certificate Approval" /></div>}
     </section>
+    {blankPreviewRecord && <div className="preview-backdrop coa-preview-backdrop" role="dialog" aria-modal="true" aria-label="Blank Certificate of Appearance preview">
+      <div className="preview-toolbar coa-preview-toolbar"><span>Certificate of Appearance preview</span><button type="button" className="ghost-button" onClick={closeBlankPreview}>Close</button><button type="button" className="pdf-button" disabled={!blankPreviewUrl || blankPreviewLoading || blankPreviewRendering || Boolean(blankPreviewError)} onClick={downloadBlankPreviewPdf}>Download PDF</button><button type="button" className="pdf-button" disabled={blankPreviewPrinting || blankPreviewLoading || blankPreviewRendering || Boolean(blankPreviewError)} onClick={() => void printBlankPreview()}>{blankPreviewPrinting ? "Preparing print..." : "Print"}</button></div>
+      {blankPreviewLoading || blankPreviewRendering ? <p className="coa-preview-loading">Preparing preview...</p> : null}
+      {blankPreviewError && <p className="coa-error" role="alert">{blankPreviewError}</p>}
+      <div className="coa-blank-preview-paper"><canvas ref={blankPreviewCanvasRef} className="coa-blank-preview-canvas" aria-label={`Blank Certificate of Appearance for ${blankPreviewRecord.division ?? "the selected division"}`} /></div>
+    </div>}
+    {appearancePreviewRecord && <div className="preview-backdrop coa-preview-backdrop" role="dialog" aria-modal="true" aria-label="Certificate of Appearance preview">
+      <div className="preview-toolbar coa-preview-toolbar"><span>Certificate of Appearance preview</span><button type="button" className="ghost-button" onClick={closeAppearancePreview}>Close</button><button type="button" className="pdf-button" disabled={!appearancePreviewRecord.people?.length || appearancePreviewDownloading || Boolean(appearancePreviewError)} onClick={() => void downloadAppearancePreviewPdf()}>{appearancePreviewDownloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={!appearancePreviewRecord.people?.length || appearancePreviewPrinting || Boolean(appearancePreviewError)} onClick={() => void printAppearancePreview()}>{appearancePreviewPrinting ? "Preparing print..." : "Print"}</button></div>
+      {appearancePreviewError && <p className="coa-error" role="alert">{appearancePreviewError}</p>}
+      <div className="coa-preview-pages" ref={appearancePreviewPagesRef}>{appearancePreviewPages.map((people, pageIndex) => <section className="coa-print-sheet" key={`sheet-${pageIndex}`} aria-label={`A4 page ${pageIndex + 1}`}>
+        {people.map((person, personIndex) => <ApproverCertificatePaper key={`${person.name}-${personIndex}`} record={appearancePreviewRecord} person={person} />)}
+      </section>)}</div>
+    </div>}
     <DeleteConfirmation open={Boolean(pendingDelete)} title="Delete certificate?" description="This certificate will be permanently removed. This action cannot be undone." busy={deleting} onCancel={() => setPendingDelete(null)} onConfirm={() => void deleteRecord()} />
   </>;
+}
+
+function ApproverCertificatePaper({ record, person }: { record: CertificateQueueRecord; person: AppearancePerson }) {
+  const showApprovalSignature = hasFieldOperationsChiefApprovalSignature(record);
+  const showDisapprovalStamp = certificateWorkflowStatus(record.status) === "Disapproved";
+  return <article className="coa-certificate-card">
+    <img className="coa-letterhead" src={appearanceLetterhead} alt="" />
+    <h1 className="coa-title">CERTIFICATE OF APPEARANCE</h1>
+    <div className="coa-copy">
+      <p>This is to certify that <strong className="coa-name">{person.name}</strong> of the <strong className="coa-office">{person.office ?? record.office}</strong> has attended the <strong><em>“{record.eventTitle}”</em></strong> held in <strong>{record.destination}</strong> on <strong>{appearanceDisplayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</strong>.</p>
+      <p>This certification is issued upon the request of the above-named person for whatever legal purpose it may serve {appearancePronoun(person.gender)} best.</p>
+    </div>
+    <div className={`coa-signatory-block${showApprovalSignature ? " is-approved" : ""}${showDisapprovalStamp ? " is-disapproved" : ""}`}>
+      <CertificateDisapprovalStamp record={record} />
+      <CertificateApprovalSignature record={record} />
+      <footer className="coa-signatory"><strong>{record.signatoryName}</strong><div className="coa-signatory-role"><em>{record.designation},</em> <span>{certificateDivisionDisplayNames[record.division ?? ""] ?? record.division}</span></div></footer>
+    </div>
+  </article>;
 }

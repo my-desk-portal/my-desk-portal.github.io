@@ -41,6 +41,33 @@ export function CertificateStatusBadge({ record, children }: { record: Certifica
   </span>;
 }
 
+export function certificateDisapprovalStampDetails(record: CertificateWorkflowFields) {
+  if (certificateWorkflowStatus(record.status) !== "Disapproved") return null;
+  const decidedAt = toDate(record.decidedAt);
+  const dateParts = decidedAt
+    ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(decidedAt)
+    : [];
+  const datePart = (type: string) => dateParts.find((part) => part.type === type)?.value ?? "";
+  const date = decidedAt ? `${datePart("year")}.${datePart("month")}.${datePart("day")}` : "—";
+  const time = decidedAt
+    ? `${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(decidedAt)} +0800`
+    : "—";
+  const name = (record.signerName?.trim() || "Approver").toLocaleUpperCase("en");
+  return { name, date, time };
+}
+
+export function CertificateDisapprovalStamp({ record }: { record: CertificateWorkflowFields }) {
+  const details = certificateDisapprovalStampDetails(record);
+  if (!details) return null;
+  const { name, date, time } = details;
+  return <div className="coa-disapproval-stamp" aria-label={`Disapproved by ${name}. Date: ${date}. Time: ${time}.`}>
+    <span>Disapproved By</span>
+    <strong>{name}</strong>
+    <small>Date: {date}</small>
+    <small>Time: {time}</small>
+  </div>;
+}
+
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const fieldOperationsChiefSignature = "field_operations_division_chief_signature.png";
 
@@ -62,7 +89,7 @@ export function CertificateApprovalSignature({ record }: { record: CertificateWo
   const approvalTime = approvedAt
     ? `${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(approvedAt)} +0800`
     : "";
-  const signerName = record.signerName || "Chief, Field Operations Division";
+  const signerName = (record.signerName?.trim() || "Chief, Field Operations Division").toLocaleUpperCase("en");
   return <div className="certificate-approved-signature" aria-label={`Digitally signed by ${signerName}${approvalDate ? ` on ${approvalDate}` : ""}`}>
     <img src={publicAsset(`/${fieldOperationsChiefSignature}`)} alt="" />
     <div className="certificate-approved-signature-meta">
