@@ -23,6 +23,7 @@
   object-fit: cover;
   object-position: center;
   opacity: .82;
+  pointer-events: none;
   position: absolute;
   width: 100%;
 }
@@ -31,7 +32,8 @@
 .system-background-video::-webkit-media-controls-enclosure,
 .system-background-video::-webkit-media-controls-start-playback-button,
 .system-background-video::-webkit-media-controls-play-button,
-.system-background-video::-webkit-media-controls-overlay-play-button {
+.system-background-video::-webkit-media-controls-overlay-play-button,
+.system-background-video::-webkit-media-controls-overlay-enclosure {
   display: none !important;
   opacity: 0 !important;
   pointer-events: none !important;

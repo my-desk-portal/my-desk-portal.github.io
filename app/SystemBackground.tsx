@@ -29,19 +29,26 @@ export default function SystemBackground() {
     const retryWhenVisible = () => {
       if (document.visibilityState === "visible") startPlayback();
     };
+    const retryAfterInteraction = () => startPlayback();
 
     startPlayback();
+    video.addEventListener("loadedmetadata", startPlayback);
     video.addEventListener("loadeddata", startPlayback);
     video.addEventListener("canplay", startPlayback);
     video.addEventListener("pause", retryWhenVisible);
     window.addEventListener("pageshow", startPlayback);
+    window.addEventListener("focus", startPlayback);
+    document.addEventListener("touchstart", retryAfterInteraction, { capture: true, passive: true });
     document.addEventListener("visibilitychange", retryWhenVisible);
 
     return () => {
+      video.removeEventListener("loadedmetadata", startPlayback);
       video.removeEventListener("loadeddata", startPlayback);
       video.removeEventListener("canplay", startPlayback);
       video.removeEventListener("pause", retryWhenVisible);
       window.removeEventListener("pageshow", startPlayback);
+      window.removeEventListener("focus", startPlayback);
+      document.removeEventListener("touchstart", retryAfterInteraction, true);
       document.removeEventListener("visibilitychange", retryWhenVisible);
     };
   }, []);
