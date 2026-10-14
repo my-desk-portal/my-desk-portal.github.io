@@ -80,7 +80,7 @@ const unitsByDivision: Record<string, readonly string[]> = {
   "Research Division": ["Del Monte RES", "Modernization and ORDA", "Research Division", "Tagbina RES", "Trento RES"],
 };
 
-export function divisionsForOffice(office: string) {
+export function divisionsForOffice(office: string): readonly string[] {
   if (office === "Division") return accountDivisionOptions;
   if (office === "Office of the Regional Executive Director") return executiveOfficeDivisionOptions;
   return [] as const;
