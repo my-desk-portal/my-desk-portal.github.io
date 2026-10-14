@@ -351,9 +351,10 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
   const signatory = divisionSignatory(record.divisionName);
   const references = formatTevTravelReferences(record.travelReferences);
   const certification = record.certificationOfTravel ?? defaultTevCertificationOfTravel();
+  const hasExplanation = Boolean((certification.cutShort || certification.extended || certification.otherDeviation) && certification.otherExplanation.trim());
   const denseContent = references.length > 120 || record.evidenceOfTravel.length > 140 || certification.otherExplanation.length > 150;
   return <div className="mytev-paper-frame"><article className="mytev-paper mytev-ctc-paper">
-    <div className={`mytev-ctc-document${denseContent ? " mytev-ctc-document-dense" : ""}`}>
+    <div className={`mytev-ctc-document${denseContent ? " mytev-ctc-document-dense" : ""}${hasExplanation ? " mytev-ctc-document-has-approval" : ""}`}>
       <MyTevLetterhead appendix="Appendix 47" />
       <h1>CERTIFICATION OF TRAVEL COMPLETED</h1>
       <div className="mytev-ctc-entity"><b>Entity Name:</b><span>{tevEntityName}</span><b>Fund Cluster:</b><span>{tevFundCluster}</span></div>
@@ -365,13 +366,19 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
         <p><i className={certification.extended ? "is-checked" : undefined} /><span>Extended as explained below, additional itinerary was submitted.</span></p>
         <p><i className={certification.otherDeviation ? "is-checked" : undefined} /><span>Other deviation as explained below.</span></p>
       </div>
-      <div className="mytev-ctc-explanation"><b>Explanation or Justification:</b><span className={(certification.cutShort || certification.extended || certification.otherDeviation) && certification.otherExplanation ? "has-value" : undefined}>{certification.cutShort || certification.extended || certification.otherDeviation ? certification.otherExplanation : ""}</span><span /></div>
+      <div className="mytev-ctc-explanation"><b>Explanation or Justification:</b><span className={hasExplanation ? "has-value" : undefined}>{certification.cutShort || certification.extended || certification.otherDeviation ? certification.otherExplanation : ""}</span><span /></div>
       <div className="mytev-ctc-evidence"><b>Evidence of Travel:</b><span style={fitTextStyle(record.evidenceOfTravel, 150)}>{record.evidenceOfTravel}</span></div>
       <p className="mytev-ctc-submitted">Respectfully submitted:</p>
       <div className="mytev-ctc-employee"><strong style={fitTextStyle(profile.name, 36)}>{profile.name.toLocaleUpperCase("en-PH")}</strong><span>Name of Employee</span></div>
       <p className="mytev-ctc-knowledge">On evidence and information of which I have the knowledge, the travel was actually undertaken.</p>
       <p className="mytev-ctc-noted">Noted:</p>
       <div className="mytev-ctc-signatory"><strong style={fitTextStyle(signatory.name, 36)}>{signatory.name.toLocaleUpperCase("en-PH")}</strong><span><em>{signatory.position}</em>, {tevDivisionLabel(record.divisionName)}</span></div>
+      {hasExplanation && <>
+        <div className="mytev-ctc-approval-spacer-row" aria-hidden="true" />
+        <p className="mytev-ctc-approved">Approved:</p>
+        <div className="mytev-ctc-approval-spacer-row" aria-hidden="true" />
+        <div className="mytev-ctc-signatory mytev-ctc-approving-signatory"><strong>ENGR. RICARDO M. OÑATE JR.</strong><span><em>Regional Executive Director</em></span></div>
+      </>}
     </div>
   </article></div>;
 }
