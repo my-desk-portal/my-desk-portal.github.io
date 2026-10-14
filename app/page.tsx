@@ -194,9 +194,12 @@ async function migrateAccountProfileFieldsForSuperAdmin(excludedUserId?: string)
   const legacyProfiles = snapshot.docs.filter((item) => {
     if (item.id === excludedUserId) return false;
     const data = item.data();
+    const normalized = migratedAccountProfileFields(data);
     return data.profileFieldsVersion !== 3 || !data.office || !data.assignment
       || Object.prototype.hasOwnProperty.call(data, "unit")
-      || Object.prototype.hasOwnProperty.call(data, "projectProgram");
+      || Object.prototype.hasOwnProperty.call(data, "projectProgram")
+      || data.office !== normalized.office
+      || data.assignment !== normalized.assignment;
   });
   for (let offset = 0; offset < legacyProfiles.length; offset += 450) {
     const batch = writeBatch(db);
@@ -662,27 +665,18 @@ type PendingPermitNotification = { permitId: string; statusKey: string; permitNo
 type PermitNotificationAccount = { office: string; assignment: string; designation: string; accountRole: AccountRole };
 type PendingAccountApprovalNotification = { userId: string; name: string; office: string; assignment: string };
 const permitNotificationVisibilityMs = 4 * 60 * 60 * 1000;
-const ildPermitAssignments = ["AGRISTAT", "AMIA", "DRRM"] as const;
 
-function permitApprovalRoute(ownerOffice: string, ownerAssignment: string): "ild" | "fod" | null {
-  if (ownerOffice === "Field Operations Division (ILD)" && ildPermitAssignments.includes(ownerAssignment as (typeof ildPermitAssignments)[number])) return "ild";
-  if (ownerOffice === "Field Operations Division") return "fod";
+function permitApprovalRoute(ownerOffice: string, ownerAssignment: string): "fod" | null {
+  if (ownerOffice === "Field Operations Division" && assignmentsForOffice(ownerOffice).some((assignment) => assignment === ownerAssignment)) return "fod";
   return null;
 }
 
 function permitNotificationAccountMatches(owner: PermitNotificationAccount, reviewer: PermitNotificationAccount) {
   if (owner.accountRole !== "regular" || reviewer.accountRole !== "admin") return false;
-  const route = permitApprovalRoute(owner.office, owner.assignment);
-  if (route === "ild") {
-    return reviewer.office === "Field Operations Division"
-      && reviewer.assignment === "AGRISTAT-AMIA-DRRM";
-  }
-  if (route === "fod") {
-    return reviewer.office === "Regional Field Office"
-      && reviewer.assignment === "Field Operations Division"
-      && reviewer.designation === "Chief";
-  }
-  return false;
+  return permitApprovalRoute(owner.office, owner.assignment) === "fod"
+    && reviewer.office === "Regional Field Office"
+    && reviewer.assignment === "Field Operations Division"
+    && reviewer.designation === "Chief";
 }
 
 function permitNotificationKey(notification: PermitNotification) {
@@ -941,18 +935,12 @@ function PermitNotificationCenter({ isAdmin, isSuperAdmin, userId, notifications
   </div>;
 }
 
-type PermitFooterSignatory =
-  | { kind: "ild"; name: string; assignment: string; position: string }
-  | { kind: "fod"; name: string; designation: string; assignment: string };
+type PermitFooterSignatory = { kind: "fod"; name: string; designation: string; assignment: string };
 
 function permitFooterSignatory(ownerRole: AccountRole, ownerOffice: string, ownerAssignment: string, admins: PermitAdminSignatory[]): PermitFooterSignatory | null {
   if (ownerRole !== "regular") return null;
   const ownerProfile = accountProfileSelection({ office: ownerOffice, assignment: ownerAssignment, profileFieldsVersion: 3 });
   const route = permitApprovalRoute(ownerProfile.office ?? "", ownerProfile.assignment ?? "");
-  if (route === "ild") {
-    const admin = admins.find((profile) => profile.office === "Field Operations Division" && profile.assignment === "AGRISTAT-AMIA-DRRM");
-    return admin ? { kind: "ild", name: admin.name, assignment: admin.assignment, position: admin.position } : null;
-  }
   if (route === "fod") {
     const admin = admins.find((profile) => profile.office === "Regional Field Office"
       && profile.assignment === "Field Operations Division"
@@ -1068,11 +1056,9 @@ function PermitCard({ permit, name, permitNo, decisionKey, approvedPermitNumbers
       {decision?.status === "Approved" && <div className="permit-digital-signature"><img src={publicAsset(signatureAsset)} alt="Permit Slip approval signature" /><div><span>Digitally Signed By</span><strong>{decision.signerName?.trim().toLocaleUpperCase("en") || "ADMIN"}</strong><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div></div>}
       {decision?.status === "Disapproved" && <div className="permit-disapproved-stamp"><strong>Disapproved</strong><span>By {decision.signerName?.trim().toLocaleUpperCase("en") || "ADMIN"}</span><span>Date: {signatureDate(decision.decidedAt)}</span><span>Time: {decisionTime}</span></div>}
       <div className="permit-approved-name">{signatory?.name.toLocaleUpperCase("en") || (requiresConfiguredSignatory ? "" : "GERLIE B. ANTIPASO")}</div>
-      {signatory?.kind === "ild"
-        ? <div className="permit-approved-role"><em>{signatory.assignment} / {signatory.position}</em></div>
-        : signatory?.kind === "fod"
-          ? <div className="permit-approved-role"><em>{signatory.designation}</em><span style={{ fontStyle: "normal" }}>, {signatory.assignment}</span></div>
-          : <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>}
+      {signatory?.kind === "fod"
+        ? <div className="permit-approved-role"><em>{signatory.designation}</em><span style={{ fontStyle: "normal" }}>, {signatory.assignment}</span></div>
+        : <div className="permit-approved-role">DRRM/AMIA/AGRISTAT Head/Agriculturist II</div>}
     </div>
 
   </article>;
@@ -2131,10 +2117,17 @@ export default function Home() {
           const accountStatus = isBootstrapSuperAdmin ? "Approved" : normalizeAccountStatus(profileData.accountStatus);
           if (thisAuthChange !== authChange) return;
           const accountPatch: Record<string, unknown> = {};
+          const normalizedProfile = migratedAccountProfileFields(profileData);
+          const normalizedProfileIsComplete = assignmentsForOffice(normalizedProfile.office ?? "")
+            .some((option) => option === normalizedProfile.assignment);
           if (profileData.profileFieldsVersion !== 3 || !profileData.office || !profileData.assignment
             || Object.prototype.hasOwnProperty.call(profileData, "unit")
-            || Object.prototype.hasOwnProperty.call(profileData, "projectProgram")) {
-            Object.assign(accountPatch, migratedAccountProfileFields(profileData));
+            || Object.prototype.hasOwnProperty.call(profileData, "projectProgram")
+            || profileData.office !== normalizedProfile.office
+            || profileData.assignment !== normalizedProfile.assignment) {
+            if (normalizedProfileIsComplete) Object.assign(accountPatch, normalizedProfile);
+          }
+          if (Object.prototype.hasOwnProperty.call(accountPatch, "office")) {
             accountPatch.unit = deleteField();
             accountPatch.projectProgram = deleteField();
           }
@@ -2389,8 +2382,11 @@ export default function Home() {
         if (!ownerAccount) return [];
         const owner: PermitNotificationAccount = {
           ...ownerAccount,
-          office: typeof data.ownerOffice === "string" ? data.ownerOffice : ownerAccount.office,
-          assignment: typeof data.ownerAssignment === "string" ? data.ownerAssignment : ownerAccount.assignment,
+          ...accountProfileSelection({
+            office: typeof data.ownerOffice === "string" ? data.ownerOffice : ownerAccount.office,
+            assignment: typeof data.ownerAssignment === "string" ? data.ownerAssignment : ownerAccount.assignment,
+            profileFieldsVersion: 3,
+          }),
         };
         if (!permitNotificationAccountMatches(owner, reviewer)) return [];
         const names = Array.isArray(data.names) ? data.names as string[] : typeof data.name === "string" ? [data.name] : [];
@@ -2429,11 +2425,12 @@ export default function Home() {
         const data = item.data();
         if (normalizeAccountStatus(data.accountStatus) !== "Pending" || data.registrationStage !== "complete") return [];
         if (item.metadata.hasPendingWrites) pendingWriteUserIds.add(item.id);
+        const profile = accountProfileSelection(data);
         return [{
           userId: item.id,
           name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : "New account",
-          office: typeof data.office === "string" ? data.office : "",
-          assignment: typeof data.assignment === "string" ? data.assignment : "",
+          office: profile.office,
+          assignment: profile.assignment,
         } satisfies PendingAccountApprovalNotification];
       }).sort((first, second) => first.name.localeCompare(second.name, "en", { sensitivity: "base" }));
       if (hasInitialSnapshot && !snapshot.metadata.fromCache && pending.some((notification) => !previousPendingUserIds.has(notification.userId) && !pendingWriteUserIds.has(notification.userId))) {

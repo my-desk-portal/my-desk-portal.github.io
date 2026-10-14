@@ -10,7 +10,6 @@ export type AccountProfileFields = {
 
 export const accountOfficeOptions = [
   "Field Operations Division",
-  "Field Operations Division (ILD)",
   "Regional Field Office",
 ] as const;
 
@@ -156,7 +155,9 @@ export function hasAccountDesignation(value: unknown, designation: string) {
 
 export const fieldOperationsAssignments = [
   "4K",
-  "AGRISTAT-AMIA-DRRM",
+  "AGRISTAT",
+  "AMIA",
+  "DRRM",
   "APCO - ADN",
   "APCO - ADS",
   "APCO - PDI",
@@ -176,8 +177,6 @@ export const fieldOperationsAssignments = [
   "SAAD",
 ] as const;
 
-export const fieldOperationsIldAssignments = ["AGRISTAT", "AMIA", "DRRM"] as const;
-
 export const regionalFieldOfficeAssignments = [
   ...tevDivisions,
   "Regional Executive Director",
@@ -187,7 +186,6 @@ export const regionalFieldOfficeAssignments = [
 
 export function assignmentsForOffice(office: string) {
   if (office === "Field Operations Division") return fieldOperationsAssignments;
-  if (office === "Field Operations Division (ILD)") return fieldOperationsIldAssignments;
   if (office === "Regional Field Office") return regionalFieldOfficeAssignments;
   return [] as const;
 }
@@ -199,11 +197,11 @@ const divisionByLegacyAssignment: Record<string, string> = {
 };
 
 export function accountDivisionForApproval(office: string, assignment: string) {
-  const normalizedOffice = office.trim();
-  const normalizedAssignment = assignment.trim().toUpperCase();
+  const selected = accountProfileSelection({ office, assignment, profileFieldsVersion: 3 });
+  const normalizedOffice = selected.office ?? "";
+  const normalizedAssignment = selected.assignment.trim().toUpperCase();
   if (normalizedOffice === "Regional Field Office") return assignment.trim();
-  if (normalizedOffice === "Field Operations Division (ILD)"
-    || (normalizedOffice === "Field Operations Division" && normalizedAssignment in divisionByLegacyAssignment)) {
+  if (normalizedOffice === "Field Operations Division" && normalizedAssignment in divisionByLegacyAssignment) {
     return divisionByLegacyAssignment[normalizedAssignment] ?? "";
   }
   return divisionByLegacyAssignment[normalizedOffice.replace(/^FOD-/i, "").toUpperCase()] ?? normalizedOffice;
@@ -217,7 +215,6 @@ export function accountTevDivision(office: string, assignment: string): TevDivis
   }
   if (
     normalizedOffice === "Field Operations Division"
-    || normalizedOffice === "Field Operations Division (ILD)"
     || /^FOD-/i.test(normalizedOffice)
     || ["AGRISTAT", "AMIA", "DRRM"].includes(normalizedOffice.toUpperCase())
   ) {
@@ -231,19 +228,6 @@ export function accountProfileSelection(profile: AccountProfileFields) {
   const storedAssignment = accountAssignment(profile);
 
   const normalizedStoredOffice = storedOffice.trim();
-  const storedAssignmentUpper = storedAssignment?.toUpperCase() ?? "";
-  const isLegacyIldOffice = /^FOD-(AGRISTAT|AMIA|DRRM)$/i.test(normalizedStoredOffice)
-    || ["AGRISTAT", "AMIA", "DRRM"].includes(normalizedStoredOffice.toUpperCase())
-    || (normalizedStoredOffice === "Field Operations Division" && Boolean(divisionByLegacyAssignment[storedAssignmentUpper]));
-  if (isLegacyIldOffice) {
-    const assignment = divisionByLegacyAssignment[storedAssignmentUpper]
-      ? storedAssignmentUpper
-      : divisionByLegacyAssignment[normalizedStoredOffice.replace(/^FOD-/i, "").toUpperCase()]
-        ? normalizedStoredOffice.replace(/^FOD-/i, "").toUpperCase()
-        : "";
-    return { office: "Field Operations Division (ILD)", assignment };
-  }
-
   if (accountOfficeOptions.includes(storedOffice as (typeof accountOfficeOptions)[number])) {
     const validAssignments = assignmentsForOffice(storedOffice);
     return {
@@ -261,15 +245,6 @@ export function accountProfileSelection(profile: AccountProfileFields) {
     };
   }
 
-  if (/^FOD-/i.test(normalizedStoredOffice)) {
-    return {
-      office: "Field Operations Division",
-      assignment: fieldOperationsAssignments.includes(storedAssignment as (typeof fieldOperationsAssignments)[number])
-        ? storedAssignment
-        : "",
-    };
-  }
-
   return { office: "", assignment: "" };
 }
 
@@ -281,20 +256,52 @@ function stringValue(value: unknown) {
 // `projectProgram` field. Version 3 keeps the same values in clearly named fields.
 export function accountOffice(profile: AccountProfileFields) {
   const version = typeof profile.profileFieldsVersion === "number" ? profile.profileFieldsVersion : 0;
+  let office: string;
   if (version >= 2) {
-    return stringValue(profile.office) || stringValue(profile.projectProgram) || null;
+    office = stringValue(profile.office) || stringValue(profile.projectProgram);
+  } else {
+    office = stringValue(profile.projectProgram)
+      || stringValue(profile.unit)
+      || stringValue(profile.office);
   }
-  return stringValue(profile.projectProgram)
-    || stringValue(profile.unit)
-    || stringValue(profile.office)
-    || null;
+  return canonicalFieldOperationsOffice(office) || null;
 }
 
 export function accountAssignment(profile: AccountProfileFields) {
   const version = typeof profile.profileFieldsVersion === "number" ? profile.profileFieldsVersion : 0;
-  if (version >= 3) return stringValue(profile.assignment);
-  if (version === 2) return stringValue(profile.projectProgram) || stringValue(profile.unit);
-  return stringValue(profile.unit) || stringValue(profile.office) || stringValue(profile.projectProgram);
+  const assignment = version >= 3
+    ? stringValue(profile.assignment)
+    : version === 2
+      ? stringValue(profile.projectProgram) || stringValue(profile.unit)
+      : stringValue(profile.unit) || stringValue(profile.office) || stringValue(profile.projectProgram);
+  if (assignment === "AGRISTAT-AMIA-DRRM") return "";
+  return fieldOperationsAssignmentAlias(assignment)
+    || assignment
+    || fieldOperationsAssignmentAlias(rawAccountOffice(profile));
+}
+
+function rawAccountOffice(profile: AccountProfileFields) {
+  const version = typeof profile.profileFieldsVersion === "number" ? profile.profileFieldsVersion : 0;
+  return version >= 2
+    ? stringValue(profile.office) || stringValue(profile.projectProgram)
+    : stringValue(profile.projectProgram) || stringValue(profile.unit) || stringValue(profile.office);
+}
+
+function canonicalFieldOperationsOffice(value: string) {
+  const normalized = value.trim();
+  return normalized === "Field Operations Division (ILD)"
+    || normalized.toUpperCase() === "AGRISTAT"
+    || normalized.toUpperCase() === "AMIA"
+    || normalized.toUpperCase() === "DRRM"
+    || /^FOD-/i.test(normalized)
+    ? "Field Operations Division"
+    : normalized;
+}
+
+function fieldOperationsAssignmentAlias(value: string) {
+  const normalized = value.trim().toUpperCase();
+  const assignment = normalized.startsWith("FOD-") ? normalized.slice(4) : normalized;
+  return ["AGRISTAT", "AMIA", "DRRM"].find((option) => option === assignment) ?? "";
 }
 
 export function migratedAccountProfileFields(profile: AccountProfileFields) {

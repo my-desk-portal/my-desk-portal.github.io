@@ -250,7 +250,8 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
         if (!active) return;
         const loaded = snapshot.docs.map((item) => {
           const data = item.data();
-          const savedOwnerOffice = typeof data.ownerOffice === "string" ? data.ownerOffice : "";
+          const storedOwnerOffice = typeof data.ownerOffice === "string" ? data.ownerOffice : "";
+          const savedOwnerOffice = accountOffice({ office: storedOwnerOffice, profileFieldsVersion: 3 }) ?? storedOwnerOffice;
           const blankOffice = data.recordType === "blank" ? normalizedOwnerOffice || savedOwnerOffice : "";
           return {
             id: item.id,

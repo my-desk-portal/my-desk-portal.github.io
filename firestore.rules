@@ -48,10 +48,15 @@ service cloud.firestore {
       let office = profile.get("office", "");
       let legacyProjectProgram = profile.get("projectProgram", "");
       let legacyUnit = profile.get("unit", "");
-      return version >= 2 && office is string && office.size() > 0 ? office
+      let rawOffice = version >= 2 && office is string && office.size() > 0 ? office
         : legacyProjectProgram is string && legacyProjectProgram.size() > 0 ? legacyProjectProgram
         : legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit
         : office;
+      return rawOffice == "Field Operations Division (ILD)"
+        || rawOffice in ["AGRISTAT", "AMIA", "DRRM", "FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"]
+        || (rawOffice is string && rawOffice.matches("^FOD-.*"))
+        ? "Field Operations Division"
+        : rawOffice;
     }
     function profileAssignment(profile) {
       let version = profile.get("profileFieldsVersion", 0);
@@ -59,12 +64,21 @@ service cloud.firestore {
       let projectProgram = profile.get("projectProgram", "");
       let legacyUnit = profile.get("unit", "");
       let legacyOffice = profile.get("office", "");
-      return version >= 3 ? assignment
+      let rawAssignment = version >= 3 ? assignment
         : version == 2 && projectProgram is string && projectProgram.size() > 0 ? projectProgram
         : version == 2 && legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit
         : legacyUnit is string && legacyUnit.size() > 0 ? legacyUnit
         : legacyOffice is string && legacyOffice.size() > 0 ? legacyOffice
         : projectProgram;
+      return rawAssignment == "AGRISTAT-AMIA-DRRM" ? ""
+        : rawAssignment in ["FOD-AGRISTAT"] ? "AGRISTAT"
+        : rawAssignment in ["FOD-AMIA"] ? "AMIA"
+        : rawAssignment in ["FOD-DRRM"] ? "DRRM"
+        : rawAssignment is string && rawAssignment.size() > 0 ? rawAssignment
+        : legacyOffice in ["AGRISTAT", "FOD-AGRISTAT"] ? "AGRISTAT"
+        : legacyOffice in ["AMIA", "FOD-AMIA"] ? "AMIA"
+        : legacyOffice in ["DRRM", "FOD-DRRM"] ? "DRRM"
+        : "";
     }
     function signedInOffice() {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
@@ -74,25 +88,11 @@ service cloud.firestore {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
       return exists(userPath) ? profileAssignment(get(userPath).data) : null;
     }
-    function isIldAssignment(assignment) {
-      return assignment in ["AGRISTAT", "AMIA", "DRRM"];
-    }
     function personnelScopeOffice(profile) {
-      let office = profileOffice(profile);
-      let assignment = profileAssignment(profile);
-      return (office == "Field Operations Division (ILD)"
-        || (office == "Field Operations Division" && isIldAssignment(assignment))
-        || office in ["AGRISTAT", "AMIA", "DRRM", "FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"])
-        ? "Field Operations Division (ILD)"
-        : office;
+      return profileOffice(profile);
     }
     function personnelScopeAssignment(profile) {
-      let office = profileOffice(profile);
-      let assignment = profileAssignment(profile);
-      return office == "AGRISTAT" || office == "FOD-AGRISTAT" ? "AGRISTAT"
-        : office == "AMIA" || office == "FOD-AMIA" ? "AMIA"
-        : office == "DRRM" || office == "FOD-DRRM" ? "DRRM"
-        : assignment;
+      return profileAssignment(profile);
     }
     function samePersonnelScope(firstProfile, secondProfile) {
       let firstOffice = personnelScopeOffice(firstProfile);
@@ -100,12 +100,8 @@ service cloud.firestore {
       let firstAssignment = personnelScopeAssignment(firstProfile);
       let secondAssignment = personnelScopeAssignment(secondProfile);
       return firstOffice == secondOffice
-        && ((firstOffice == "Field Operations Division (ILD)"
-            && isIldAssignment(firstAssignment)
-            && isIldAssignment(secondAssignment))
-          || (firstOffice != "Field Operations Division (ILD)"
-            && firstAssignment is string && firstAssignment.size() > 0
-            && firstAssignment == secondAssignment));
+        && firstAssignment is string && firstAssignment.size() > 0
+        && firstAssignment == secondAssignment;
     }
     function calendarRecipientInOwnerScope(calendarId, recipientId) {
       let calendarRef = /databases/$(database)/documents/calendarOfActivities/$(calendarId);
@@ -200,8 +196,7 @@ service cloud.firestore {
       let assignment = profileAssignment(profile);
       return office == "Regional Field Office"
         ? assignment
-        : office == "Field Operations Division (ILD)"
-          || (office == "Field Operations Division" && assignment in ["AGRISTAT", "AMIA", "DRRM"])
+        : office == "Field Operations Division" && assignment in ["AGRISTAT", "AMIA", "DRRM"]
           ? appearanceDivisionForOffice(assignment)
           : appearanceDivisionForOffice(office);
     }
@@ -264,6 +259,12 @@ service cloud.firestore {
         && newDecision.get("signerName", "") == get(currentUserPath()).data.get("name", "")
         && newDecision.diff(oldDecision).affectedKeys().hasOnly(["status", "decidedAt", "decidedBy", "signerName", "approvedPermitNo"]);
     }
+    function validProfileOfficeAssignment(office, assignment) {
+      return (office == "Field Operations Division"
+          && assignment in ["4K", "AGRISTAT", "AMIA", "APCO - ADN", "APCO - ADS", "APCO - PDI", "APCO - SDN", "APCO - SDS", "Corn Program", "DRRM", "ELCAC", "Extension and Partnership", "F2C2", "GAD", "HVCDP Program", "Livestock Program", "NUPAP", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD"])
+        || (office == "Regional Field Office"
+          && assignment in ["Administrative Division", "Agribusiness and Marketing Assistance Division", "Field Operations Division", "Finance Division", "Integrated Laboratories Division", "Planning, Monitoring and Evaluation Division", "Regional Agricultural Engineering Division", "Regulatory Division", "Research Division", "Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"]);
+    }
     function validUserProfile(data) {
       return data.keys().hasAll(["name", "position", "office", "assignment", "profileFieldsVersion", "emailVerified", "accountRole", "accountStatus", "isRootSuperAdmin"])
         && data.keys().hasOnly(["name", "position", "office", "assignment", "profileFieldsVersion", "designation", "firstName", "middleName", "lastName", "gender", "photoURL", "address", "taxIdentificationNo", "accountRole", "accountStatus", "isRootSuperAdmin", "emailVerified", "registrationStage", "welcomeNotificationSeenAt", "createdAt"])
@@ -292,6 +293,7 @@ service cloud.firestore {
         && data.assignment is string
         && data.assignment.size() > 0
         && data.assignment.size() <= 120
+        && validProfileOfficeAssignment(data.office, data.assignment)
         && data.profileFieldsVersion == 3
         && (!data.keys().hasAny(["registrationStage"]) || data.registrationStage == "complete");
     }
@@ -373,6 +375,7 @@ service cloud.firestore {
           && request.resource.data.assignment is string
           && request.resource.data.assignment.size() > 0
           && request.resource.data.assignment.size() <= 120
+          && validProfileOfficeAssignment(request.resource.data.office, request.resource.data.assignment)
           && request.resource.data.profileFieldsVersion == 3
           && (!request.resource.data.keys().hasAny(["gender"]) || request.resource.data.gender in ["Male", "Female"])
           && (!request.resource.data.keys().hasAny(["firstName"]) || (request.resource.data.firstName is string && request.resource.data.firstName.size() <= 60))
@@ -1375,7 +1378,7 @@ service cloud.firestore {
         && request.resource.data.activities is list
         && request.resource.data.activities.size() > 0
         && request.resource.data.activities.size() <= 30
-        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "AGRISTAT-AMIA-DRRM", "4K", "APCO - ADN", "APCO - ADS", "APCO - PDI", "APCO - SDN", "APCO - SDS", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "GAD", "HVCDP Program", "Livestock Program", "NUPAP", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Administrative Division", "Agribusiness and Marketing Assistance Division", "Field Operations Division", "Finance Division", "Integrated Laboratories Division", "Planning, Monitoring and Evaluation Division", "Regional Agricultural Engineering Division", "Regulatory Division", "Research Division", "Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"]
+        && request.resource.data.unit in ["AMIA", "AGRISTAT", "DRRM", "4K", "APCO - ADN", "APCO - ADS", "APCO - PDI", "APCO - SDN", "APCO - SDS", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "GAD", "HVCDP Program", "Livestock Program", "NUPAP", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Administrative Division", "Agribusiness and Marketing Assistance Division", "Field Operations Division", "Finance Division", "Integrated Laboratories Division", "Planning, Monitoring and Evaluation Division", "Regional Agricultural Engineering Division", "Regulatory Division", "Research Division", "Regional Executive Director", "RTD for Operations", "RTD for Research and Regulations"]
         && request.resource.data.preparedName is string
         && request.resource.data.preparedName.size() > 0
         && request.resource.data.preparedName.size() <= 120

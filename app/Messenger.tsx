@@ -45,7 +45,6 @@ const millis = (value?: Timestamp | null) => value?.toMillis?.() ?? 0;
 const isUnread = (chat: Chat, userId: string) => Boolean(chat.lastSenderId && chat.lastSenderId !== userId && millis(chat.lastAt) > millis(chat.readAt?.[userId]));
 const unitLabel = (office: string, unit: string) => {
   if (office === "Regional Field Office") return unit || office;
-  if (office === "Field Operations Division (ILD)") return unit ? `FOD-${unit}` : office;
   if (office === "Field Operations Division") return unit ? `${office} · ${unit}` : office;
   return unit;
 };

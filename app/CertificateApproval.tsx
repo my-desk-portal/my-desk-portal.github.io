@@ -150,7 +150,10 @@ export default function CertificateApproval({ user, role, office, assignment, de
         if (!active) return;
         setRecords(loadedRecords.map((record) => {
           if (record.collectionName !== "certificatesOfAppearance" || record.recordType !== "blank") return record;
-          const ownerOffice = record.ownerOffice?.trim() || ownerOffices.get(record.ownerId) || "";
+          const storedOwnerOffice = record.ownerOffice?.trim() ?? "";
+          const ownerOffice = (storedOwnerOffice ? accountOffice({ office: storedOwnerOffice, profileFieldsVersion: 3 }) : null)
+            || ownerOffices.get(record.ownerId)
+            || "";
           return { ...record, ownerOffice, destination: ownerOffice || "" };
         }).sort((left, right) => (right.createdAt?.toMillis?.() ?? 0) - (left.createdAt?.toMillis?.() ?? 0)));
       } catch (cause) {

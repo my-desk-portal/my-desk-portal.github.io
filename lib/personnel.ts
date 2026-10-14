@@ -1,7 +1,7 @@
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { isSuperadminRole } from "@/lib/user-roles";
-import { accountOffice, accountAssignment, accountDesignation, accountProfileSelection, fieldOperationsIldAssignments } from "@/lib/account-profile";
+import { accountOffice, accountAssignment, accountDesignation, accountProfileSelection } from "@/lib/account-profile";
 
 export type PersonnelEntry = { userId: string; name: string; position: string; office: string; unit: string; accountRole?: string; accountStatus?: string };
 export type PermitAdminSignatory = { userId: string; name: string; position: string; office: string; assignment: string; designation: string };
@@ -25,9 +25,6 @@ export function personnelMatchesAccountScope(
   const scope = accountProfileSelection({ office, assignment, profileFieldsVersion: 3 });
   const candidate = accountProfileSelection({ office: candidateOffice, assignment: candidateAssignment, profileFieldsVersion: 3 });
   if (!scope.office || candidate.office !== scope.office) return false;
-  if (scope.office === "Field Operations Division (ILD)") {
-    return fieldOperationsIldAssignments.includes(candidate.assignment as (typeof fieldOperationsIldAssignments)[number]);
-  }
   return Boolean(scope.assignment && candidate.assignment === scope.assignment);
 }
 

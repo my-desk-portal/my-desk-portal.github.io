@@ -65,7 +65,6 @@ const isReportUnit = (value: string): value is Unit => ["AMIA", "AGRISTAT", "DRR
 
 function defaultImmediateSupervisor(office: string, assignment: string, accountRole: AccountRole) {
   const isAdmin = accountRole !== "regular";
-  if (office === "Field Operations Division (ILD)" && ["AGRISTAT", "AMIA", "DRRM"].includes(assignment)) return "division:Field Operations Division";
   if (office === "Field Operations Division" && fieldOperationsAssignments.includes(assignment as (typeof fieldOperationsAssignments)[number])) return "division:Field Operations Division";
 
   if (office === "Regional Field Office") {
@@ -142,8 +141,8 @@ function reportUnit(unit: Unit) {
     AGRISTAT: "Agricultural Statistics - Caraga",
     DRRM: "Disaster Risk Reduction and Management - Caraga",
   };
-  if (fieldOperationsAssignments.includes(unit as (typeof fieldOperationsAssignments)[number])) return "Field Operations Division";
-  return unitNames[unit as keyof typeof unitNames] ?? unit;
+  return unitNames[unit as keyof typeof unitNames]
+    ?? (fieldOperationsAssignments.includes(unit as (typeof fieldOperationsAssignments)[number]) ? "Field Operations Division" : unit);
 }
 
 function applyCurrentProfile(report: Report, profile: Profile | null): Report {

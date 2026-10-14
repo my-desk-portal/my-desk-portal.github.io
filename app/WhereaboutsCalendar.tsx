@@ -9,7 +9,7 @@ import { calendarOfActivitiesCollection } from "@/lib/calendar-of-activities-sto
 import { isPermitAdmin } from "./PermitSlipAdmin";
 import { LEGACY_PENDING_STATUS, normalizeWorkflowStatus } from "./workflow-status";
 import { assignApprovedPermitNumbers, displayPermitNumber } from "./permit-number";
-import { accountOfficeOptions, accountProfileSelection, assignmentsForOffice } from "@/lib/account-profile";
+import { accountOffice, accountOfficeOptions, accountProfileSelection, assignmentsForOffice } from "@/lib/account-profile";
 import "./whereabouts-calendar.css";
 
 type CalendarTravelOrder = {
@@ -195,7 +195,8 @@ function normalizeUnit(value?: string): Exclude<PermitUnitFilter, "All"> | "" {
 
 function displayUnit(value?: string) {
   const unit = normalizeUnit(value);
-  return unit ? `FOD-${unit}` : value?.trim() ?? "";
+  const office = value?.trim() ? accountOffice({ office: value.trim(), profileFieldsVersion: 3 }) ?? "" : "";
+  return unit ? `FOD-${unit}` : office || value?.trim() || "";
 }
 
 function leaveApplicantName(leave: ApprovedLeaveApplication) {
@@ -479,7 +480,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
   };
   const recordMatchesSelectedScope = (recordOffice?: string, recordAssignment?: string) => {
     const inferredOffice = recordOffice
-      || (normalizeUnit(recordAssignment) ? "Field Operations Division (ILD)" : "")
+      || (normalizeUnit(recordAssignment) ? "Field Operations Division" : "")
       || accountOfficeOptions.find((officeOption) => assignmentsForOffice(officeOption).some((option) => option.toLocaleLowerCase() === recordAssignment?.trim().toLocaleLowerCase()))
       || "";
     const candidate = accountProfileSelection({ office: inferredOffice, assignment: recordAssignment ?? "", profileFieldsVersion: 3 });
@@ -499,7 +500,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, a
       if (matchingPeople.length) return matchingPeople.some((person) => recordMatchesSelectedScope(person.office, person.assignment));
     }
     if (summaryOfficeFilter === "All" && unitFilter === "All" && !recordOffice && !recordAssignment) return true;
-    const fallbackOffice = recordOffice || (normalizedAssignment ? "Field Operations Division (ILD)" : accountScope.office);
+    const fallbackOffice = recordOffice || (normalizedAssignment ? "Field Operations Division" : accountScope.office);
     return recordMatchesSelectedScope(fallbackOffice, normalizedAssignment || recordAssignment || "");
   };
   const recordAssignmentForFilter = (ownerId?: string, fallbackAssignment?: string) =>
