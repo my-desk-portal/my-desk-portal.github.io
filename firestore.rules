@@ -240,35 +240,180 @@ service cloud.firestore {
       let profilePath = /databases/$(database)/documents/users/$(userId);
       return exists(profilePath)
         && get(profilePath).data.get("accountRole", "") == "admin"
-        && get(profilePath).data.get("accountStatus", "") == "Approved"
+        && get(profilePath).data.get("accountStatus", "Approved") == "Approved"
         && hasChiefDesignation(get(profilePath).data)
         && appearanceDivisionForProfile(get(profilePath).data) == division;
     }
+    function isFodAppearanceApproverProfile(profile, designation) {
+      return profile.get("accountRole", "") == "admin"
+        && profile.get("accountStatus", "Approved") == "Approved"
+        && profile.get("profileFieldsVersion", 0) == 4
+        && profile.get("office", "") == "Division"
+        && profile.get("division", "") == "Field Operations Division"
+        && profile.get("unit", "") == "Field Operations Division"
+        && profile.get("designation", "") == designation;
+    }
+    function isCurrentFodAppearanceApprover(designation) {
+      let userPath = currentUserPath();
+      return isVerifiedUser() && exists(userPath)
+        && isFodAppearanceApproverProfile(get(userPath).data, designation);
+    }
+    function certificateScopeOffice(data) {
+      return data.get("certificateOffice", data.get("ownerOffice", ""));
+    }
+    function certificateScopeDivision(data) {
+      return data.get("certificateDivision", data.get("ownerDivision", ""));
+    }
+    function certificateScopeUnit(data) {
+      return data.get("certificateUnit", data.get("ownerUnit", ""));
+    }
+    function isFodAppearanceOwnerRecord(data) {
+      return data.get("ownerRole", "") in ["regular", "user"]
+        && certificateScopeOffice(data) == "Division"
+        && certificateScopeDivision(data) == "Field Operations Division"
+        && certificateScopeUnit(data) is string;
+    }
+    function isFodAppearanceCertificateRecipient(userId, data) {
+      let profilePath = /databases/$(database)/documents/users/$(userId);
+      let hasProfile = exists(profilePath);
+      let profile = hasProfile ? get(profilePath).data : {};
+      return hasProfile && isFodAppearanceOwnerRecord(data)
+        && ((certificateScopeUnit(data) in ["4K", "APCO - ADN", "APCO - ADS", "APCO - SDN", "APCO - SDS", "APCO - PDI", "CFIDP", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "Gender and Development", "Halal Projects", "HVCD Program", "IPM", "Livestock Program", "NUPA Program", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Soybean Program"]
+            && isFodAppearanceApproverProfile(profile, "Chief"))
+          || (certificateScopeUnit(data) in ["AGRISTAT", "AMIA", "DRRM"]
+            && isFodAppearanceApproverProfile(profile, "AGRISTAT/DRRM/AMIA Project Leader")));
+    }
+    function isAppearanceCertificateRecipient(userId, data) {
+      return isFodAppearanceCertificateRecipient(userId, data)
+        || (!(certificateScopeOffice(data) == "Division" && certificateScopeDivision(data) == "Field Operations Division")
+          && isAppearanceChiefAdminRecipient(userId, data.get("division", "")));
+    }
     function canReviewAppearanceCertificate(data) {
-      return isSuperAdmin() || (isChiefCertificateAdmin()
-        && data.get("division", "") == appearanceDivisionForProfile(get(currentUserPath()).data));
+      let isFodChief = isCurrentFodAppearanceApprover("Chief");
+      return isSuperAdmin()
+        || (isChiefCertificateAdmin() && !isFodChief
+          && data.get("division", "") == appearanceDivisionForProfile(get(currentUserPath()).data))
+        || (isFodChief && isFodAppearanceOwnerRecord(data)
+          && certificateScopeUnit(data) in ["4K", "APCO - ADN", "APCO - ADS", "APCO - SDN", "APCO - SDS", "APCO - PDI", "CFIDP", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "Gender and Development", "Halal Projects", "HVCD Program", "IPM", "Livestock Program", "NUPA Program", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Soybean Program"])
+        || (isCurrentFodAppearanceApprover("AGRISTAT/DRRM/AMIA Project Leader")
+          && isFodAppearanceOwnerRecord(data)
+          && certificateScopeUnit(data) in ["AGRISTAT", "AMIA", "DRRM"]);
+    }
+    function hasValidAppearanceProjectLeaderSignatory(data) {
+      let hasRoutedSignatory = data.keys().hasAny(["signatoryAdminId", "signatoryPosition"]);
+      let signatoryId = data.get("signatoryAdminId", "missing-signatory");
+      let profilePath = /databases/$(database)/documents/users/$(signatoryId);
+      let isBlankProjectLeaderRoute = data.get("recordType", "") == "blank"
+        && data.keys().hasAll(["signatoryAdminId", "signatoryPosition"])
+        && data.signatoryAdminId is string && data.signatoryAdminId.size() > 0 && data.signatoryAdminId.size() <= 128
+        && data.signatoryPosition is string && data.signatoryPosition.size() > 0 && data.signatoryPosition.size() <= 120
+        && data.signatoryName is string && data.signatoryName.size() > 0 && data.signatoryName.size() <= 120
+        && data.designation == "AGRISTAT/DRRM/AMIA Project Leader"
+        && data.get("certificateOffice", "") == "Division"
+        && data.get("certificateDivision", "") == "Field Operations Division"
+        && data.get("certificateUnit", "") in ["AGRISTAT", "AMIA", "DRRM"];
+      return isBlankProjectLeaderRoute
+        || !hasRoutedSignatory
+        || (data.keys().hasAll(["signatoryAdminId", "signatoryPosition"])
+          && data.signatoryAdminId is string
+          && data.signatoryPosition is string
+          && data.signatoryName is string
+          && data.designation == "AGRISTAT/DRRM/AMIA Project Leader"
+          && data.get("certificateOffice", "") == "Division"
+          && data.get("certificateDivision", "") == "Field Operations Division"
+          && data.get("certificateUnit", "") in ["AGRISTAT", "AMIA", "DRRM"]
+          && exists(profilePath)
+          && isFodAppearanceApproverProfile(get(profilePath).data, "AGRISTAT/DRRM/AMIA Project Leader"));
     }
     function canReadAppearanceCertificate(data) {
-      return isSuperAdmin() || (isChiefCertificateAdmin()
-        && data.get("division", "") == appearanceDivisionForProfile(get(currentUserPath()).data));
+      return canReviewAppearanceCertificate(data);
     }
-    function isLegacyFieldOperationsDivisionProfile(profile) {
-      let version = profile.get("profileFieldsVersion", 0);
-      let office = profileOffice(profile);
-      let assignment = profileAssignment(profile);
-      return version < 4
-        && ((office == "Division" && assignment in ["4K", "AGRISTAT", "AMIA", "DRRM", "APCO - ADN", "APCO - ADS", "APCO - PDI", "APCO - SDN", "APCO - SDS", "CFIDP", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "Field Operations Division", "Gender and Development", "GAD", "Halal Projects", "Halal Project", "HVCD Program", "HVCDP Program", "IPM", "Livestock Program", "NUPA Program", "NUPAP", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Soybean Program"])
-          || (office == "Regional Field Office" && assignment == "DRRM"));
+    function isValidFodProjectLeaderBlankAppearanceCreate(data) {
+      return request.auth != null
+        && isVerifiedUser()
+        && data.ownerId == request.auth.uid
+        && data.ownerRole == "regular"
+        && get(currentUserPath()).data.get("accountRole", "") == "regular"
+        && signedInOffice() == "Division"
+        && signedInDivision() == "Field Operations Division"
+        && signedInUnit() in ["AGRISTAT", "AMIA", "DRRM"]
+        && data.certificateOffice == "Division"
+        && data.certificateDivision == "Field Operations Division"
+        && data.certificateUnit == signedInUnit()
+        && data.keys().hasOnly(["recordType", "eventTitle", "destination", "purpose", "ownerRole", "ownerOffice", "ownerDivision", "ownerUnit", "certificateOffice", "certificateDivision", "certificateUnit", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "signatoryPosition", "signatoryAdminId", "division", "ownerId", "createdAt", "status"])
+        && data.recordType == "blank"
+        && data.eventTitle == "Blank Certificate of Appearance"
+        && data.destination == data.certificateOffice
+        && data.purpose is string
+        && data.purpose.size() > 0
+        && data.purpose.size() <= 500
+        && data.eventDateFrom == ""
+        && data.eventDateTo == ""
+        && data.people is list
+        && data.people.size() == 0
+        && data.signatoryName is string
+        && data.signatoryName.size() > 0
+        && data.signatoryName.size() <= 120
+        && data.designation is string
+        && data.designation.size() > 0
+        && data.designation.size() <= 120
+        && data.division is string
+        && data.division.size() > 0
+        && data.division.size() <= 120
+        && data.createdAt is timestamp
+        && data.status == "Pending"
+        && (!data.keys().hasAny(["ownerOffice", "ownerDivision", "ownerUnit"])
+          || data.keys().hasAll(["ownerOffice", "ownerDivision", "ownerUnit"]))
+        && (!data.keys().hasAny(["signatoryPosition", "signatoryAdminId"])
+          || (data.keys().hasAll(["signatoryPosition", "signatoryAdminId"])
+            && data.signatoryPosition is string
+            && data.signatoryPosition.size() > 0
+            && data.signatoryPosition.size() <= 120
+            && data.signatoryAdminId is string
+            && data.signatoryAdminId.size() > 0
+            && data.signatoryAdminId.size() <= 128));
     }
-    function isRegularFieldOperationsCertificateOwner(ownerId) {
-      let ownerPath = /databases/$(database)/documents/users/$(ownerId);
-      let ownerExists = ownerId is string && ownerId.size() > 0 && exists(ownerPath);
-      let ownerProfile = ownerExists ? get(ownerPath).data : {};
-      return ownerExists
-        && ownerProfile.get("accountRole", "") in ["regular", "user"]
-        && (ownerProfile.get("division", "") == "Field Operations Division"
-          || isLegacyFieldOperationsDivisionProfile(ownerProfile))
-        && ownerProfile.get("unit", "") in ["4K", "AGRISTAT", "AMIA", "DRRM", "APCO - ADN", "APCO - ADS", "APCO - SDN", "APCO - SDS", "APCO - PDI", "CFIDP", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "Field Operations Division", "Gender and Development", "Halal Projects", "HVCD Program", "IPM", "Livestock Program", "NUPA Program", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Soybean Program"];
+    function isValidFodProjectLeaderAppearanceCreate(data) {
+      return request.auth != null
+        && isVerifiedUser()
+        && data.ownerId == request.auth.uid
+        && data.ownerRole == "regular"
+        && get(currentUserPath()).data.get("accountRole", "") == "regular"
+        && signedInOffice() == "Division"
+        && signedInDivision() == "Field Operations Division"
+        && signedInUnit() in ["AGRISTAT", "AMIA", "DRRM"]
+        && data.certificateOffice == "Division"
+        && data.certificateDivision == "Field Operations Division"
+        && data.certificateUnit in ["AGRISTAT", "AMIA", "DRRM"]
+        && data.keys().hasAll(["eventTitle", "destination", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerRole", "certificateOffice", "certificateDivision", "certificateUnit", "signatoryPosition", "signatoryAdminId", "ownerId", "createdAt"])
+        && data.keys().hasOnly(["eventTitle", "destination", "purpose", "ownerRole", "ownerOffice", "ownerDivision", "ownerUnit", "certificateOffice", "certificateDivision", "certificateUnit", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "signatoryPosition", "signatoryAdminId", "division", "ownerId", "createdAt", "recordType", "status"])
+        && data.get("recordType", "appearance") == "appearance"
+        && data.eventTitle is string
+        && data.destination is string
+        && data.eventDateFrom is string
+        && data.eventDateTo is string
+        && data.people is list
+        && data.people.size() > 0
+        && data.people.size() <= 100
+        && data.signatoryName is string
+        && data.signatoryName.size() > 0
+        && data.signatoryName.size() <= 120
+        && data.designation == "AGRISTAT/DRRM/AMIA Project Leader"
+        && data.signatoryPosition is string
+        && data.signatoryPosition.size() > 0
+        && data.signatoryPosition.size() <= 120
+        && data.signatoryAdminId is string
+        && data.signatoryAdminId.size() > 0
+        && data.signatoryAdminId.size() <= 128
+        && data.division == "Field Operations Division"
+        && data.createdAt is timestamp
+        && data.get("status", "") == "Pending"
+        && (!data.keys().hasAny(["purpose"]) || (data.purpose is string && data.purpose.size() <= 500))
+        && (!data.keys().hasAny(["ownerOffice", "ownerDivision", "ownerUnit"])
+          || (data.keys().hasAll(["ownerOffice", "ownerDivision", "ownerUnit"])
+            && data.ownerOffice is string && data.ownerOffice.size() > 0
+            && data.ownerDivision is string && data.ownerDivision.size() > 0
+            && data.ownerUnit is string && data.ownerUnit.size() > 0));
     }
     function validCertificateDecisionUpdate(allowAppearanceSignature) {
       let profile = get(currentUserPath()).data;
@@ -278,25 +423,28 @@ service cloud.firestore {
       // Every call site first authorizes the reviewer through canReviewAppearanceCertificate or canReviewUnitCertificate.
       return oldStatus != "Approved"
         && newStatus in ["Approved", "Disapproved"]
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "decidedAt", "decidedBy", "signerName", "signerDesignation", "signerOffice", "signatureAsset"])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "decidedAt", "decidedBy", "signerName", "signerPosition", "signerDesignation", "signerOffice", "signatureAsset"])
         && request.resource.data.diff(resource.data).affectedKeys().hasAny(["status"])
         && request.resource.data.decidedAt is timestamp
         && request.resource.data.decidedBy == request.auth.uid
         && request.resource.data.signerName == profile.get("name", "")
+        && request.resource.data.signerPosition == profile.get("position", "")
         && request.resource.data.signerDesignation == profile.get("designation", "")
         && request.resource.data.signerOffice == profileOffice(profile)
         && (signatureAsset == "" || (allowAppearanceSignature
           && resource.data.get("recordType", "appearance") in ["appearance", "blank"]
           && newStatus == "Approved"
-          && signatureAsset == "field_operations_division_chief_signature.png"
-          && profile.get("profileFieldsVersion", 0) == 4
-          && profile.get("office", "") == "Division"
-          && profile.get("division", "") == "Field Operations Division"
-          && profile.get("unit", "") == "Field Operations Division"
-          && profile.get("accountRole", "") == "admin"
-          && isRegularFieldOperationsCertificateOwner(resource.data.get("ownerId", ""))
           && request.resource.data.signerOffice == "Division"
-          && request.resource.data.signerDesignation == "Chief"));
+          && isFodAppearanceOwnerRecord(resource.data)
+          && ((signatureAsset == "field_operations_division_chief_signature.png"
+              && certificateScopeUnit(resource.data) in ["4K", "APCO - ADN", "APCO - ADS", "APCO - SDN", "APCO - SDS", "APCO - PDI", "CFIDP", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "Gender and Development", "Halal Projects", "HVCD Program", "IPM", "Livestock Program", "NUPA Program", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Soybean Program"]
+              && isFodAppearanceApproverProfile(profile, "Chief")
+              && request.resource.data.signerDesignation == "Chief")
+            || (signatureAsset == "agristat_and_drrm_focal_persons_amia_project_leader.png"
+              && certificateScopeUnit(resource.data) in ["AGRISTAT", "AMIA", "DRRM"]
+              && isFodAppearanceApproverProfile(profile, "AGRISTAT/DRRM/AMIA Project Leader")
+              && resource.data.get("signatoryAdminId", request.auth.uid) == request.auth.uid
+              && request.resource.data.signerDesignation == "AGRISTAT/DRRM/AMIA Project Leader"))));
     }
     function isValidPermitDecisionUpdate() {
       let decisionKey = request.resource.data.get("lastDecisionKey", "");
@@ -790,7 +938,7 @@ service cloud.firestore {
             && request.resource.data.dateTo == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.eventDateTo
             && request.resource.data.destination == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.destination
             && request.resource.data.get("purpose", "") == getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.get("purpose", "")
-            && isAppearanceChiefAdminRecipient(request.resource.data.recipientId, getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data.division))
+            && isAppearanceCertificateRecipient(request.resource.data.recipientId, getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data))
           || (request.resource.data.documentType == "Certificate Decision"
             && request.resource.data.keys().hasAll(["certificateType", "certificateCollection", "decisionStatus", "activityTitle"])
             && request.resource.data.certificateCollection in ["certificatesOfAppearance", "completionCertificates", "appreciationCertificates", "participationCertificates"]
@@ -888,7 +1036,18 @@ service cloud.firestore {
       allow update: if (isVerifiedUser()
           && resource.data.ownerId == request.auth.uid
           && resource.data.get("status", "Pending") != "Approved"
-          && request.resource.data.get("status", "Pending") == resource.data.get("status", "Pending"))
+          && request.resource.data.get("status", "Pending") == resource.data.get("status", "Pending")
+          && request.resource.data.get("ownerRole", null) == resource.data.get("ownerRole", null)
+          && request.resource.data.get("ownerOffice", null) == resource.data.get("ownerOffice", null)
+          && request.resource.data.get("ownerDivision", null) == resource.data.get("ownerDivision", null)
+          && request.resource.data.get("ownerUnit", null) == resource.data.get("ownerUnit", null)
+          && request.resource.data.get("certificateOffice", null) == resource.data.get("certificateOffice", null)
+          && request.resource.data.get("certificateDivision", null) == resource.data.get("certificateDivision", null)
+          && request.resource.data.get("certificateUnit", null) == resource.data.get("certificateUnit", null)
+          && request.resource.data.get("signatoryName", null) == resource.data.get("signatoryName", null)
+          && request.resource.data.get("designation", null) == resource.data.get("designation", null)
+          && request.resource.data.get("signatoryPosition", null) == resource.data.get("signatoryPosition", null)
+          && request.resource.data.get("signatoryAdminId", null) == resource.data.get("signatoryAdminId", null))
         || (canReviewAppearanceCertificate(resource.data)
           && validCertificateDecisionUpdate(true));
       allow delete: if isVerifiedUser()
@@ -897,7 +1056,7 @@ service cloud.firestore {
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.keys().hasAll(["eventTitle", "destination", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt"])
-        && request.resource.data.keys().hasOnly(["eventTitle", "destination", "purpose", "ownerOffice", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "division", "ownerId", "createdAt", "recordType", "status"])
+        && request.resource.data.keys().hasOnly(["eventTitle", "destination", "purpose", "ownerRole", "ownerOffice", "ownerDivision", "ownerUnit", "certificateOffice", "certificateDivision", "certificateUnit", "eventDateFrom", "eventDateTo", "people", "signatoryName", "designation", "signatoryPosition", "signatoryAdminId", "division", "ownerId", "createdAt", "recordType", "status"])
         && request.resource.data.eventTitle is string
         && request.resource.data.destination is string
         && request.resource.data.eventDateFrom is string
@@ -910,15 +1069,36 @@ service cloud.firestore {
         && request.resource.data.createdAt is timestamp
         && request.resource.data.get("recordType", "appearance") in ["appearance", "blank"]
         && request.resource.data.get("status", "") == "Pending"
+        && hasValidAppearanceProjectLeaderSignatory(request.resource.data)
         && request.resource.data.people.size() <= 100
-        && (request.resource.data.get("recordType", "appearance") == "blank"
-          ? request.resource.data.people.size() == 0
-            && request.resource.data.eventTitle == "Blank Certificate of Appearance"
-            && request.resource.data.keys().hasAll(["ownerOffice"])
+        && (!request.resource.data.keys().hasAny(["ownerRole"])
+          || (request.resource.data.ownerRole is string
+            && (request.resource.data.ownerRole == get(currentUserPath()).data.get("accountRole", "")
+              || (request.resource.data.ownerRole == "regular" && get(currentUserPath()).data.get("accountRole", "") == "user"))))
+        && (!request.resource.data.keys().hasAny(["ownerOffice", "ownerDivision", "ownerUnit"])
+          || (request.resource.data.keys().hasAll(["ownerOffice", "ownerDivision", "ownerUnit"])
             && request.resource.data.ownerOffice is string
             && request.resource.data.ownerOffice.size() > 0
             && request.resource.data.ownerOffice == signedInOffice()
-            && request.resource.data.destination == request.resource.data.ownerOffice
+            && request.resource.data.ownerDivision is string
+            && request.resource.data.ownerDivision.size() > 0
+            && request.resource.data.ownerDivision == signedInDivision()
+            && request.resource.data.ownerUnit is string
+            && request.resource.data.ownerUnit.size() > 0
+            && request.resource.data.ownerUnit == signedInUnit()))
+        && (!request.resource.data.keys().hasAny(["certificateOffice", "certificateDivision", "certificateUnit"])
+          || (request.resource.data.keys().hasAll(["certificateOffice", "certificateDivision", "certificateUnit"])
+            && request.resource.data.certificateOffice is string
+            && request.resource.data.certificateOffice.size() > 0
+            && request.resource.data.certificateDivision is string
+            && request.resource.data.certificateDivision.size() > 0
+            && request.resource.data.certificateUnit is string
+            && request.resource.data.certificateUnit.size() > 0))
+        && (request.resource.data.get("recordType", "appearance") == "blank"
+          ? request.resource.data.people.size() == 0
+            && request.resource.data.eventTitle == "Blank Certificate of Appearance"
+            && request.resource.data.keys().hasAll(["ownerRole", "certificateOffice", "certificateDivision", "certificateUnit"])
+            && request.resource.data.destination == request.resource.data.certificateOffice
             && request.resource.data.keys().hasAll(["purpose"])
             && request.resource.data.purpose is string
             && request.resource.data.purpose.size() > 0
@@ -926,6 +1106,8 @@ service cloud.firestore {
             && request.resource.data.eventDateFrom == ""
             && request.resource.data.eventDateTo == ""
           : request.resource.data.people.size() > 0);
+      allow create: if isValidFodProjectLeaderBlankAppearanceCreate(request.resource.data);
+      allow create: if isValidFodProjectLeaderAppearanceCreate(request.resource.data);
     }
     match /appreciationCertificates/{certificateId} {
       allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));

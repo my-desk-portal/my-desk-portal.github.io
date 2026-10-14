@@ -1,18 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { db } from "@/lib/firebase";
-import { accountOffice, accountProfileSelection, hasAccountDesignation } from "@/lib/account-profile";
+import { accountOffice, accountOfficeOptions, accountProfileSelection, divisionsForOffice, hasAccountDesignation, unitsForOfficeDivision } from "@/lib/account-profile";
+import { certificateAppearanceSignatoryForOwner, isFieldOperationsAppearanceApprover } from "@/lib/certificate-signatory";
 import { makeDocumentNotification } from "@/lib/document-notifications";
 import { blankAppearancePurpose } from "@/lib/certificate-title";
 import { makeBlankCertificatePdf as createBlankCertificatePdf } from "@/lib/blank-certificate-pdf";
-import type { AccountRole } from "@/lib/user-roles";
+import { normalizeAccountStatus, type AccountRole } from "@/lib/user-roles";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { divisionSignatory, tevDivisions, type TevDivision } from "@/lib/mytev";
-import { CertificateApprovalSignature, CertificateDisapprovalStamp, CertificateStatusBadge, certificateWorkflowStatus, hasFieldOperationsChiefApprovalSignature, type CertificateWorkflowFields } from "./CertificateWorkflow";
+import { appearanceCertificateSignatory, CertificateApprovalSignature, CertificateDisapprovalStamp, CertificateStatusBadge, certificateWorkflowStatus, hasFieldOperationsAppearanceApprovalSignature, type CertificateWorkflowFields } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
 import "./certificate-of-appearance.css";
 import "./certificate-workflow.css";
@@ -23,7 +24,13 @@ type CertificateRecord = CertificateWorkflowFields & {
   id: string;
   recordType?: "appearance" | "blank";
   office?: string;
+  ownerRole?: string;
   ownerOffice?: string;
+  ownerDivision?: string;
+  ownerUnit?: string;
+  certificateOffice?: string;
+  certificateDivision?: string;
+  certificateUnit?: string;
   eventTitle: string;
   destination: string;
   purpose?: string;
@@ -38,6 +45,14 @@ type CertificateRecord = CertificateWorkflowFields & {
   createdAt?: { toMillis?: () => number; toDate?: () => Date };
 };
 
+type BlankCertificateSubmission = {
+  certificateOffice: string;
+  certificateDivision: string;
+  certificateUnit: string;
+  pdfDivision: TevDivision;
+  purpose: string;
+};
+
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const blankCertificateAsset = publicAsset("/certificate-of-appearance-blank.jpg");
 const certificateDivisionDisplayNames: Record<string, string> = {
@@ -46,6 +61,7 @@ const certificateDivisionDisplayNames: Record<string, string> = {
   "Regional Agricultural Engineering Division": "RAED",
 };
 const newPerson = (): CertificatePerson => ({ name: "", gender: "", office: "" });
+type AppearanceApprovalAdmin = { id: string; name: string; designation: string; position: string };
 
 function displayDate(value: string) {
   if (!value) return "";
@@ -84,29 +100,54 @@ function eventDateRange(from?: string, to?: string) {
   return displayDateRange(start || end, end || start);
 }
 
-async function findAppearanceApprovalAdmins(division: string) {
+async function findAppearanceApprovalAdmins(certificateOffice: string, certificateDivision: string, certificateUnit: string, pdfDivision: string) {
   if (!db) return [];
   const snapshot = await getDocs(collection(db, "users"));
-  const targetDivision = division.trim().toLocaleLowerCase("en");
-  const admins = new Set<string>();
+  const certificateRoute = certificateAppearanceSignatoryForOwner(certificateOffice.trim(), certificateDivision.trim(), certificateUnit.trim());
+  const isUnroutedFieldOperationsUnit = certificateOffice.trim() === "Division" && certificateDivision.trim() === "Field Operations Division";
+  const targetDivision = pdfDivision.trim().toLocaleLowerCase("en");
+  const admins: AppearanceApprovalAdmin[] = [];
   for (const profile of snapshot.docs) {
     const data = profile.data();
     const profileSelection = accountProfileSelection(data);
-    const isAssignedDivision = profileSelection.office
-      && profileSelection.division.toLocaleLowerCase("en") === targetDivision;
-    if (data.accountRole === "admin" && data.accountStatus === "Approved" && hasAccountDesignation(data.designation, "Chief") && isAssignedDivision) {
-      admins.add(profile.id);
+    const isAssignedFodApprover = certificateRoute
+      && isFieldOperationsAppearanceApprover(data)
+      && data.profileFieldsVersion === 4
+      && (data.accountStatus === undefined || data.accountStatus === "Approved")
+      && data.designation === certificateRoute.designation;
+    const isAssignedLegacyApprover = !certificateRoute
+      && !isUnroutedFieldOperationsUnit
+      && profileSelection.office
+      && profileSelection.division.toLocaleLowerCase("en") === targetDivision
+      && data.accountRole === "admin"
+      && normalizeAccountStatus(data.accountStatus) === "Approved"
+      && hasAccountDesignation(data.designation, "Chief");
+    if (isAssignedFodApprover || isAssignedLegacyApprover) {
+      admins.push({
+        id: profile.id,
+        name: typeof data.name === "string" ? data.name : "",
+        designation: typeof data.designation === "string" ? data.designation : "",
+        position: typeof data.position === "string" ? data.position : "",
+      });
     }
   }
-  return [...admins];
+  return admins;
+}
+
+function routedProjectLeaderAdmin(office: string, division: string, unit: string, admins: AppearanceApprovalAdmin[]) {
+  const route = certificateAppearanceSignatoryForOwner(office.trim(), division.trim(), unit.trim());
+  if (route?.designation !== "AGRISTAT/DRRM/AMIA Project Leader") return undefined;
+  return admins.find((admin) => admin.designation === route.designation && admin.name && admin.position);
 }
 
 function pronoun(gender: CertificateGender) {
   return gender === "female" ? "her" : gender === "male" ? "him" : "them";
 }
 
-export default function CertificateOfAppearance({ user, ownerOffice, role }: { user: User; ownerOffice?: string | null; role: AccountRole }) {
+export default function CertificateOfAppearance({ user, ownerOffice, ownerDivision, ownerUnit, role }: { user: User; ownerOffice?: string | null; ownerDivision?: string | null; ownerUnit?: string | null; role: AccountRole }) {
   const normalizedOwnerOffice = ownerOffice?.trim() ?? "";
+  const normalizedOwnerDivision = ownerDivision?.trim() ?? "";
+  const normalizedOwnerUnit = ownerUnit?.trim() ?? "";
   const [records, setRecords] = useState<CertificateRecord[]>([]);
   const [view, setView] = useState<"list" | "new" | "edit" | "blank-ca">("list");
   const [editingRecord, setEditingRecord] = useState<CertificateRecord | null>(null);
@@ -188,21 +229,53 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
     let active = true;
     if (!db) { setLoading(false); setError("Certificate storage is unavailable."); return; }
     getDocs(query(collection(db, "certificatesOfAppearance"), where("ownerId", "==", user.uid)))
-      .then((snapshot) => {
+      .then(async (snapshot) => {
         if (!active) return;
         const loaded = snapshot.docs.map((item) => {
           const data = item.data();
           const storedOwnerOffice = typeof data.ownerOffice === "string" ? data.ownerOffice : "";
           const savedOwnerOffice = accountOffice({ office: storedOwnerOffice, profileFieldsVersion: 3 }) ?? storedOwnerOffice;
-          const blankOffice = data.recordType === "blank" ? normalizedOwnerOffice || savedOwnerOffice : "";
+          const blankOffice = data.recordType === "blank"
+            ? (typeof data.certificateOffice === "string" ? data.certificateOffice : normalizedOwnerOffice || savedOwnerOffice)
+            : "";
           return {
             id: item.id,
             ...data,
-            ...(blankOffice ? { ownerOffice: blankOffice, destination: blankOffice } : {}),
+            ...(blankOffice ? { certificateOffice: blankOffice, destination: blankOffice } : {}),
           } as CertificateRecord;
         });
-        loaded.sort((first, second) => (second.createdAt?.toMillis?.() ?? 0) - (first.createdAt?.toMillis?.() ?? 0));
-        setRecords(loaded);
+        const signatoryByScope = new Map<string, Promise<AppearanceApprovalAdmin | undefined>>();
+        const enriched = await Promise.all(loaded.map(async (record) => {
+          if (record.signatoryPosition?.trim()) return record;
+          const certificateOffice = record.certificateOffice?.trim() || record.ownerOffice?.trim() || normalizedOwnerOffice;
+          const certificateDivision = record.certificateDivision?.trim() || record.ownerDivision?.trim() || normalizedOwnerDivision;
+          const certificateUnit = record.certificateUnit?.trim() || record.ownerUnit?.trim() || normalizedOwnerUnit;
+          const route = certificateAppearanceSignatoryForOwner(certificateOffice, certificateDivision, certificateUnit);
+          if (route?.designation !== "AGRISTAT/DRRM/AMIA Project Leader") return record;
+          const key = `${certificateOffice}\u0000${certificateDivision}\u0000${certificateUnit}`;
+          let signatoryPromise = signatoryByScope.get(key);
+          if (!signatoryPromise) {
+            signatoryPromise = findAppearanceApprovalAdmins(certificateOffice, certificateDivision, certificateUnit, record.division)
+              .then((admins) => routedProjectLeaderAdmin(certificateOffice, certificateDivision, certificateUnit, admins))
+              .catch(() => undefined);
+            signatoryByScope.set(key, signatoryPromise);
+          }
+          const assigned = await signatoryPromise;
+          if (!assigned) return record;
+          return {
+            ...record,
+            certificateOffice,
+            certificateDivision,
+            certificateUnit,
+            signatoryName: assigned.name,
+            designation: assigned.designation,
+            signatoryPosition: assigned.position,
+            signatoryAdminId: assigned.id,
+          };
+        }));
+        if (!active) return;
+        enriched.sort((first, second) => (second.createdAt?.toMillis?.() ?? 0) - (first.createdAt?.toMillis?.() ?? 0));
+        setRecords(enriched);
       })
       .catch((cause) => {
         if (!active) return;
@@ -239,32 +312,69 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
     const personNames = form.getAll("person-name").map((name) => String(name).trim());
     const genders = form.getAll("person-gender").map((gender) => String(gender) as CertificateGender);
     const division = String(form.get("division-name") ?? "") as TevDivision;
+    const certificateOffice = String(form.get("certificate-office") ?? "").trim();
+    const certificateDivision = String(form.get("certificate-division") ?? "").trim();
+    const certificateUnit = String(form.get("certificate-unit") ?? "").trim();
     if (!tevDivisions.includes(division)) { setError("Select a valid division."); return; }
+    if (!accountOfficeOptions.includes(certificateOffice as (typeof accountOfficeOptions)[number])
+      || !divisionsForOffice(certificateOffice).includes(certificateDivision)
+      || !unitsForOfficeDivision(certificateOffice, certificateDivision).includes(certificateUnit)) {
+      setError("Select a valid Certificate Office, Division, and Unit / Program / Project.");
+      return;
+    }
     const signatory = divisionSignatory(division);
-    const recordData = {
-      eventTitle: String(form.get("event-title") ?? "").trim(),
-      destination: String(form.get("destination") ?? "").trim(),
-      eventDateFrom: String(form.get("event-date-from") ?? ""),
-      eventDateTo: String(form.get("event-date-to") ?? ""),
-      people: personNames.map((name, index) => ({ name, gender: genders[index] || "unspecified", office: String(form.getAll("person-office")[index] ?? "").trim() })),
-      signatoryName: signatory.name,
-      designation: signatory.position,
-      division,
-      status: "Pending" as const,
-      ownerId: user.uid,
-      createdAt: serverTimestamp(),
-    };
+    const certificateScopeFields = { certificateOffice, certificateDivision, certificateUnit };
     setSaving(true);
+    let saveStage = "refreshing your sign-in status";
+    let certificateSaved = false;
     try {
+      await user.reload();
+      const token = await user.getIdTokenResult(true);
+      if (token.claims.email_verified !== true) {
+        throw new Error("Firebase does not currently mark this signed-in account as email verified. Sign out and back in after verifying your email, then try again.");
+      }
+
+      saveStage = "loading the assigned approver profile";
+      const approvalAdmins = role === "regular"
+        ? await findAppearanceApprovalAdmins(certificateOffice, certificateDivision, certificateUnit, division)
+        : [];
+      if (role === "regular" && !approvalAdmins.length) throw new Error("No approved Certificate of Appearance signatory is assigned to the selected Certificate Office, Division, and Unit. The certificate was not submitted.");
+      const assignedProjectLeader = role === "regular"
+        ? routedProjectLeaderAdmin(certificateOffice, certificateDivision, certificateUnit, approvalAdmins)
+        : undefined;
+      if (role === "regular"
+        && certificateAppearanceSignatoryForOwner(certificateOffice, certificateDivision, certificateUnit)?.designation === "AGRISTAT/DRRM/AMIA Project Leader"
+        && !assignedProjectLeader) {
+        throw new Error("No approved Certificate of Appearance signatory with a name and position is assigned to the selected Certificate Office, Division, and Unit. The certificate was not submitted.");
+      }
+      const recordData = {
+        eventTitle: String(form.get("event-title") ?? "").trim(),
+        destination: String(form.get("destination") ?? "").trim(),
+        eventDateFrom: String(form.get("event-date-from") ?? ""),
+        eventDateTo: String(form.get("event-date-to") ?? ""),
+        people: personNames.map((name, index) => ({ name, gender: genders[index] || "unspecified", office: String(form.getAll("person-office")[index] ?? "").trim() })),
+        signatoryName: assignedProjectLeader?.name || signatory.name,
+        designation: assignedProjectLeader?.designation || signatory.position,
+        ...(assignedProjectLeader ? { signatoryPosition: assignedProjectLeader.position, signatoryAdminId: assignedProjectLeader.id } : {}),
+        division,
+        ownerRole: role,
+        ...certificateScopeFields,
+        status: "Pending" as const,
+        ownerId: user.uid,
+        createdAt: serverTimestamp(),
+      };
       const reference = doc(collection(db, "certificatesOfAppearance"));
-      const batch = writeBatch(db);
-      batch.set(reference, recordData);
+      saveStage = "saving the certificate record";
+      await setDoc(reference, recordData);
+      certificateSaved = true;
+      setRecords((current) => [{ ...recordData, id: reference.id, createdAt: undefined }, ...current]);
+      setView("list");
+
       if (role === "regular") {
-        const admins = await findAppearanceApprovalAdmins(division);
-        if (!admins.length) throw new Error(`No approved Chief Admin is assigned to ${division}. The certificate was not submitted.`);
-        for (const recipientId of admins) {
+        const notificationBatch = writeBatch(db);
+        for (const recipient of approvalAdmins) {
           const notification = makeDocumentNotification(db, {
-            recipientId,
+            recipientId: recipient.id,
             ownerId: user.uid,
             documentId: reference.id,
             documentType: "Certificate Approval",
@@ -274,17 +384,22 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
             dateTo: recordData.eventDateTo,
             destination: recordData.destination,
           });
-          batch.set(notification.reference, notification.data);
+          notificationBatch.set(notification.reference, notification.data);
+        }
+        if (approvalAdmins.length) {
+          saveStage = "sending the approval notification";
+          await notificationBatch.commit();
         }
       }
-      await batch.commit();
-      setRecords((current) => [{ ...recordData, id: reference.id, createdAt: undefined }, ...current]);
-      setView("list");
     } catch (cause) {
       const code = (cause as { code?: string }).code;
-      setError(cause instanceof Error && cause.message.startsWith("No approved Chief Admin")
+      if (certificateSaved) {
+        setError(`The Certificate of Appearance was saved, but Firestore denied ${saveStage}. The assigned approver can still review it in Certificate Approval.`);
+      } else setError(cause instanceof Error && cause.message.startsWith("No approved Certificate of Appearance signatory")
         ? cause.message
-        : code ? `Could not save the certificate (${code}).` : "Could not save the certificate. Try again.");
+        : cause instanceof Error && cause.message.startsWith("Firebase does not currently mark this signed-in account")
+          ? cause.message
+          : code ? `Could not continue while ${saveStage} (${code}). Refresh the page and try again.` : cause instanceof Error ? cause.message : "Could not save the certificate. Try again.");
     } finally {
       setSaving(false);
     }
@@ -339,19 +454,94 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
       const { parseCertificateImportWorkbook } = await import("@/lib/certificate-import");
       const parsed = parseCertificateImportWorkbook(new Uint8Array(await file.arrayBuffer()));
       const certificateCollection = collection(db, "certificatesOfAppearance");
-      for (let offset = 0; offset < parsed.length; offset += 450) {
-        const batch = writeBatch(db);
-        const chunk: CertificateRecord[] = parsed.slice(offset, offset + 450).map((record) => {
-          const reference = doc(certificateCollection);
-          const data = { ...record, status: "Pending" as const, ownerId: user.uid, createdAt: serverTimestamp() };
-          batch.set(reference, data);
-          return { ...data, id: reference.id, createdAt: undefined } as CertificateRecord;
-        });
+      const defaultCertificateScopeFields = normalizedOwnerOffice && normalizedOwnerDivision && normalizedOwnerUnit
+        ? { certificateOffice: normalizedOwnerOffice, certificateDivision: normalizedOwnerDivision, certificateUnit: normalizedOwnerUnit }
+        : {};
+      const adminsByScope = new Map<string, Promise<AppearanceApprovalAdmin[]>>();
+      const routedRecords = await Promise.all(parsed.map(async (record) => {
+        const certificateOffice = record.certificateOffice || normalizedOwnerOffice;
+        const certificateDivision = record.certificateDivision || normalizedOwnerDivision;
+        const certificateUnit = record.certificateUnit || normalizedOwnerUnit;
+        const recordCertificateScopeFields = certificateOffice && certificateDivision && certificateUnit
+          ? { certificateOffice, certificateDivision, certificateUnit }
+          : defaultCertificateScopeFields;
+        let approvalAdmins: AppearanceApprovalAdmin[] = [];
+        let assignedProjectLeader: AppearanceApprovalAdmin | undefined;
+        if (role === "regular") {
+          const scopeKey = `${certificateOffice}\u0000${certificateDivision}\u0000${certificateUnit}\u0000${record.division}`;
+          let adminsPromise = adminsByScope.get(scopeKey);
+          if (!adminsPromise) {
+            adminsPromise = findAppearanceApprovalAdmins(certificateOffice, certificateDivision, certificateUnit, record.division);
+            adminsByScope.set(scopeKey, adminsPromise);
+          }
+          approvalAdmins = await adminsPromise;
+          if (!approvalAdmins.length) {
+            throw new Error(`No approved Certificate of Appearance signatory is assigned to ${certificateOffice}, ${certificateDivision}, and ${certificateUnit}. The workbook was not imported.`);
+          }
+          const route = certificateAppearanceSignatoryForOwner(certificateOffice, certificateDivision, certificateUnit);
+          if (route?.designation === "AGRISTAT/DRRM/AMIA Project Leader") {
+            assignedProjectLeader = routedProjectLeaderAdmin(certificateOffice, certificateDivision, certificateUnit, approvalAdmins);
+            if (!assignedProjectLeader) {
+              throw new Error(`No approved Certificate of Appearance signatory with a name and position is assigned to ${certificateOffice}, ${certificateDivision}, and ${certificateUnit}. The workbook was not imported.`);
+            }
+          }
+        }
+        const reference = doc(certificateCollection);
+        const data = {
+          ...record,
+          ...(assignedProjectLeader ? {
+            signatoryName: assignedProjectLeader.name,
+            designation: assignedProjectLeader.designation,
+            signatoryPosition: assignedProjectLeader.position,
+            signatoryAdminId: assignedProjectLeader.id,
+          } : {}),
+          ownerRole: role,
+          ...recordCertificateScopeFields,
+          status: "Pending" as const,
+          ownerId: user.uid,
+          createdAt: serverTimestamp(),
+        };
+        return { reference, data, approvalAdmins };
+      }));
+
+      let batch = writeBatch(db);
+      let batchWriteCount = 0;
+      let batchRecords: CertificateRecord[] = [];
+      const commitBatch = async () => {
+        if (!batchWriteCount) return;
         await batch.commit();
-        imported = [...imported, ...chunk];
-        setRecords((current) => [...chunk, ...current]);
+        imported = [...imported, ...batchRecords];
+        setRecords((current) => [...batchRecords, ...current]);
+        batch = writeBatch(db);
+        batchWriteCount = 0;
+        batchRecords = [];
+      };
+      for (const { reference, data, approvalAdmins } of routedRecords) {
+        const operationCount = 1 + approvalAdmins.length;
+        if (operationCount > 450) throw new Error("Too many assigned signatories were found for an imported certificate.");
+        if (batchWriteCount && batchWriteCount + operationCount > 450) await commitBatch();
+        batch.set(reference, data);
+        for (const recipient of approvalAdmins) {
+          const notification = makeDocumentNotification(db, {
+            recipientId: recipient.id,
+            ownerId: user.uid,
+            documentId: reference.id,
+            documentType: "Certificate Approval",
+            certificateType: "Appearance",
+            activityTitle: data.eventTitle,
+            dateFrom: data.eventDateFrom,
+            dateTo: data.eventDateTo,
+            destination: data.destination,
+          });
+          batch.set(notification.reference, notification.data);
+        }
+        batchWriteCount += operationCount;
+        batchRecords.push({ ...data, id: reference.id, createdAt: undefined } as CertificateRecord);
       }
-      setImportMessage(`Imported ${imported.length} certificate ${imported.length === 1 ? "report" : "reports"}.`);
+      await commitBatch();
+      setImportMessage(role === "regular"
+        ? `Imported ${imported.length} certificate ${imported.length === 1 ? "report" : "reports"} and notified the assigned approver${imported.length === 1 ? "" : "s"}.`
+        : `Imported ${imported.length} certificate ${imported.length === 1 ? "report" : "reports"}.`);
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : "Check the template and try again.";
       setError(imported.length
@@ -421,42 +611,75 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
     return createBlankCertificatePdf(record);
   }
 
-  async function saveBlankCertificate(division: TevDivision, purpose: string) {
-    if (!tevDivisions.includes(division)) return;
-    const normalizedPurpose = purpose.trim();
+  async function saveBlankCertificate(submission: BlankCertificateSubmission) {
+    const { certificateOffice, certificateDivision, certificateUnit, pdfDivision } = submission;
+    if (!accountOfficeOptions.includes(certificateOffice as (typeof accountOfficeOptions)[number])
+      || !divisionsForOffice(certificateOffice).includes(certificateDivision)
+      || !unitsForOfficeDivision(certificateOffice, certificateDivision).includes(certificateUnit)
+      || !tevDivisions.includes(pdfDivision)) {
+      setBlankError("Select a valid Certificate Office, Division, Unit / Program / Project, and template division.");
+      return;
+    }
+    const normalizedPurpose = submission.purpose.trim();
     if (!normalizedPurpose) { setBlankError("Enter the purpose for this blank certificate request."); return; }
     setBlankError("");
     setImportMessage("");
     if (!db) { setBlankError("Certificate storage is unavailable."); return; }
-    if (!normalizedOwnerOffice) { setBlankError("Set your Office in Profile before saving a Blank Certificate of Appearance."); return; }
     setSavingBlank(true);
+    let saveStage = "refreshing your sign-in status";
+    let certificateSaved = false;
     try {
-      const signatory = divisionSignatory(division);
+      await user.reload();
+      const token = await user.getIdTokenResult(true);
+      if (token.claims.email_verified !== true) {
+        throw new Error("Firebase does not currently mark this signed-in account as email verified. Sign out and back in after verifying your email, then try again.");
+      }
+      const signatory = divisionSignatory(pdfDivision);
+      saveStage = "loading the assigned approver profile";
+      const approvalAdmins = role === "regular"
+        ? await findAppearanceApprovalAdmins(certificateOffice, certificateDivision, certificateUnit, pdfDivision)
+        : [];
+      if (role === "regular" && !approvalAdmins.length) throw new Error("No approved Certificate of Appearance signatory is assigned to the selected Certificate Office, Division, and Unit. The blank certificate was not submitted.");
+      const assignedProjectLeader = role === "regular"
+        ? routedProjectLeaderAdmin(certificateOffice, certificateDivision, certificateUnit, approvalAdmins)
+        : undefined;
+      if (role === "regular"
+        && certificateAppearanceSignatoryForOwner(certificateOffice, certificateDivision, certificateUnit)?.designation === "AGRISTAT/DRRM/AMIA Project Leader"
+        && !assignedProjectLeader) {
+        throw new Error("No approved Certificate of Appearance signatory with a name and position is assigned to the selected Certificate Office, Division, and Unit. The blank certificate was not submitted.");
+      }
       const recordData = {
         recordType: "blank" as const,
         eventTitle: "Blank Certificate of Appearance",
-        destination: normalizedOwnerOffice,
+        destination: certificateOffice,
         purpose: normalizedPurpose,
-        ownerOffice: normalizedOwnerOffice,
+        ownerRole: role,
+        certificateOffice,
+        certificateDivision,
+        certificateUnit,
         eventDateFrom: "",
         eventDateTo: "",
         people: [] as CertificatePerson[],
-        signatoryName: signatory.name,
-        designation: signatory.position,
-        division,
+        signatoryName: assignedProjectLeader?.name || signatory.name,
+        designation: assignedProjectLeader?.designation || signatory.position,
+        ...(assignedProjectLeader ? { signatoryPosition: assignedProjectLeader.position, signatoryAdminId: assignedProjectLeader.id } : {}),
+        division: pdfDivision,
         status: "Pending" as const,
         ownerId: user.uid,
         createdAt: serverTimestamp(),
       };
       const reference = doc(collection(db, "certificatesOfAppearance"));
-      const batch = writeBatch(db);
-      batch.set(reference, recordData);
+      saveStage = "saving the certificate record";
+      await setDoc(reference, recordData);
+      certificateSaved = true;
+      setRecords((current) => [{ ...recordData, id: reference.id, createdAt: undefined }, ...current]);
+      setView("list");
+
       if (role === "regular") {
-        const admins = await findAppearanceApprovalAdmins(division);
-        if (!admins.length) throw new Error(`No approved Chief Admin is assigned to ${division}. The blank certificate was not submitted.`);
-        for (const recipientId of admins) {
+        const notificationBatch = writeBatch(db);
+        for (const recipient of approvalAdmins) {
           const notification = makeDocumentNotification(db, {
-            recipientId,
+            recipientId: recipient.id,
             ownerId: user.uid,
             documentId: reference.id,
             documentType: "Certificate Approval",
@@ -467,19 +690,24 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
             destination: recordData.destination,
             purpose: recordData.purpose,
           });
-          batch.set(notification.reference, notification.data);
+          notificationBatch.set(notification.reference, notification.data);
+        }
+        if (approvalAdmins.length) {
+          saveStage = "sending the approval notification";
+          await notificationBatch.commit();
         }
       }
-      await batch.commit();
-      setRecords((current) => [{ ...recordData, id: reference.id, createdAt: undefined }, ...current]);
-      setImportMessage(`Saved a blank Certificate of Appearance for ${normalizedOwnerOffice}.`);
-      setView("list");
+      setImportMessage(`Saved a blank Certificate of Appearance for ${certificateUnit}.`);
     } catch (cause) {
       const code = (cause as { code?: string }).code;
-      setBlankError(cause instanceof Error && cause.message.startsWith("No approved Chief Admin")
+      if (certificateSaved) {
+        setImportMessage(`The blank Certificate of Appearance for ${certificateUnit} was saved, but Firestore denied ${saveStage}. The assigned approver can still review it in Certificate Approval.`);
+      } else setBlankError(cause instanceof Error && cause.message.startsWith("No approved Certificate of Appearance signatory")
         ? cause.message
+        : cause instanceof Error && cause.message.startsWith("Firebase does not currently mark")
+          ? cause.message
         : code === "permission-denied"
-          ? "Firestore blocked this save. Check that your account is approved, your Office matches your profile, and the latest firestore.rules are deployed to the ps-taguibo database."
+          ? `Firestore denied access while ${saveStage}. This message does not identify which access rule failed. Confirm the app is using the ps-taguibo database and retry after refreshing the page.`
         : code ? `Could not save the blank certificate (${code}).` : "Could not save the blank certificate. Try again.");
     } finally {
       setSavingBlank(false);
@@ -526,9 +754,9 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
     </div>;
   }
 
-  if (view === "new") return <CertificateForm onCancel={() => { setView("list"); setError(""); }} onSubmit={saveCertificate} saving={saving} error={error} />;
+  if (view === "new") return <CertificateForm ownerOffice={normalizedOwnerOffice} ownerDivision={normalizedOwnerDivision} ownerUnit={normalizedOwnerUnit} onCancel={() => { setView("list"); setError(""); }} onSubmit={saveCertificate} saving={saving} error={error} />;
   if (view === "edit" && editingRecord) return <CertificateNamesForm record={editingRecord} onCancel={() => { setEditingRecord(null); setView("list"); setError(""); }} onSubmit={saveNameCorrections} saving={saving} error={error} />;
-  if (view === "blank-ca") return <BlankCertificateGenerator onCancel={() => { setView("list"); setBlankError(""); }} onSave={(division, purpose) => void saveBlankCertificate(division, purpose)} saving={savingBlank} error={blankError} />;
+  if (view === "blank-ca") return <BlankCertificateGenerator ownerOffice={normalizedOwnerOffice} ownerDivision={normalizedOwnerDivision} ownerUnit={normalizedOwnerUnit} onCancel={() => { setView("list"); setBlankError(""); }} onSave={(submission) => void saveBlankCertificate(submission)} saving={savingBlank} error={blankError} />;
 
   if (blankPreview) return <div className="preview-backdrop coa-preview-backdrop">
     <div className="preview-toolbar coa-preview-toolbar"><span>Certificate of Appearance preview</span><button type="button" className="ghost-button" onClick={() => { setBlankPreview(null); setBlankPreviewUrl(""); setBlankPreviewError(""); setError(""); }}>Close</button><button type="button" className="pdf-button" disabled={!blankPreviewUrl || blankPreviewRendering || Boolean(blankPreviewError)} onClick={downloadBlankPreviewPdf}>Download PDF</button><button type="button" className="pdf-button" disabled={printing || blankPreviewRendering || Boolean(blankPreviewError)} onClick={() => void printCertificates()}>{printing ? "Preparing print..." : "Print"}</button></div>
@@ -549,30 +777,96 @@ export default function CertificateOfAppearance({ user, ownerOffice, role }: { u
   </>;
 }
 
-function BlankCertificateGenerator({ onCancel, onSave, saving, error }: { onCancel: () => void; onSave: (division: TevDivision, purpose: string) => void; saving: boolean; error: string }) {
-  const [division, setDivision] = useState<TevDivision | "">("");
+function BlankCertificateGenerator({ ownerOffice, ownerDivision, ownerUnit, onCancel, onSave, saving, error }: { ownerOffice: string; ownerDivision: string; ownerUnit: string; onCancel: () => void; onSave: (submission: BlankCertificateSubmission) => void; saving: boolean; error: string }) {
+  const initialOffice = accountOfficeOptions.includes(ownerOffice as (typeof accountOfficeOptions)[number]) ? ownerOffice : accountOfficeOptions[0];
+  const initialDivisionOptions = divisionsForOffice(initialOffice);
+  const initialDivision = initialDivisionOptions.includes(ownerDivision) ? ownerDivision : initialDivisionOptions[0] ?? "";
+  const initialUnitOptions = unitsForOfficeDivision(initialOffice, initialDivision);
+  const initialUnit = initialUnitOptions.includes(ownerUnit) ? ownerUnit : initialUnitOptions[0] ?? "";
+  const [certificateOffice, setCertificateOffice] = useState(initialOffice);
+  const [certificateDivision, setCertificateDivision] = useState(initialDivision);
+  const [certificateUnit, setCertificateUnit] = useState(initialUnit);
+  const [templateDivision, setTemplateDivision] = useState<TevDivision | "">(() => tevDivisions.includes(initialDivision as TevDivision) ? initialDivision as TevDivision : tevDivisions[0]);
   const [purpose, setPurpose] = useState("");
+  const certificateDivisionOptions = divisionsForOffice(certificateOffice);
+  const certificateUnitOptions = unitsForOfficeDivision(certificateOffice, certificateDivision);
+  const selectedPdfDivision = tevDivisions.includes(certificateDivision as TevDivision)
+    ? certificateDivision as TevDivision
+    : templateDivision;
+
+  function changeCertificateOffice(nextOffice: string) {
+    const nextDivisions = divisionsForOffice(nextOffice);
+    const nextDivision = nextDivisions[0] ?? "";
+    const nextUnits = unitsForOfficeDivision(nextOffice, nextDivision);
+    setCertificateOffice(nextOffice);
+    setCertificateDivision(nextDivision);
+    setCertificateUnit(nextUnits[0] ?? "");
+    if (tevDivisions.includes(nextDivision as TevDivision)) setTemplateDivision(nextDivision as TevDivision);
+  }
+
+  function changeCertificateDivision(nextDivision: string) {
+    const nextUnits = unitsForOfficeDivision(certificateOffice, nextDivision);
+    setCertificateDivision(nextDivision);
+    setCertificateUnit(nextUnits[0] ?? "");
+    if (tevDivisions.includes(nextDivision as TevDivision)) setTemplateDivision(nextDivision as TevDivision);
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (division) onSave(division, purpose);
+    if (selectedPdfDivision) onSave({ certificateOffice, certificateDivision, certificateUnit, pdfDivision: selectedPdfDivision, purpose });
   }
 
   return <section className="content-section form-section coa-form-section coa-blank-section">
-    <div className="section-heading"><div><p className="eyebrow">Blank certificate</p><h2>Save a Blank Certificate of Appearance</h2><p className="muted">Select your division to save its certificate in Appearance Generated Reports. Open it from the report list to view the PDF.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
+    <div className="section-heading"><div><p className="eyebrow">Blank certificate</p><h2>Save a Blank Certificate of Appearance</h2><p className="muted">Choose the certificate office, division, unit or program, and purpose. The saved certificate will appear in Appearance Generated Reports.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="coa-error" role="alert">{error}</p>}
     <form className="permit-form coa-blank-form" onSubmit={submit}>
-      <label className="wide-field">Select a Division<select value={division} onChange={(event) => setDivision(event.target.value as TevDivision | "")} required><option value="" disabled>Select a Division</option>{tevDivisions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+      <div className="wide-field coa-blank-profile-row" aria-label="Certificate Office, Certificate Division, and Certificate Unit / Program / Project">
+        <label>Certificate Office<select value={certificateOffice} onChange={(event) => changeCertificateOffice(event.target.value)} required><option value="" disabled>Select an Office</option>{accountOfficeOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+        <label>Certificate Division<select value={certificateDivision} onChange={(event) => changeCertificateDivision(event.target.value)} required><option value="" disabled>Select a Division</option>{certificateDivisionOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+        <label>Certificate Unit / Program / Project<select value={certificateUnit} onChange={(event) => setCertificateUnit(event.target.value)} required><option value="" disabled>Select a Unit / Program / Project</option>{certificateUnitOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+      </div>
+      {!tevDivisions.includes(certificateDivision as TevDivision) && <label className="wide-field">Certificate Template Signatory Division<select value={templateDivision} onChange={(event) => setTemplateDivision(event.target.value as TevDivision | "")} required><option value="" disabled>Select a template division</option>{tevDivisions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>}
       <label className="wide-field">Purpose<textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} maxLength={500} rows={3} required /></label>
-      <div className="wide-field form-actions"><button type="submit" className="primary-button" disabled={!division || saving}>{saving ? "Saving..." : "Save"}</button></div>
+      <div className="wide-field form-actions"><button type="submit" className="primary-button" disabled={!certificateOffice || !certificateDivision || !certificateUnit || !selectedPdfDivision || saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
 }
 
-function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
+function CertificateForm({ ownerOffice, ownerDivision, ownerUnit, onCancel, onSubmit, saving, error }: { ownerOffice: string; ownerDivision: string; ownerUnit: string; onCancel: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean; error: string }) {
   const [people, setPeople] = useState([newPerson()]);
   const [eventDateFrom, setEventDateFrom] = useState("");
-  const [divisionName, setDivisionName] = useState<TevDivision>(tevDivisions[0]);
+  const initialOffice = accountOfficeOptions.includes(ownerOffice as (typeof accountOfficeOptions)[number]) ? ownerOffice : accountOfficeOptions[0];
+  const initialDivisionOptions = divisionsForOffice(initialOffice);
+  const initialDivision = initialDivisionOptions.includes(ownerDivision) ? ownerDivision : initialDivisionOptions[0] ?? "";
+  const initialUnitOptions = unitsForOfficeDivision(initialOffice, initialDivision);
+  const initialUnit = initialUnitOptions.includes(ownerUnit) ? ownerUnit : initialUnitOptions[0] ?? "";
+  const initialTemplateDivision = tevDivisions.includes(ownerDivision as TevDivision) ? ownerDivision as TevDivision : tevDivisions[0];
+  const [certificateOffice, setCertificateOffice] = useState(initialOffice);
+  const [certificateDivision, setCertificateDivision] = useState(initialDivision);
+  const [certificateUnit, setCertificateUnit] = useState(initialUnit);
+  const [templateDivision, setTemplateDivision] = useState<TevDivision>(initialTemplateDivision);
+  const certificateDivisionOptions = divisionsForOffice(certificateOffice);
+  const certificateUnitOptions = unitsForOfficeDivision(certificateOffice, certificateDivision);
+  const selectedPdfDivision = tevDivisions.includes(certificateDivision as TevDivision)
+    ? certificateDivision as TevDivision
+    : templateDivision;
+
+  function changeCertificateOffice(nextOffice: string) {
+    const nextDivisions = divisionsForOffice(nextOffice);
+    const nextDivision = nextDivisions[0] ?? "";
+    const nextUnits = unitsForOfficeDivision(nextOffice, nextDivision);
+    setCertificateOffice(nextOffice);
+    setCertificateDivision(nextDivision);
+    setCertificateUnit(nextUnits[0] ?? "");
+    if (tevDivisions.includes(nextDivision as TevDivision)) setTemplateDivision(nextDivision as TevDivision);
+  }
+
+  function changeCertificateDivision(nextDivision: string) {
+    const nextUnits = unitsForOfficeDivision(certificateOffice, nextDivision);
+    setCertificateDivision(nextDivision);
+    setCertificateUnit(nextUnits[0] ?? "");
+    if (tevDivisions.includes(nextDivision as TevDivision)) setTemplateDivision(nextDivision as TevDivision);
+  }
   return <section className="content-section form-section coa-form-section">
     <div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create Certificate of Appearance</h2><p className="muted">Enter the event details and one or more attendees. Two certificates fit on each A4 page.</p></div><button type="button" className="ghost-button" onClick={onCancel}>Cancel</button></div>
     {error && <p className="coa-error" role="alert">{error}</p>}
@@ -580,13 +874,19 @@ function CertificateForm({ onCancel, onSubmit, saving, error }: { onCancel: () =
       <label>Event&apos;s Title<input name="event-title" maxLength={240} required /></label>
       <label>Event&apos;s Destination<input name="destination" maxLength={180} required /></label>
       <div className="wide-field coa-date-range"><label>Event&apos;s Date (From)<input name="event-date-from" type="date" value={eventDateFrom} onChange={(event) => setEventDateFrom(event.target.value)} required /></label><span>to</span><label>Event&apos;s Date (To)<input name="event-date-to" type="date" min={eventDateFrom || undefined} required /></label></div>
+      <div className="wide-field coa-certificate-scope-row" aria-label="Certificate Office, Certificate Division, and Certificate Unit / Program / Project">
+        <label>Certificate Office<select name="certificate-office" value={certificateOffice} onChange={(event) => changeCertificateOffice(event.target.value)} required><option value="" disabled>Select an Office</option>{accountOfficeOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+        <label>Certificate Division<select name="certificate-division" value={certificateDivision} onChange={(event) => changeCertificateDivision(event.target.value)} required><option value="" disabled>Select a Division</option>{certificateDivisionOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+        <label>Certificate Unit / Program / Project<select name="certificate-unit" value={certificateUnit} onChange={(event) => setCertificateUnit(event.target.value)} required><option value="" disabled>Select a Unit / Program / Project</option>{certificateUnitOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+      </div>
+      <input type="hidden" name="division-name" value={selectedPdfDivision} />
+      {!tevDivisions.includes(certificateDivision as TevDivision) && <label className="wide-field">Certificate Template Signatory Division<select value={templateDivision} onChange={(event) => setTemplateDivision(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division} value={division}>{division}</option>)}</select></label>}
       <fieldset className="wide-field coa-people-fieldset"><legend>Attendees</legend>{people.map((person, index) => <div className="coa-person-row" key={index}>
         <label>Name<input name="person-name" maxLength={160} value={person.name} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} placeholder={`Person ${index + 1}`} required /></label>
         <label>Gender<select name="person-gender" value={person.gender} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, gender: event.target.value as CertificateGender } : item))}><option value="" disabled>Select gender</option><option value="female">Female</option><option value="male">Male</option></select></label>
         <label>Office<input name="person-office" maxLength={180} value={person.office ?? ""} onChange={(event) => setPeople((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, office: event.target.value } : item))} required /></label>
         {people.length > 1 && <button type="button" className="remove-participant" aria-label={`Delete person ${index + 1}`} onClick={() => setPeople((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Delete</button>}
       </div>)}<button type="button" className="text-button plain-action add-item-text-button" onClick={() => setPeople((current) => [...current, newPerson()])}>+ Add person</button></fieldset>
-      <label className="wide-field">Division Name<select name="division-name" value={divisionName} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division} value={division}>{division}</option>)}</select></label>
       <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving..." : "Save"}</button></div>
     </form>
   </section>;
@@ -610,8 +910,9 @@ function CertificateNamesForm({ record, onCancel, onSubmit, saving, error }: { r
 }
 
 function CertificatePaper({ record, person }: { record: CertificateRecord; person: CertificatePerson }) {
-  const showApprovalSignature = hasFieldOperationsChiefApprovalSignature(record);
+  const showApprovalSignature = hasFieldOperationsAppearanceApprovalSignature(record);
   const showDisapprovalStamp = certificateWorkflowStatus(record.status) === "Disapproved";
+  const signatory = appearanceCertificateSignatory(record, record.signatoryName, record.designation);
   return <article className="coa-certificate-card">
     <img className="coa-letterhead" src={blankCertificateAsset} alt="" />
     <h1 className="coa-title">CERTIFICATE OF APPEARANCE</h1>
@@ -622,7 +923,9 @@ function CertificatePaper({ record, person }: { record: CertificateRecord; perso
     <div className={`coa-signatory-block${showApprovalSignature ? " is-approved" : ""}${showDisapprovalStamp ? " is-disapproved" : ""}`}>
       <CertificateDisapprovalStamp record={record} />
       <CertificateApprovalSignature record={record} />
-      <footer className="coa-signatory"><strong>{record.signatoryName}</strong><div className="coa-signatory-role"><em>{record.designation},</em> <span>{certificateDivisionDisplayNames[record.division] ?? record.division}</span></div></footer>
+      <footer className="coa-signatory"><strong>{signatory.name}</strong><div className="coa-signatory-role">{signatory.isProfileSignatory
+        ? <em>{signatory.designation} / {signatory.position}</em>
+        : <><em>{signatory.position},</em> <span>{certificateDivisionDisplayNames[record.division] ?? record.division}</span></>}</div></footer>
     </div>
   </article>;
 }

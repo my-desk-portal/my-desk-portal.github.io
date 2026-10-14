@@ -6,13 +6,14 @@ import type { User } from "firebase/auth";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { db } from "@/lib/firebase";
 import { accountDivision, accountDivisionForApproval, accountOffice, hasAccountDesignation, unitsForOfficeDivision } from "@/lib/account-profile";
-import type { AccountRole } from "@/lib/user-roles";
+import { certificateAppearanceSignatoryForOwner, fieldOperationsAppearanceUnitsForApprover, isFieldOperationsAppearanceApprover } from "@/lib/certificate-signatory";
+import { normalizeAccountStatus, type AccountRole } from "@/lib/user-roles";
 import { makeDocumentNotification } from "@/lib/document-notifications";
 import { blankAppearancePurpose } from "@/lib/certificate-title";
 import { makeBlankCertificatePdf } from "@/lib/blank-certificate-pdf";
 import { tevDivisions, type TevDivision } from "@/lib/mytev";
 import { loadPdfTools } from "@/lib/pdf-tools";
-import { CertificateApprovalSignature, CertificateDisapprovalStamp, CertificateStatusBadge, certificateWorkflowStatus, hasFieldOperationsChiefApprovalSignature, type CertificateWorkflowFields, type CertificateWorkflowStatus } from "./CertificateWorkflow";
+import { appearanceCertificateSignatory, CertificateApprovalSignature, CertificateDisapprovalStamp, CertificateStatusBadge, certificateWorkflowStatus, hasFieldOperationsAppearanceApprovalSignature, type CertificateWorkflowFields, type CertificateWorkflowStatus } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./certificate-approval.css";
@@ -29,7 +30,13 @@ type CertificateQueueRecord = CertificateWorkflowFields & {
   unit?: string;
   division?: string;
   recordType?: string;
+  ownerRole?: string;
   ownerOffice?: string;
+  ownerDivision?: string;
+  ownerUnit?: string;
+  certificateOffice?: string;
+  certificateDivision?: string;
+  certificateUnit?: string;
   eventTitle?: string;
   purpose?: string;
   office?: string;
@@ -53,7 +60,6 @@ const certificateCollections: { name: CertificateCollection; label: string }[] =
   { name: "participationCertificates", label: "Participation" },
 ];
 
-const fieldOperationsCertificateOwnerUnits = new Set(unitsForOfficeDivision("Division", "Field Operations Division"));
 const appearanceLetterhead = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/certificate-of-appearance-blank.jpg`;
 const certificateDivisionDisplayNames: Record<string, string> = {
   "Planning, Monitoring and Evaluation Division": "PMED",
@@ -176,6 +182,13 @@ export default function CertificateApproval({ user, role, office, division, unit
   const appearancePreviewPagesRef = useRef<HTMLDivElement>(null);
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
   const isChiefAdmin = role === "admin" && hasAccountDesignation(designation, "Chief");
+  const isFodChiefAdmin = isChiefAdmin && office === "Division" && division === "Field Operations Division" && unit === "Field Operations Division";
+  const isFodProjectLeaderAdmin = role === "admin"
+    && office === "Division"
+    && division === "Field Operations Division"
+    && unit === "Field Operations Division"
+    && designation === "AGRISTAT/DRRM/AMIA Project Leader";
+  const isAppearanceApprovalAdmin = isChiefAdmin || isFodProjectLeaderAdmin;
   const reviewDivision = accountDivisionForApproval(office ?? "", unit ?? assignment ?? "", division ?? "");
 
   useEffect(() => () => {
@@ -233,16 +246,16 @@ export default function CertificateApproval({ user, role, office, division, unit
   }, [blankPreviewUrl]);
 
   const accessMessage = useMemo(() => {
-    if (role === "admin" && (!office || !reviewDivision)) return "Set your Office and Division in Profile to view certificates assigned to your division.";
+    if (role === "admin" && (!isAppearanceApprovalAdmin || !office || !reviewDivision)) return "Certificate Approval is available to designated Chief and AGRISTAT/DRRM/AMIA Project Leader signatories.";
     return "";
-  }, [office, reviewDivision, role]);
+  }, [isAppearanceApprovalAdmin, office, reviewDivision, role]);
 
   useEffect(() => {
     let active = true;
     setRecords([]);
     setError("");
     setMessage("");
-    if (!db || (role === "admin" && (!isChiefAdmin || !office || !reviewDivision))) {
+    if (!db || (role === "admin" && (!isAppearanceApprovalAdmin || !office || !reviewDivision))) {
       setLoading(false);
       return () => { active = false; };
     }
@@ -254,14 +267,26 @@ export default function CertificateApproval({ user, role, office, division, unit
         const snapshots = await Promise.all(certificateCollections.map(async ({ name, label }) => {
           const constraints: QueryConstraint[] = [];
           if (role === "regular") constraints.push(where("ownerId", "==", user.uid));
-          if (isChiefAdmin) {
-            if (name === "certificatesOfAppearance") {
+          if (role === "admin") {
+            if (name === "certificatesOfAppearance" && isFodChiefAdmin) {
+              constraints.push(where("ownerRole", "==", "regular"));
+              constraints.push(where("certificateOffice", "==", "Division"));
+              constraints.push(where("certificateDivision", "==", "Field Operations Division"));
+              const units = fieldOperationsAppearanceUnitsForApprover("Chief");
+              constraints.push(where("certificateUnit", "in", [...units]));
+            } else if (name === "certificatesOfAppearance" && isFodProjectLeaderAdmin) {
+              constraints.push(where("ownerRole", "==", "regular"));
+              constraints.push(where("certificateOffice", "==", "Division"));
+              constraints.push(where("certificateDivision", "==", "Field Operations Division"));
+              const units = fieldOperationsAppearanceUnitsForApprover("AGRISTAT/DRRM/AMIA Project Leader");
+              constraints.push(where("certificateUnit", "in", [...units]));
+            } else if (name === "certificatesOfAppearance" && isChiefAdmin) {
               constraints.push(where("division", "==", officeDivision(reviewDivision)));
-            } else {
+            } else if (name !== "certificatesOfAppearance" && isChiefAdmin) {
               const units = unitsForOffice(office!, reviewDivision);
               if (!units.length) return [];
               constraints.push(units.length === 1 ? where("unit", "==", units[0]) : where("unit", "in", units));
-            }
+            } else return [];
           }
           const result = await getDocs(query(collection(firestore, name), ...constraints));
           return result.docs.map((item) => ({
@@ -272,28 +297,82 @@ export default function CertificateApproval({ user, role, office, division, unit
           } as CertificateQueueRecord));
         }));
         const loadedRecords = snapshots.flat();
+        let currentProjectLeader: { id: string; name: string; designation: string; position: string } | null = null;
+        if (isFodProjectLeaderAdmin) {
+          try {
+            const profileSnapshot = await getDoc(doc(firestore, "users", user.uid));
+            if (profileSnapshot.exists()) {
+              const profile = profileSnapshot.data();
+              if (isFieldOperationsAppearanceApprover(profile)
+                && normalizeAccountStatus(profile.accountStatus) === "Approved"
+                && typeof profile.name === "string"
+                && typeof profile.position === "string") {
+                currentProjectLeader = {
+                  id: user.uid,
+                  name: profile.name,
+                  designation: typeof profile.designation === "string" ? profile.designation : "",
+                  position: profile.position,
+                };
+              }
+            }
+          } catch {
+            // Keep loading the approval queue if the profile lookup fails.
+          }
+        }
         const blankOwnerIds = [...new Set(loadedRecords
-          .filter((record) => record.collectionName === "certificatesOfAppearance" && record.recordType === "blank" && !record.ownerOffice?.trim())
+          .filter((record) => record.collectionName === "certificatesOfAppearance" && record.recordType === "blank" && (!record.ownerOffice?.trim() || !record.ownerDivision?.trim() || !record.ownerUnit?.trim()))
           .map((record) => record.ownerId)
           .filter(Boolean))];
-        const ownerOffices = new Map<string, string>();
+        const ownerProfiles = new Map<string, { office: string; division: string; unit: string }>();
         await Promise.all(blankOwnerIds.map(async (ownerId) => {
           try {
             const ownerProfile = await getDoc(doc(firestore, "users", ownerId));
-            const ownerOffice = ownerProfile.exists() ? accountOffice(ownerProfile.data()) : null;
-            if (typeof ownerOffice === "string" && ownerOffice.trim()) ownerOffices.set(ownerId, ownerOffice.trim());
+            if (ownerProfile.exists()) {
+              const data = ownerProfile.data();
+              ownerProfiles.set(ownerId, {
+                office: accountOffice(data) ?? "",
+                division: accountDivision(data),
+                unit: typeof data.unit === "string" ? data.unit.trim() : "",
+              });
+            }
           } catch {
             // Keep the approval list available if an owner's profile cannot be loaded.
           }
         }));
         if (!active) return;
         setRecords(loadedRecords.map((record) => {
-          if (record.collectionName !== "certificatesOfAppearance" || record.recordType !== "blank") return record;
+          if (record.collectionName !== "certificatesOfAppearance") return record;
           const storedOwnerOffice = record.ownerOffice?.trim() ?? "";
           const ownerOffice = (storedOwnerOffice ? accountOffice({ office: storedOwnerOffice, profileFieldsVersion: 3 }) : null)
-            || ownerOffices.get(record.ownerId)
+            || ownerProfiles.get(record.ownerId)?.office
             || "";
-          return { ...record, ownerOffice, destination: ownerOffice || "" };
+          const ownerProfile = ownerProfiles.get(record.ownerId);
+          const certificateOffice = record.certificateOffice?.trim() || ownerOffice;
+          const certificateDivision = record.certificateDivision || record.ownerDivision || ownerProfile?.division || "";
+          const certificateUnit = record.certificateUnit || record.ownerUnit || ownerProfile?.unit || "";
+          const projectLeaderScope = certificateOffice === "Division"
+            && certificateDivision === "Field Operations Division"
+            && ["AGRISTAT", "AMIA", "DRRM"].includes(certificateUnit);
+          const attachCurrentProjectLeader = isFodProjectLeaderAdmin
+            && projectLeaderScope
+            && !record.signatoryPosition?.trim()
+            && currentProjectLeader?.designation === "AGRISTAT/DRRM/AMIA Project Leader";
+          return {
+            ...record,
+            ownerOffice,
+            ownerDivision: record.ownerDivision || ownerProfile?.division || "",
+            ownerUnit: record.ownerUnit || ownerProfile?.unit || "",
+            certificateOffice,
+            certificateDivision,
+            certificateUnit,
+            destination: certificateOffice || "",
+            ...(attachCurrentProjectLeader && currentProjectLeader ? {
+              signatoryName: currentProjectLeader.name,
+              designation: currentProjectLeader.designation,
+              signatoryPosition: currentProjectLeader.position,
+              signatoryAdminId: currentProjectLeader.id,
+            } : {}),
+          };
         }).sort((left, right) => (right.createdAt?.toMillis?.() ?? 0) - (left.createdAt?.toMillis?.() ?? 0)));
       } catch (cause) {
         if (!active) return;
@@ -305,7 +384,7 @@ export default function CertificateApproval({ user, role, office, division, unit
     }
     void loadRecords();
     return () => { active = false; };
-  }, [user.uid, role, office, division, unit, assignment, reviewDivision, isChiefAdmin]);
+  }, [user.uid, role, office, division, unit, assignment, reviewDivision, isChiefAdmin, isFodChiefAdmin, isFodProjectLeaderAdmin, isAppearanceApprovalAdmin]);
 
   async function decide(record: CertificateQueueRecord, status: Exclude<CertificateWorkflowStatus, "Pending">) {
     if (!db || certificateWorkflowStatus(record.status) === "Approved") return;
@@ -329,6 +408,7 @@ export default function CertificateApproval({ user, role, office, division, unit
     const signerOffice = approvalSignerOffice(signerProfile);
     const signerDesignation = typeof signerProfile.designation === "string" ? signerProfile.designation : "";
     const signerName = typeof signerProfile.name === "string" ? signerProfile.name : "";
+    const signerPosition = typeof signerProfile.position === "string" ? signerProfile.position : "";
     let ownerProfile: Record<string, unknown> | null = null;
     if (record.ownerId && record.ownerId !== user.uid) {
       try {
@@ -338,30 +418,33 @@ export default function CertificateApproval({ user, role, office, division, unit
         // Approval can continue without the owner's profile, but the special signature requires it.
       }
     }
-    const ownerRole = ownerProfile?.accountRole;
-    const isRegularFieldOperationsOwner = (ownerRole === "regular" || ownerRole === "user")
-      && (accountDivision(ownerProfile ?? {}) === "Field Operations Division"
-        || (typeof ownerProfile?.division === "string" && ownerProfile.division.trim() === "Field Operations Division"))
-      && typeof ownerProfile?.unit === "string"
-      && fieldOperationsCertificateOwnerUnits.has(ownerProfile.unit.trim());
-    const useChiefSignature = record.collectionName === "certificatesOfAppearance"
-      && isRegularFieldOperationsOwner
-      && isChiefAdmin
+    const ownerRole = record.ownerRole ?? ownerProfile?.accountRole;
+    const ownerOffice = record.ownerOffice?.trim() || (ownerProfile ? accountOffice(ownerProfile) ?? "" : "");
+    const ownerDivision = record.ownerDivision?.trim() || (ownerProfile ? accountDivision(ownerProfile) : "");
+    const ownerUnit = record.ownerUnit?.trim() || (typeof ownerProfile?.unit === "string" ? ownerProfile.unit.trim() : "");
+    const certificateOffice = record.certificateOffice?.trim() || ownerOffice;
+    const certificateDivision = record.certificateDivision?.trim() || ownerDivision;
+    const certificateUnit = record.certificateUnit?.trim() || ownerUnit;
+    const ownerSignatory = certificateAppearanceSignatoryForOwner(certificateOffice, certificateDivision, certificateUnit);
+    const isRegularFieldOperationsOwner = (ownerRole === "regular" || ownerRole === "user") && Boolean(ownerSignatory);
+    const signerMatchesAppearanceRoute = Boolean(ownerSignatory)
       && signerProfile.profileFieldsVersion === 4
-      && signerProfile.accountRole === "admin"
-      && signerOffice === "Division"
-      && signerProfile.division === "Field Operations Division"
-      && signerProfile.unit === "Field Operations Division"
-      && signerDesignation === "Chief"
+      && normalizeAccountStatus(signerProfile.accountStatus) === "Approved"
+      && isFieldOperationsAppearanceApprover(signerProfile)
+      && signerDesignation === ownerSignatory?.designation;
+    const useAppearanceSignature = record.collectionName === "certificatesOfAppearance"
+      && isRegularFieldOperationsOwner
+      && signerMatchesAppearanceRoute
       && status === "Approved";
     const decision = {
       status,
       decidedAt: serverTimestamp(),
       decidedBy: user.uid,
       signerName,
+      signerPosition,
       signerDesignation,
       signerOffice,
-      signatureAsset: useChiefSignature ? "field_operations_division_chief_signature.png" : "",
+      signatureAsset: useAppearanceSignature ? ownerSignatory?.signatureAsset ?? "" : "",
     };
     try {
       const certificateRef = doc(db, record.collectionName, record.id);
@@ -409,7 +492,7 @@ export default function CertificateApproval({ user, role, office, division, unit
           collection: record.collectionName,
           certificateId: record.id,
           recordType: record.recordType ?? "appearance",
-          certificateDivision: record.division ?? "",
+          certificatePdfDivision: record.division ?? "",
           certificateOwnerId: record.ownerId,
           currentStatus: record.status ?? "Pending",
           authEmailVerified: user.emailVerified,
@@ -428,12 +511,20 @@ export default function CertificateApproval({ user, role, office, division, unit
           signerUnit: signerProfile.unit ?? "",
           signerDesignation,
           ownerProfileFieldsVersion: ownerProfile?.profileFieldsVersion ?? null,
-          ownerRole: ownerProfile?.accountRole ?? null,
-          ownerOffice: ownerProfile?.office ?? null,
-          ownerDivision: accountDivision(ownerProfile ?? {}),
-          ownerUnit: ownerProfile?.unit ?? null,
+          ownerProfileRole: ownerProfile?.accountRole ?? null,
+          ownerProfileOffice: ownerProfile?.office ?? null,
+          ownerProfileDivision: accountDivision(ownerProfile ?? {}),
+          ownerProfileUnit: ownerProfile?.unit ?? null,
           isRegularFieldOperationsOwner,
-          useChiefSignature,
+          ownerOffice,
+          ownerDivision,
+          ownerUnit,
+          certificateOffice,
+          certificateDivision,
+          certificateUnit,
+          ownerSignatory,
+          signerMatchesAppearanceRoute,
+          useAppearanceSignature,
           signatureAsset: decision.signatureAsset,
         };
         const diagnosticText = JSON.stringify(diagnostic, null, 2);
@@ -603,12 +694,12 @@ export default function CertificateApproval({ user, role, office, division, unit
       {error && <p className="certificate-approval-error" role="alert">{error}</p>}
       {approvalDiagnostic && process.env.NODE_ENV !== "production" && <details className="certificate-approval-debug"><summary>Approval diagnostic details</summary><pre>{approvalDiagnostic}</pre></details>}
       {message && <p className="certificate-approval-success" role="status">{message}</p>}
-      {loading ? <p className="muted">Loading certificates...</p> : role === "admin" && !isChiefAdmin ? null : !accessMessage && records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates to show</h3><p>Submitted certificates will appear here with their status.</p></div> : records.length > 0 && <div className="certificate-approval-table-wrap"><div className="certificate-approval-table">
+      {loading ? <p className="muted">Loading certificates...</p> : role === "admin" && !isAppearanceApprovalAdmin ? null : !accessMessage && records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates to show</h3><p>Submitted certificates will appear here with their status.</p></div> : records.length > 0 && <div className="certificate-approval-table-wrap"><div className="certificate-approval-table">
         <div className="certificate-approval-head"><span>Type of Certificate</span><span>Title</span><span>Schedule</span><span>Destination</span><span>Status</span><span>Action</span></div>
         {visibleRecords.map((record) => {
           const status = certificateWorkflowStatus(record.status);
           const rowKey = `${record.collectionName}:${record.id}`;
-          const canManage = role === "superadmin" || isChiefAdmin;
+          const canManage = role === "superadmin" || isAppearanceApprovalAdmin;
           const isAppearanceCertificate = record.collectionName === "certificatesOfAppearance";
           const isBlankAppearanceTitle = isAppearanceCertificate && record.eventTitle === "Blank Certificate of Appearance";
           const purpose = blankAppearancePurpose(record.purpose);
@@ -647,8 +738,9 @@ export default function CertificateApproval({ user, role, office, division, unit
 }
 
 function ApproverCertificatePaper({ record, person }: { record: CertificateQueueRecord; person: AppearancePerson }) {
-  const showApprovalSignature = hasFieldOperationsChiefApprovalSignature(record);
+  const showApprovalSignature = hasFieldOperationsAppearanceApprovalSignature(record);
   const showDisapprovalStamp = certificateWorkflowStatus(record.status) === "Disapproved";
+  const signatory = appearanceCertificateSignatory(record, record.signatoryName ?? "", record.designation ?? "");
   return <article className="coa-certificate-card">
     <img className="coa-letterhead" src={appearanceLetterhead} alt="" />
     <h1 className="coa-title">CERTIFICATE OF APPEARANCE</h1>
@@ -659,7 +751,9 @@ function ApproverCertificatePaper({ record, person }: { record: CertificateQueue
     <div className={`coa-signatory-block${showApprovalSignature ? " is-approved" : ""}${showDisapprovalStamp ? " is-disapproved" : ""}`}>
       <CertificateDisapprovalStamp record={record} />
       <CertificateApprovalSignature record={record} />
-      <footer className="coa-signatory"><strong>{record.signatoryName}</strong><div className="coa-signatory-role"><em>{record.designation},</em> <span>{certificateDivisionDisplayNames[record.division ?? ""] ?? record.division}</span></div></footer>
+      <footer className="coa-signatory"><strong>{signatory.name}</strong><div className="coa-signatory-role">{signatory.isProfileSignatory
+        ? <em>{signatory.designation} / {signatory.position}</em>
+        : <><em>{signatory.position},</em> <span>{certificateDivisionDisplayNames[record.division ?? ""] ?? record.division}</span></>}</div></footer>
     </div>
   </article>;
 }

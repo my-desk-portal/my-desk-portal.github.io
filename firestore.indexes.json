@@ -32,6 +32,16 @@
         { "fieldPath": "ownerId", "order": "ASCENDING" },
         { "fieldPath": "documentId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "certificatesOfAppearance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerRole", "order": "ASCENDING" },
+        { "fieldPath": "certificateOffice", "order": "ASCENDING" },
+        { "fieldPath": "certificateDivision", "order": "ASCENDING" },
+        { "fieldPath": "certificateUnit", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

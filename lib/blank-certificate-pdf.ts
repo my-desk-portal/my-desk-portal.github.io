@@ -1,5 +1,5 @@
 import { divisionSignatory, type TevDivision } from "@/lib/mytev";
-import { certificateDisapprovalStampDetails, hasFieldOperationsChiefApprovalSignature, type CertificateWorkflowFields } from "@/app/CertificateWorkflow";
+import { appearanceCertificateSignatory, certificateDisapprovalStampDetails, hasFieldOperationsAppearanceApprovalSignature, type CertificateWorkflowFields } from "@/app/CertificateWorkflow";
 
 type BlankCertificatePdfRecord = CertificateWorkflowFields & {
   division: string;
@@ -7,8 +7,6 @@ type BlankCertificatePdfRecord = CertificateWorkflowFields & {
 
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
 const blankCertificatePdfAsset = publicAsset("/certificate-of-appearance.pdf");
-const fieldOperationsChiefSignature = "field_operations_division_chief_signature.png";
-
 function approvalDate(value: unknown) {
   if (value && typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
     const date = value.toDate();
@@ -17,7 +15,7 @@ function approvalDate(value: unknown) {
   return value instanceof Date && !Number.isNaN(value.getTime()) ? value : null;
 }
 
-async function makeSignatoryBlockImage(name: string, designation: string, division: string) {
+async function makeSignatoryBlockImage(name: string, designation: string, division: string, profileDesignation?: string) {
   await Promise.all([
     document.fonts.load("bold 12px Cambria"),
     document.fonts.load("italic 11px Cambria"),
@@ -48,20 +46,30 @@ async function makeSignatoryBlockImage(name: string, designation: string, divisi
   }
   context.fillText(displayName, width, 14.5);
 
-  const divisionText = division;
-  const designationText = `${designation},`;
   let roleSize = 11;
-  context.font = `${roleSize}px Cambria, "Times New Roman", serif`;
-  while (context.measureText(`${designationText} ${divisionText}`).width > width - 4 && roleSize > 8) {
-    roleSize -= 0.25;
+  if (profileDesignation) {
+    const roleLine = `${profileDesignation} / ${designation}`;
+    context.font = `italic ${roleSize}px Cambria, "Times New Roman", serif`;
+    while (context.measureText(roleLine).width > width - 4 && roleSize > 8) {
+      roleSize -= 0.25;
+      context.font = `italic ${roleSize}px Cambria, "Times New Roman", serif`;
+    }
+    context.fillText(roleLine, width, 29.9);
+  } else {
+    const divisionText = division;
+    const designationText = `${designation},`;
     context.font = `${roleSize}px Cambria, "Times New Roman", serif`;
+    while (context.measureText(`${designationText} ${divisionText}`).width > width - 4 && roleSize > 8) {
+      roleSize -= 0.25;
+      context.font = `${roleSize}px Cambria, "Times New Roman", serif`;
+    }
+    const divisionWidth = context.measureText(divisionText).width;
+    const spaceWidth = context.measureText(" ").width;
+    context.font = `italic ${roleSize}px Cambria, "Times New Roman", serif`;
+    context.fillText(designationText, width - divisionWidth - spaceWidth, 29.9);
+    context.font = `${roleSize}px Cambria, "Times New Roman", serif`;
+    context.fillText(divisionText, width, 29.9);
   }
-  const divisionWidth = context.measureText(divisionText).width;
-  const spaceWidth = context.measureText(" ").width;
-  context.font = `italic ${roleSize}px Cambria, "Times New Roman", serif`;
-  context.fillText(designationText, width - divisionWidth - spaceWidth, 29.9);
-  context.font = `${roleSize}px Cambria, "Times New Roman", serif`;
-  context.fillText(divisionText, width, 29.9);
 
   return canvas.toDataURL("image/png");
 }
@@ -75,15 +83,16 @@ export async function makeBlankCertificatePdf(record: BlankCertificatePdfRecord)
   if (!page) throw new Error("The Certificate of Appearance PDF has no pages.");
 
   const division = record.division as TevDivision;
-  const signatory = divisionSignatory(division);
-  const signatoryImage = await pdf.embedPng(await makeSignatoryBlockImage(signatory.name, signatory.position, division));
+  const templateSignatory = divisionSignatory(division);
+  const signatory = appearanceCertificateSignatory(record, templateSignatory.name, templateSignatory.position);
+  const signatoryImage = await pdf.embedPng(await makeSignatoryBlockImage(signatory.name, signatory.position, division, signatory.isProfileSignatory ? signatory.designation : undefined));
   for (const y of [480, 66.5]) {
     page.drawImage(signatoryImage, { x: 260, y, width: 271.5, height: 32 });
   }
 
-  if (hasFieldOperationsChiefApprovalSignature(record)) {
-    const signatureResponse = await fetch(publicAsset(`/${fieldOperationsChiefSignature}`));
-    if (!signatureResponse.ok) throw new Error("The Field Operations Division Chief signature could not be loaded.");
+  if (hasFieldOperationsAppearanceApprovalSignature(record) && record.signatureAsset) {
+    const signatureResponse = await fetch(publicAsset(`/${record.signatureAsset}`));
+    if (!signatureResponse.ok) throw new Error("The Certificate of Appearance signatory signature could not be loaded.");
     const signatureImage = await pdf.embedPng(await signatureResponse.arrayBuffer());
     const [regularFont, boldFont] = await Promise.all([pdf.embedFont("Helvetica"), pdf.embedFont("Helvetica-Bold")]);
     const approvedAt = approvalDate(record.decidedAt);
@@ -99,7 +108,7 @@ export async function makeBlankCertificatePdf(record: BlankCertificatePdfRecord)
     const metadataColumnWidth = 102;
     const metadataSize = 6.8;
     const signerNameSize = 7.1;
-    const signerName = (record.signerName?.trim() || "Chief, Field Operations Division").toLocaleUpperCase("en");
+    const signerName = (record.signerName?.trim() || record.signerDesignation || "Field Operations Division").toLocaleUpperCase("en");
     const fittedSignerNameSize = Math.min(signerNameSize, signerNameSize * metadataColumnWidth / boldFont.widthOfTextAtSize(signerName, signerNameSize));
     const drawRightAlignedText = (text: string, y: number, size: number, font: typeof regularFont) => {
       page.drawText(text, { x: metadataRight - font.widthOfTextAtSize(text, size), y, size, font });

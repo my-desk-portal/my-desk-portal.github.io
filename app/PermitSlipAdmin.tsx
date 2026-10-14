@@ -5,6 +5,7 @@ import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp } f
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { ADMIN_EMAIL, SUPERADMIN_EMAIL, normalizeAccountRole, type AccountRole } from "@/lib/user-roles";
+import { isFieldOperationsChiefPermitSignatory, isFieldOperationsPermitOwner, isFieldOperationsProjectLeaderPermitOwner, isFieldOperationsProjectLeaderPermitSignatory } from "@/lib/permit-signatory";
 import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import { assignApprovedPermitNumbers, displayPermitNumber, highestApprovedPermitSequence, permitNumberYear } from "./permit-number";
 import RecordPagination, { recordPageSize, useRecordPagination } from "./RecordPagination";
@@ -24,6 +25,10 @@ export type AdminPermit = {
   unit?: string;
   purpose: string;
   ownerId?: string;
+  ownerRole?: AccountRole;
+  ownerOffice?: string;
+  ownerDivision?: string;
+  ownerUnit?: string;
   personStatuses?: Record<string, PersonDecision>;
 };
 
@@ -60,13 +65,15 @@ function displayDate(value: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`));
 }
 
-export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canManagePermits }: { user: User; mode: "statistics" | "status"; focusNotificationKey?: string | null; canManagePermits: boolean }) {
+export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canManagePermits, accountRole, office, division, unit, designation }: { user: User; mode: "statistics" | "status"; focusNotificationKey?: string | null; canManagePermits: boolean; accountRole: AccountRole; office: string; division: string; unit: string; designation: string }) {
   const [permits, setPermits] = useState<AdminPermit[]>([]);
   const [month, setMonth] = useState(monthString(new Date()));
   const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>("All");
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState("");
   const [error, setError] = useState("");
+  const isScopedFieldOperationsChief = isFieldOperationsChiefPermitSignatory({ accountRole, office, division, unit, designation });
+  const isScopedFieldOperationsProjectLeader = isFieldOperationsProjectLeaderPermitSignatory({ accountRole, office, division, unit, designation });
 
   useEffect(() => {
     if (!db) { setLoading(false); return; }
@@ -99,13 +106,19 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
     status: personStatus(permit, index),
     approvedPermitNo: permit.personStatuses?.[decisionKey(permit, index)]?.approvedPermitNo,
   }))), [permits]);
-  const availableAssignments = useMemo(() => [...new Set(entries.map((entry) => entry.unit).filter((unit): unit is string => Boolean(unit?.trim())))]
-    .sort((first, second) => first.localeCompare(second, "en", { sensitivity: "base" })), [entries]);
+  const statusScopeEntries = useMemo(() => {
+    if (mode !== "status") return entries;
+    if (isScopedFieldOperationsChief) return entries.filter((entry) => isFieldOperationsPermitOwner(entry.permit));
+    if (isScopedFieldOperationsProjectLeader) return entries.filter((entry) => isFieldOperationsProjectLeaderPermitOwner(entry.permit));
+    return entries;
+  }, [entries, isScopedFieldOperationsChief, isScopedFieldOperationsProjectLeader, mode]);
+  const availableAssignments = useMemo(() => [...new Set(statusScopeEntries.map((entry) => entry.unit).filter((unit): unit is string => Boolean(unit?.trim())))]
+    .sort((first, second) => first.localeCompare(second, "en", { sensitivity: "base" })), [statusScopeEntries]);
   const approvedPermitNumbers = useMemo(() => assignApprovedPermitNumbers(entries
     .filter((entry) => entry.status === "Approved")
     .map((entry) => ({ permitNo: entry.permitNo, approvedPermitNo: entry.approvedPermitNo }))), [entries]);
 
-  const statusEntries = useMemo(() => entries
+  const statusEntries = useMemo(() => statusScopeEntries
     .filter((entry) => unitFilter === "All" || entry.unit === unitFilter)
     .sort((left, right) => {
       if (left.status === "Pending" && right.status !== "Pending") return -1;
@@ -121,7 +134,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
       if (rightPsNo) return 1;
       return right.permit.date.localeCompare(left.permit.date)
         || right.permitNo.localeCompare(left.permitNo, "en", { numeric: true, sensitivity: "base" });
-    }), [entries, approvedPermitNumbers, unitFilter]);
+    }), [statusScopeEntries, approvedPermitNumbers, unitFilter]);
   const { currentPage: currentStatusPage, pageCount: statusPageCount, visibleRecords: visibleStatusEntries, setPage: setStatusPage } = useRecordPagination(statusEntries);
 
   useEffect(() => {
@@ -226,7 +239,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
           ...currentDecision,
           status,
           decidedAt: serverTimestamp(),
-          decidedBy: user.email ?? "",
+          decidedBy: user.uid,
           signerName,
         };
         if (approvedPermitNo) nextDecision.approvedPermitNo = approvedPermitNo;
