@@ -207,6 +207,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
         const permitSnapshot = await transaction.get(permitRef);
         if (!permitSnapshot.exists()) throw new Error("This Permit Slip no longer exists.");
         const data = permitSnapshot.data();
+        const calendarSnapshot = await transaction.get(calendarRef);
         const latestPermitNumbers = Array.isArray(data.permitNos) ? data.permitNos as unknown[] : [];
         const latestPermitNo = typeof latestPermitNumbers[personIndex] === "string"
           ? latestPermitNumbers[personIndex] as string
@@ -261,7 +262,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
             ...(typeof data.ownerId === "string" ? { ownerId: data.ownerId } : {}),
           });
         } else {
-          transaction.delete(calendarRef);
+          if (calendarSnapshot.exists()) transaction.delete(calendarRef);
         }
       });
     } catch (updateError) {
