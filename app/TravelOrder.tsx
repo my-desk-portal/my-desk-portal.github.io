@@ -38,6 +38,7 @@ type TravelOrder = {
   legacyRecipientView?: boolean;
   legacySourceOrderId?: string;
   legacySourcePeopleCount?: number;
+  legacyRecipientAssignmentMatch?: boolean;
   legacyNameMatch?: boolean;
   createdAt?: unknown;
 };
@@ -79,6 +80,21 @@ function formatTravelDateRange(departureDate: string, returnDate: string) {
 
 function normalizePersonName(value: string) {
   return value.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/\s+/g, " ");
+}
+
+function isAssignedTravelOrderRecipient(order: TravelOrder, userId: string) {
+  if (order.legacyRecipientView) {
+    return order.legacyRecipientAssignmentMatch === true;
+  }
+  return order.recipientId === userId
+    || order.recipientIds?.includes(userId) === true
+    || order.people.some((person) => person.userId === userId);
+}
+
+function canRecipientApproveTravelOrder(order: TravelOrder) {
+  return order.legacyRecipientView
+    ? order.legacySourcePeopleCount === 1
+    : order.people.length === 1;
 }
 
 function TravelOrderForm({ user, office, unit, initialOrder, onSaved, onCancel, onError }: { user: User; office: string; unit: string | null; initialOrder?: TravelOrder; onSaved: (orders: TravelOrder[], replacedOrderId?: string) => void; onCancel: () => void; onError: (message: string) => void }) {
@@ -280,16 +296,17 @@ function TravelOrderList({ orders, ownerId, preparedByNames, fallbackPreparedBy,
       <div className="table-head travel-order-list-head"><span>Departure Return Date</span><span>Place of Travel</span><span>Purpose</span><span>Prepared By</span><span>Status</span></div>
       {visibleOrders.map((order) => {
         const isOwner = order.ownerId === ownerId;
-        const isRecipient = !order.legacyRecipientView && order.recipientId === ownerId && order.people.length === 1 && order.people[0].userId === ownerId;
+        const isRecipient = isAssignedTravelOrderRecipient(order, ownerId);
         const isNamedLegacyRecipient = order.legacyRecipientView === true
           && order.legacySourcePeopleCount === 1
           && order.legacyNameMatch === true
           && order.people.length === 1;
         const canUpdateStatus = isOwner || isRecipient || isNamedLegacyRecipient;
+        const canApprove = isOwner || (isRecipient && canRecipientApproveTravelOrder(order)) || isNamedLegacyRecipient;
         return <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">
           <strong>{formatTravelDateRange(order.departureDate, order.returnDate) || (order.status === "Pending" ? "Pending approval" : "—")}</strong><span>{order.placeOfTravel || "—"}</span><span className="travel-order-list-purpose">{order.purpose || "—"}</span><span>{preparedByNames[order.ownerId] || (order.ownerId === ownerId ? fallbackPreparedBy : "") || "—"}</span>
-          {canUpdateStatus ? <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people[0].name}`} value={order.status} disabled={order.status !== "Pending" || updatingId === order.id || deletingId !== null || copyingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label> : <span className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="travel-order-status-value">{order.status}</span></span>}
+          {canUpdateStatus ? <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people[0]?.name || "Travel Order"}`} value={order.status} disabled={order.status !== "Pending" || updatingId === order.id || deletingId !== null || copyingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { if (!canApprove) return; setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status} disabled={status === "Approved" && !canApprove}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label> : <span className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="travel-order-status-value">{order.status}</span></span>}
           <span className="travel-order-row-actions">{isOwner && order.status === "Pending" && <button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onPreview(order)}>View</button><button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null || approvalOrderId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && order.status === "Pending" && <button type="button" className="delete-button" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span>
         </div>
         {approvalOrderId === order.id && <form className="travel-order-approval-editor" onSubmit={(event) => confirmApproval(event, order)}>
@@ -498,6 +515,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
           legacyRecipientView: true,
           legacySourceOrderId: item.id,
           legacySourcePeopleCount: people.length,
+          legacyRecipientAssignmentMatch: listedForAccount || (people.length === 1 && person.userId === user.uid),
           legacyNameMatch: people.length === 1 && currentAccountName.length > 0 && typeof person.name === "string" && person.name.trim() === currentAccountName,
           status: normalizeWorkflowStatus(data.status),
         } as TravelOrder];
@@ -665,7 +683,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
 
   async function changeStatus(order: TravelOrder, status: TravelOrderStatus, date?: string, toNumbers?: string[]): Promise<boolean> {
     const isOwner = order.ownerId === user.uid;
-    const isRecipient = order.recipientId === user.uid && order.people.length === 1 && order.people[0].userId === user.uid;
+    const isRecipient = isAssignedTravelOrderRecipient(order, user.uid);
     const isNamedLegacyRecipient = order.legacyRecipientView === true
       && order.legacySourcePeopleCount === 1
       && order.legacyNameMatch === true
@@ -674,6 +692,10 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
     if (!isOwner && !isRecipient && !isNamedLegacyRecipient) return false;
     if (order.status !== "Pending") {
       setError("Approved or Disapproved Travel Orders cannot change status.");
+      return false;
+    }
+    if (status === "Approved" && !isOwner && !canRecipientApproveTravelOrder(order)) {
+      setError("A multi-person Travel Order can only be approved by its original maker.");
       return false;
     }
     const firestore = db;

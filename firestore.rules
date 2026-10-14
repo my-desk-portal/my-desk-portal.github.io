@@ -159,6 +159,17 @@ service cloud.firestore {
     }
     function canUpdateTravelOrderAsRecipient(order) {
       return isPersonalTravelOrder(order, request.auth.uid)
+        || (order.get("recipientId", "") == request.auth.uid
+          && order.get("people", []) is list
+          && order.people.size() > 0)
+        || (order.get("recipientIds", []) is list
+          && request.auth.uid in order.recipientIds
+          && order.get("people", []) is list
+          && order.people.size() > 0)
+        || (order.get("people", []) is list
+          && order.people.size() == 1
+          && order.people[0] is map
+          && order.people[0].get("userId", "") == request.auth.uid)
         || isNamedTravelOrderRecipient(order);
     }
     function isPermitAdmin() {
@@ -1146,7 +1157,8 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "date", "people", "updatedAt"])
             && request.resource.data.status in ["Approved", "Disapproved"]
             && (request.resource.data.status == "Approved"
-              ? request.resource.data.get("date", "") is string
+              ? (resource.data.ownerId == request.auth.uid || resource.data.people.size() == 1)
+                && request.resource.data.get("date", "") is string
                 && request.resource.data.date.size() == 10
                 && request.resource.data.people[0].get("toNumber", "") is string
                 && request.resource.data.people[0].get("toNumber", "").size() > 0
