@@ -1,6 +1,7 @@
 @media(max-width:960px){
   .mytev-table{overflow-x:auto;overscroll-behavior-x:contain}
   .mytev-table-head,.mytev-table-row{min-width:560px}
+  .mytev-evidence-options{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 
 @media(max-width:720px){
@@ -19,6 +20,7 @@
   .mytev-remove-reference{grid-column:2;justify-self:end}
   .mytev-certification-picker{padding:13px}
   .mytev-certification-options{grid-template-columns:1fr}
+  .mytev-evidence-options{grid-template-columns:repeat(2,minmax(0,1fr))}
   .mytev-certification-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
   .mytev-form-group-heading{align-items:flex-start}
   .mytev-itinerary-line{min-width:0;padding:12px}
@@ -46,6 +48,7 @@
   .mytev-reference-row>label:first-of-type,.mytev-remove-reference{grid-column:1}
   .mytev-remove-reference{justify-self:start}
   .mytev-certification-fields{grid-template-columns:minmax(0,1fr)}
+  .mytev-evidence-options{grid-template-columns:1fr}
   .mytev-row-date-fields,.mytev-row-time-fields{gap:8px}
   .mytev-claim-picker{grid-template-columns:1fr}
   .mytev-claim-picker>legend{grid-column:1}

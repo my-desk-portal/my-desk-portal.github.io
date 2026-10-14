@@ -49,12 +49,14 @@ const maxTevPersonnel = 18;
 type TevPersonnel = { userId: string; profile: TevProfile; office: string; profileComplete: boolean; adminAccount: boolean };
 const tevEvidenceOptions = [
   { label: "Approved Itinerary of Travel", pattern: /\bapproved itinerary of travel\b/i },
+  { label: "Approved PTR", pattern: /\bapproved ptr\b/i },
   { label: "Approved Travel Orders", pattern: /\bapproved travel orders?\b/i },
   { label: "Boarding Pass", pattern: /\bboarding passes?\b/i },
   { label: "Boat Ticket", pattern: /\bboat tickets?\b/i },
   { label: "Bus Ticket", pattern: /\bbus tickets?\b/i },
   { label: "Certificate of Appearance", pattern: /\bcertificate of appearance\b/i },
   { label: "COENRR", pattern: /\b(?:COENRR|communication letters?)\b/i },
+  { label: "GSS Certification", pattern: /\bgss certification\b/i },
   { label: "Plane Ticket", pattern: /\bplane tickets?\b/i },
 ] as const;
 
@@ -224,7 +226,7 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
   const [itineraries, setItineraries] = useState<TevItinerary[]>(() => initialRecord
     ? initialRecord.itineraries.map((itinerary) => ({ ...itinerary, rows: itinerary.rows.map((row) => ({ ...row, meansOfTransportation: normalizeTevTransportationMeansForEditor(row.meansOfTransportation), claims: [...row.claims] })) }))
     : [initialItinerary()]);
-  const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>(() => initialRecord ? [] : [""]);
+  const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 

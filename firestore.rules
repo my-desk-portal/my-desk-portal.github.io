@@ -1498,8 +1498,8 @@ service cloud.firestore {
       function hasValidEvidenceOptions(recordData) {
         return !recordData.keys().hasAny(["evidenceOfTravelOptions"])
           || (recordData.evidenceOfTravelOptions is list
-            && recordData.evidenceOfTravelOptions.size() <= 8
-            && recordData.evidenceOfTravelOptions.hasOnly(["Approved Itinerary of Travel", "Approved Travel Orders", "Boarding Pass", "Boat Ticket", "Bus Ticket", "Certificate of Appearance", "COENRR", "Plane Ticket"]));
+            && recordData.evidenceOfTravelOptions.size() <= 10
+            && recordData.evidenceOfTravelOptions.hasOnly(["Approved Itinerary of Travel", "Approved PTR", "Approved Travel Orders", "Boarding Pass", "Boat Ticket", "Bus Ticket", "Certificate of Appearance", "COENRR", "GSS Certification", "Plane Ticket"]));
       }
       function hasValidCertificationOfTravel(recordData) {
         return !recordData.keys().hasAny(["certificationOfTravel"])

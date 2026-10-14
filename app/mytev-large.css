@@ -57,7 +57,7 @@
 .mytev-remove-reference:hover{background:#fff0eb;border-color:#e5b2a2;color:#9e3824}
 .mytev-evidence-picker{border:1px solid var(--line);display:grid;gap:12px;margin:0;min-width:0;padding:14px}
 .mytev-evidence-picker legend{color:#4e5b55;font-size:12px;font-weight:700;padding:0 6px}
-.mytev-evidence-options{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));min-width:0}
+.mytev-evidence-options{display:grid;gap:10px;grid-template-columns:repeat(5,minmax(0,1fr));min-width:0}
 .mytev-evidence-options>label{align-items:center;background:#fff;border:1px solid var(--line);display:flex;gap:10px;min-width:0;padding:12px}
 .mytev-evidence-options input[type=checkbox]{accent-color:var(--accent);flex:0 0 auto;height:18px;margin:0;padding:0;width:18px}
 .mytev-evidence-options span{color:#4e5b55;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
