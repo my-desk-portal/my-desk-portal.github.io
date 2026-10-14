@@ -366,7 +366,7 @@ function MyTevCtcPage({ record }: { record: MyTevRecord }) {
         <p><i className={certification.extended ? "is-checked" : undefined} /><span>Extended as explained below, additional itinerary was submitted.</span></p>
         <p><i className={certification.otherDeviation ? "is-checked" : undefined} /><span>Other deviation as explained below.</span></p>
       </div>
-      <div className="mytev-ctc-explanation"><b>Explanation or Justification:</b><span className={hasExplanation ? "has-value" : undefined}>{certification.cutShort || certification.extended || certification.otherDeviation ? certification.otherExplanation : ""}</span><span /></div>
+      <div className="mytev-ctc-explanation"><b>Explanation or Justification:</b><span className={hasExplanation ? "has-value" : undefined}>{certification.cutShort || certification.extended || certification.otherDeviation ? certification.otherExplanation : ""}</span>{!hasExplanation && <span />}</div>
       <div className="mytev-ctc-evidence"><b>Evidence of Travel:</b><span style={fitTextStyle(record.evidenceOfTravel, 150)}>{record.evidenceOfTravel}</span></div>
       <p className="mytev-ctc-submitted">Respectfully submitted:</p>
       <div className="mytev-ctc-employee"><strong style={fitTextStyle(profile.name, 36)}>{profile.name.toLocaleUpperCase("en-PH")}</strong><span>Name of Employee</span></div>
