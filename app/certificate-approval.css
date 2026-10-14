@@ -3,6 +3,8 @@
 .certificate-approval-notice { background: var(--mint); color: var(--ink); }
 .certificate-approval-error { background: #fff0eb; border-left: 3px solid var(--accent); color: #9e3824; }
 .certificate-approval-success { background: #eaf6ef; border-left: 3px solid #4b9c68; color: #286b40; }
+.certificate-approval-debug { margin: -4px 0 16px; color: var(--muted); font-size: 12px; }
+.certificate-approval-debug pre { max-height: 320px; overflow: auto; padding: 12px; background: #f3f5f2; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .certificate-approval-table-wrap { max-width: 100%; }
 .certificate-approval-table { min-width: 0; width: 100%; }
 .certificate-approval-head,.certificate-approval-row { align-items: center; border-top: 1px solid var(--line); display: grid; gap: 14px; grid-template-columns: minmax(112px,.8fr) minmax(0,1.4fr) minmax(115px,1fr) minmax(120px,1fr) minmax(100px,.8fr) minmax(0,1.3fr); padding: 15px 8px; }

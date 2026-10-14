@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type QueryConstraint } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, type QueryConstraint } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { accountDivision, accountDivisionForApproval, accountOffice, hasAccountDesignation, unitsForOfficeDivision } from "@/lib/account-profile";
@@ -40,6 +40,8 @@ const certificateCollections: { name: CertificateCollection; label: string }[] =
   { name: "appreciationCertificates", label: "Appreciation" },
   { name: "participationCertificates", label: "Participation" },
 ];
+
+const fieldOperationsCertificateOwnerUnits = new Set(unitsForOfficeDivision("Division", "Field Operations Division"));
 
 function officeDivision(office: string) {
   if (office === "AMIA" || office === "FOD-AMIA") return "Agribusiness and Marketing Assistance Division";
@@ -108,6 +110,7 @@ export default function CertificateApproval({ user, role, office, division, unit
   const [records, setRecords] = useState<CertificateQueueRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [approvalDiagnostic, setApprovalDiagnostic] = useState("");
   const [message, setMessage] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<CertificateQueueRecord | null>(null);
@@ -196,6 +199,7 @@ export default function CertificateApproval({ user, role, office, division, unit
     const key = `${record.collectionName}:${record.id}`;
     setSavingKey(key);
     setError("");
+    setApprovalDiagnostic("");
     setMessage("");
     let signerProfile: Record<string, unknown> | null = null;
     try {
@@ -223,7 +227,10 @@ export default function CertificateApproval({ user, role, office, division, unit
     }
     const ownerRole = ownerProfile?.accountRole;
     const isRegularFieldOperationsOwner = (ownerRole === "regular" || ownerRole === "user")
-      && accountDivision(ownerProfile ?? {}) === "Field Operations Division";
+      && (accountDivision(ownerProfile ?? {}) === "Field Operations Division"
+        || (typeof ownerProfile?.division === "string" && ownerProfile.division.trim() === "Field Operations Division"))
+      && typeof ownerProfile?.unit === "string"
+      && fieldOperationsCertificateOwnerUnits.has(ownerProfile.unit.trim());
     const useChiefSignature = record.collectionName === "certificatesOfAppearance"
       && isRegularFieldOperationsOwner
       && isChiefAdmin
@@ -244,9 +251,9 @@ export default function CertificateApproval({ user, role, office, division, unit
       signatureAsset: useChiefSignature ? "field_operations_division_chief_signature.png" : "",
     };
     try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, record.collectionName, record.id), decision);
+      const certificateRef = doc(db, record.collectionName, record.id);
       const isBlankAppearanceCertificate = record.collectionName === "certificatesOfAppearance" && record.recordType === "blank";
+      let decisionNotification: ReturnType<typeof makeDocumentNotification> | null = null;
       if (record.ownerId && record.ownerId !== user.uid && !isBlankAppearanceCertificate) {
         try {
           const ownerProfile = await getDoc(doc(db, "users", record.ownerId));
@@ -263,17 +270,63 @@ export default function CertificateApproval({ user, role, office, division, unit
               activityTitle: record.eventTitle || `Certificate of ${record.certificateType}`,
               destination: record.destination || record.eventDestination || "",
             });
-            batch.set(notification.reference, notification.data);
+            decisionNotification = notification;
           }
         } catch {
           // Keep an authorized decision from failing if the owner's profile cannot be read.
         }
       }
-      await batch.commit();
+      let notificationWasSkipped = false;
+      await updateDoc(certificateRef, decision);
+      if (decisionNotification) {
+        try {
+          await setDoc(decisionNotification.reference, decisionNotification.data);
+        } catch {
+          notificationWasSkipped = true;
+        }
+      }
       setRecords((current) => current.map((item) => item.id === record.id && item.collectionName === record.collectionName ? { ...item, ...decision, decidedAt: new Date() } : item));
-      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}.`);
+      setMessage(notificationWasSkipped
+        ? `${record.certificateType} certificate ${status.toLowerCase()}. The applicant notification could not be created.`
+        : `${record.certificateType} certificate ${status.toLowerCase()}.`);
     } catch (cause) {
       const code = (cause as { code?: string }).code;
+      if (code === "permission-denied") {
+        const diagnostic = {
+          collection: record.collectionName,
+          certificateId: record.id,
+          recordType: record.recordType ?? "appearance",
+          certificateDivision: record.division ?? "",
+          certificateOwnerId: record.ownerId,
+          currentStatus: record.status ?? "Pending",
+          authEmailVerified: user.emailVerified,
+          activeAccountRole: role,
+          activeOffice: office ?? "",
+          activeDivision: division ?? "",
+          activeUnit: unit ?? "",
+          activeDesignation: designation ?? "",
+          signerIsChiefAdmin: isChiefAdmin,
+          signerProfileFieldsVersion: signerProfile.profileFieldsVersion ?? null,
+          signerAccountRole: signerProfile.accountRole ?? null,
+          signerAccountStatus: signerProfile.accountStatus ?? null,
+          signerProfileEmailVerified: signerProfile.emailVerified ?? null,
+          signerOffice,
+          signerDivision: signerProfile.division ?? "",
+          signerUnit: signerProfile.unit ?? "",
+          signerDesignation,
+          ownerProfileFieldsVersion: ownerProfile?.profileFieldsVersion ?? null,
+          ownerRole: ownerProfile?.accountRole ?? null,
+          ownerOffice: ownerProfile?.office ?? null,
+          ownerDivision: accountDivision(ownerProfile ?? {}),
+          ownerUnit: ownerProfile?.unit ?? null,
+          isRegularFieldOperationsOwner,
+          useChiefSignature,
+          signatureAsset: decision.signatureAsset,
+        };
+        const diagnosticText = JSON.stringify(diagnostic, null, 2);
+        setApprovalDiagnostic(diagnosticText);
+        console.warn(`Certificate decision rejected by Firestore rules: ${diagnosticText}`);
+      }
       setError(code ? `Could not update this certificate (${code}).` : "Could not update this certificate. Refresh and try again.");
     } finally {
       setSavingKey(null);
@@ -306,6 +359,7 @@ export default function CertificateApproval({ user, role, office, division, unit
       {accessMessage && <p className="certificate-approval-notice">{accessMessage}</p>}
       {role === "regular" && <p className="certificate-approval-notice">Your certificates appear here with their current approval status. Only an authorized administrator can change a status.</p>}
       {error && <p className="certificate-approval-error" role="alert">{error}</p>}
+      {approvalDiagnostic && process.env.NODE_ENV !== "production" && <details className="certificate-approval-debug"><summary>Approval diagnostic details</summary><pre>{approvalDiagnostic}</pre></details>}
       {message && <p className="certificate-approval-success" role="status">{message}</p>}
       {loading ? <p className="muted">Loading certificates...</p> : role === "admin" && !isChiefAdmin ? null : !accessMessage && records.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No certificates to show</h3><p>Submitted certificates will appear here with their status.</p></div> : records.length > 0 && <div className="certificate-approval-table-wrap"><div className="certificate-approval-table">
         <div className="certificate-approval-head"><span>Type of Certificate</span><span>Title</span><span>Schedule</span><span>Destination</span><span>Status</span><span>Action</span></div>

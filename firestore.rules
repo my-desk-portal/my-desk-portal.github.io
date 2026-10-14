@@ -252,22 +252,31 @@ service cloud.firestore {
       return isSuperAdmin() || (isChiefCertificateAdmin()
         && data.get("division", "") == appearanceDivisionForProfile(get(currentUserPath()).data));
     }
+    function isLegacyFieldOperationsDivisionProfile(profile) {
+      let version = profile.get("profileFieldsVersion", 0);
+      let office = profileOffice(profile);
+      let assignment = profileAssignment(profile);
+      return version < 4
+        && ((office == "Division" && assignment in ["4K", "AGRISTAT", "AMIA", "DRRM", "APCO - ADN", "APCO - ADS", "APCO - PDI", "APCO - SDN", "APCO - SDS", "CFIDP", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "Field Operations Division", "Gender and Development", "GAD", "Halal Projects", "Halal Project", "HVCD Program", "HVCDP Program", "IPM", "Livestock Program", "NUPA Program", "NUPAP", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Soybean Program"])
+          || (office == "Regional Field Office" && assignment == "DRRM"));
+    }
     function isRegularFieldOperationsCertificateOwner(ownerId) {
       let ownerPath = /databases/$(database)/documents/users/$(ownerId);
-      return ownerId is string
-        && ownerId.size() > 0
-        && exists(ownerPath)
-        && get(ownerPath).data.get("accountRole", "") in ["regular", "user"]
-        && profileDivision(get(ownerPath).data) == "Field Operations Division";
+      let ownerExists = ownerId is string && ownerId.size() > 0 && exists(ownerPath);
+      let ownerProfile = ownerExists ? get(ownerPath).data : {};
+      return ownerExists
+        && ownerProfile.get("accountRole", "") in ["regular", "user"]
+        && (ownerProfile.get("division", "") == "Field Operations Division"
+          || isLegacyFieldOperationsDivisionProfile(ownerProfile))
+        && ownerProfile.get("unit", "") in ["4K", "AGRISTAT", "AMIA", "DRRM", "APCO - ADN", "APCO - ADS", "APCO - SDN", "APCO - SDS", "APCO - PDI", "CFIDP", "Corn Program", "ELCAC", "Extension and Partnership", "F2C2", "Field Operations Division", "Gender and Development", "Halal Projects", "HVCD Program", "IPM", "Livestock Program", "NUPA Program", "Organic Agriculture Program", "Rice Program", "RSBSA", "SAAD", "Soybean Program"];
     }
     function validCertificateDecisionUpdate(allowAppearanceSignature) {
       let profile = get(currentUserPath()).data;
       let oldStatus = resource.data.get("status", "Pending");
       let newStatus = request.resource.data.get("status", "");
       let signatureAsset = request.resource.data.get("signatureAsset", "");
-      return isVerifiedUser()
-        && (isSuperAdmin() || isChiefCertificateAdmin())
-        && oldStatus != "Approved"
+      // Every call site first authorizes the reviewer through canReviewAppearanceCertificate or canReviewUnitCertificate.
+      return oldStatus != "Approved"
         && newStatus in ["Approved", "Disapproved"]
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "decidedAt", "decidedBy", "signerName", "signerDesignation", "signerOffice", "signatureAsset"])
         && request.resource.data.diff(resource.data).affectedKeys().hasAny(["status"])
