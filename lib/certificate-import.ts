@@ -165,7 +165,7 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
 
   const recordsByEvent = new Map<string, ImportedAppearanceRecord>();
   const groupCounts = new Map<string, number>();
-  const valueFor = (values: Map<number, string>, column: typeof requiredColumns[number]) => values.get(columnNamed(column)!)?.trim() ?? "";
+  const valueFor = (values: Map<number, string>, column: string) => values.get(columnNamed(column)!)?.trim() ?? "";
   const valueAt = (values: Map<number, string>, column: number | undefined) => column === undefined ? "" : values.get(column)?.trim() ?? "";
 
   rows.slice(1).forEach((row, index) => {

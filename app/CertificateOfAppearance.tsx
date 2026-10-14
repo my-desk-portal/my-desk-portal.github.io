@@ -442,7 +442,8 @@ export default function CertificateOfAppearance({ user, ownerOffice, ownerDivisi
     if (!file) return;
     setError("");
     setImportMessage("");
-    if (!db) { setError("Certificate storage is unavailable."); return; }
+    const firestore = db;
+    if (!firestore) { setError("Certificate storage is unavailable."); return; }
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
       setError("Choose the CA_Importing_Template.xlsx workbook (.xlsx).");
       return;
@@ -453,7 +454,7 @@ export default function CertificateOfAppearance({ user, ownerOffice, ownerDivisi
     try {
       const { parseCertificateImportWorkbook } = await import("@/lib/certificate-import");
       const parsed = parseCertificateImportWorkbook(new Uint8Array(await file.arrayBuffer()));
-      const certificateCollection = collection(db, "certificatesOfAppearance");
+      const certificateCollection = collection(firestore, "certificatesOfAppearance");
       const defaultCertificateScopeFields = normalizedOwnerOffice && normalizedOwnerDivision && normalizedOwnerUnit
         ? { certificateOffice: normalizedOwnerOffice, certificateDivision: normalizedOwnerDivision, certificateUnit: normalizedOwnerUnit }
         : {};
@@ -504,7 +505,7 @@ export default function CertificateOfAppearance({ user, ownerOffice, ownerDivisi
         return { reference, data, approvalAdmins };
       }));
 
-      let batch = writeBatch(db);
+      let batch = writeBatch(firestore);
       let batchWriteCount = 0;
       let batchRecords: CertificateRecord[] = [];
       const commitBatch = async () => {
@@ -512,7 +513,7 @@ export default function CertificateOfAppearance({ user, ownerOffice, ownerDivisi
         await batch.commit();
         imported = [...imported, ...batchRecords];
         setRecords((current) => [...batchRecords, ...current]);
-        batch = writeBatch(db);
+        batch = writeBatch(firestore);
         batchWriteCount = 0;
         batchRecords = [];
       };
@@ -522,7 +523,7 @@ export default function CertificateOfAppearance({ user, ownerOffice, ownerDivisi
         if (batchWriteCount && batchWriteCount + operationCount > 450) await commitBatch();
         batch.set(reference, data);
         for (const recipient of approvalAdmins) {
-          const notification = makeDocumentNotification(db, {
+          const notification = makeDocumentNotification(firestore, {
             recipientId: recipient.id,
             ownerId: user.uid,
             documentId: reference.id,
