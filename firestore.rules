@@ -944,11 +944,13 @@ service cloud.firestore {
             && request.resource.data.certificateCollection in ["certificatesOfAppearance", "completionCertificates", "appreciationCertificates", "participationCertificates"]
             && request.resource.data.decisionStatus in ["Approved", "Disapproved"]
             && isRegularCertificateRecipient(request.resource.data.recipientId)
-            && (isSuperAdmin() || isChiefCertificateAdmin())
             && existsAfter(documentPath(request.resource.data.certificateCollection, request.resource.data.documentId))
             && getAfter(documentPath(request.resource.data.certificateCollection, request.resource.data.documentId)).data.ownerId == request.resource.data.recipientId
             && getAfter(documentPath(request.resource.data.certificateCollection, request.resource.data.documentId)).data.status == request.resource.data.decisionStatus
             && getAfter(documentPath(request.resource.data.certificateCollection, request.resource.data.documentId)).data.decidedBy == request.auth.uid
+            && (isSuperAdmin() || isChiefCertificateAdmin()
+              || (request.resource.data.certificateCollection == "certificatesOfAppearance"
+                && canReviewAppearanceCertificate(getAfter(documentPath("certificatesOfAppearance", request.resource.data.documentId)).data)))
             && request.resource.data.certificateType == (request.resource.data.certificateCollection == "certificatesOfAppearance" ? "Appearance"
               : request.resource.data.certificateCollection == "completionCertificates" ? "Completion"
               : request.resource.data.certificateCollection == "appreciationCertificates" ? "Appreciation" : "Participation"))

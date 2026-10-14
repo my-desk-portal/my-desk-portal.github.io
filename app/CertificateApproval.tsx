@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, type QueryConstraint } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type QueryConstraint } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { db } from "@/lib/firebase";
@@ -448,43 +448,29 @@ export default function CertificateApproval({ user, role, office, division, unit
     };
     try {
       const certificateRef = doc(db, record.collectionName, record.id);
-      const isBlankAppearanceCertificate = record.collectionName === "certificatesOfAppearance" && record.recordType === "blank";
       let decisionNotification: ReturnType<typeof makeDocumentNotification> | null = null;
-      if (record.ownerId && record.ownerId !== user.uid && !isBlankAppearanceCertificate) {
-        try {
-          const ownerProfile = await getDoc(doc(db, "users", record.ownerId));
-          const ownerRole = ownerProfile.exists() ? ownerProfile.data().accountRole : null;
-          if (ownerRole === "regular" || ownerRole === "user") {
-            const notification = makeDocumentNotification(db, {
-              recipientId: record.ownerId,
-              ownerId: user.uid,
-              documentId: record.id,
-              documentType: "Certificate Decision",
-              certificateType: record.certificateType,
-              certificateCollection: record.collectionName,
-              decisionStatus: status,
-              activityTitle: record.eventTitle || `Certificate of ${record.certificateType}`,
-              destination: record.destination || record.eventDestination || "",
-            });
-            decisionNotification = notification;
-          }
-        } catch {
-          // Keep an authorized decision from failing if the owner's profile cannot be read.
-        }
+      const notificationOwnerRole = record.ownerRole ?? ownerProfile?.accountRole;
+      if (record.ownerId && record.ownerId !== user.uid && (notificationOwnerRole === "regular" || notificationOwnerRole === "user")) {
+        decisionNotification = makeDocumentNotification(db, {
+          recipientId: record.ownerId,
+          ownerId: user.uid,
+          documentId: record.id,
+          documentType: "Certificate Decision",
+          certificateType: record.certificateType,
+          certificateCollection: record.collectionName,
+          decisionStatus: status,
+          activityTitle: record.eventTitle || `Certificate of ${record.certificateType}`,
+          destination: record.destination || record.eventDestination || "",
+        });
       }
-      let notificationWasSkipped = false;
-      await updateDoc(certificateRef, decision);
+      const decisionBatch = writeBatch(db);
+      decisionBatch.update(certificateRef, decision);
       if (decisionNotification) {
-        try {
-          await setDoc(decisionNotification.reference, decisionNotification.data);
-        } catch {
-          notificationWasSkipped = true;
-        }
+        decisionBatch.set(decisionNotification.reference, decisionNotification.data);
       }
+      await decisionBatch.commit();
       setRecords((current) => current.map((item) => item.id === record.id && item.collectionName === record.collectionName ? { ...item, ...decision, decidedAt: new Date() } : item));
-      setMessage(notificationWasSkipped
-        ? `${record.certificateType} certificate ${status.toLowerCase()}. The applicant notification could not be created.`
-        : `${record.certificateType} certificate ${status.toLowerCase()}.`);
+      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${decisionNotification ? "; the owner was notified." : "."}`);
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       if (code === "permission-denied") {
