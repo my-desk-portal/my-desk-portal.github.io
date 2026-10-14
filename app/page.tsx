@@ -2819,6 +2819,7 @@ export default function Home() {
 <label>Unit / Program / Project<select value={profileUnit} onChange={(event) => setProfileUnit(event.target.value)} required disabled={profileLoading || profileSaving || !profileDivision}><option value="" disabled>{profileDivision ? "Select your Unit / Program / Project" : "Select a Division first"}</option>{unitsForOfficeDivision(profileOffice, profileDivision).map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
   <div className="profile-contact-row">
   <label>Tax Identification No.<input type="text" inputMode="numeric" autoComplete="off" maxLength={11} value={profileTaxIdentificationNo} onChange={(event) => updateTaxIdentificationNo(event, setProfileTaxIdentificationNo)} onKeyDown={(event) => handleTaxIdentificationNoKeyDown(event, setProfileTaxIdentificationNo)} required disabled={profileLoading || profileSaving} /></label>
+  <label>Address<input autoComplete="street-address" maxLength={200} value={profileAddress} onChange={(event) => setProfileAddress(event.target.value)} required disabled={profileLoading || profileSaving} /></label>
   <label>Email<input type="email" value={user.email ?? ""} readOnly /></label>
   </div>
   <div className="profile-security-fields">
