@@ -179,10 +179,12 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
           <label>Personnel Name<input value={to} onChange={(event) => setTo(event.target.value)} required /></label>
           <label>Personnel Position<input value={positionDesignation} onChange={(event) => setPositionDesignation(event.target.value)} required /></label>
         </> : <label>Personnel Name<select value={toUserId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); setToUserId(selectedId); setTo(selectedPerson?.name ?? ""); setPositionDesignation(selectedPerson?.position ?? ""); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select>{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload to try again.</span>}</label>}<label className="nta-manual-recipient-toggle"><input type="checkbox" aria-label="Enter personnel and position manually" checked={manualRecipient} onChange={(event) => { const enabled = event.target.checked; setManualRecipient(enabled); setToUserId(""); if (!enabled) { setTo(""); setPositionDesignation(""); } }} />Manual</label></div></div>
-        <label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
-        <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
-        <div className="wide-field nta-schedule-fields">
+        <div className="wide-field nta-activity-fields">
+          <label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
+          <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
           <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
+        </div>
+        <div className="wide-field nta-schedule-fields">
         <div className="date-range-field"><span>Date (From – To)</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} required /></div></div>
         <div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div>
         </div>
@@ -193,9 +195,11 @@ function NtaForm({ user, office, unit, onSaved, onCancel }: { user: User; office
         </div>
         {signatoryField(true)}
       </> : <>
-        <label className="wide-field">Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
-        <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
-        <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
+        <div className="wide-field nta-activity-fields">
+          <label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
+          <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
+          <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
+        </div>
         <div className="wide-field nta-batches">{batches.map((batch, batchIndex) => <fieldset className="nta-batch-fieldset" key={batchIndex}><legend>Group {batch.number || batchIndex + 1}</legend>
           <div className="date-range-field"><span>Date (From – To)</span><div><input aria-label={`Group ${batchIndex + 1} date from`} type="date" value={batch.dateFrom} onChange={(event) => updateBatch(batchIndex, { dateFrom: event.target.value })} required /><span>to</span><input aria-label={`Group ${batchIndex + 1} date to`} type="date" min={batch.dateFrom} value={batch.dateTo} onChange={(event) => updateBatch(batchIndex, { dateTo: event.target.value })} required /></div></div>
           <div className="date-range-field"><span>Time</span><div><input aria-label={`Group ${batchIndex + 1} time from`} type="time" value={batch.timeFrom} onChange={(event) => updateBatch(batchIndex, { timeFrom: event.target.value })} required /><span>to</span><input aria-label={`Group ${batchIndex + 1} time to`} type="time" value={batch.timeTo} onChange={(event) => updateBatch(batchIndex, { timeTo: event.target.value })} required /></div></div>

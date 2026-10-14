@@ -117,3 +117,8 @@
 .nta-form-section .nta-schedule-fields>*,.nta-form-section .nta-venue-fields>*{min-width:0}
 @media(max-width:900px){.nta-form-section .nta-schedule-fields,.nta-form-section .nta-venue-fields.is-virtual{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:720px){.nta-form-section .nta-schedule-fields,.nta-form-section .nta-venue-fields{grid-template-columns:minmax(0,1fr)}}
+
+.nta-form-section .nta-activity-fields{display:grid;gap:18px 22px;grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));min-width:0}
+.nta-form-section .nta-activity-fields>*{min-width:0}
+.nta-form-section .nta-schedule-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:720px){.nta-form-section .nta-activity-fields{grid-template-columns:minmax(0,1fr)}}
