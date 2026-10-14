@@ -622,7 +622,7 @@ export default function CertificateApproval({ user, role, office, division, unit
             <span><CertificateStatusBadge record={record} /></span>
             <div className="certificate-approval-actions">{isAppearanceCertificate && <button type="button" className="row-action" disabled={blankPreviewLoading} onClick={() => isBlankAppearanceTitle ? void viewBlankAppearance(record) : viewAppearance(record)}>View</button>}{canManage && status === "Pending" && <>
               <button type="button" className="row-action" disabled={savingKey !== null || deleting} onClick={() => void decide(record, "Approved")}>{savingKey === rowKey ? "Saving..." : "Approve"}</button>
-              <button type="button" className="row-action" disabled={savingKey !== null || deleting || status === "Disapproved"} onClick={() => void decide(record, "Disapproved")}>Disapprove</button>
+              <button type="button" className="row-action" disabled={savingKey !== null || deleting} onClick={() => void decide(record, "Disapproved")}>Disapprove</button>
               <button type="button" className="delete-button" disabled={savingKey !== null || deleting} onClick={() => setPendingDelete(record)}>Delete</button>
             </>}</div>
           </div>;
