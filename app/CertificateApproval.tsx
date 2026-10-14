@@ -53,6 +53,25 @@ function unitsForOffice(office: string, division: string) {
   return unitsForOfficeDivision(office, division).filter((unit) => certificateUnits.has(unit));
 }
 
+function approvalSignerOffice(profile: Record<string, unknown>) {
+  const version = typeof profile.profileFieldsVersion === "number" ? profile.profileFieldsVersion : 0;
+  const office = typeof profile.office === "string" ? profile.office : "";
+  const legacyProjectProgram = typeof profile.projectProgram === "string" ? profile.projectProgram : "";
+  const legacyUnit = typeof profile.unit === "string" ? profile.unit : "";
+  const rawOffice = version >= 2 && office.length > 0
+    ? office
+    : legacyProjectProgram.length > 0
+      ? legacyProjectProgram
+      : legacyUnit.length > 0
+        ? legacyUnit
+        : office;
+  if (version >= 4) return office;
+  if (rawOffice === "Field Operations Division (ILD)"
+    || ["AGRISTAT", "AMIA", "DRRM", "FOD-AGRISTAT", "FOD-AMIA", "FOD-DRRM"].includes(rawOffice)
+    || rawOffice.startsWith("FOD-")) return "Field Operations Division";
+  return rawOffice;
+}
+
 function displaySchedule(record: CertificateQueueRecord) {
   const from = record.eventDateFrom || record.eventDate || "";
   const to = record.eventDateTo || from;
@@ -76,7 +95,7 @@ function displaySchedule(record: CertificateQueueRecord) {
   return schedule;
 }
 
-export default function CertificateApproval({ user, role, office, division, unit, assignment, designation, accountName }: {
+export default function CertificateApproval({ user, role, office, division, unit, assignment, designation }: {
   user: User;
   role: AccountRole;
   office?: string | null;
@@ -178,8 +197,21 @@ export default function CertificateApproval({ user, role, office, division, unit
     setSavingKey(key);
     setError("");
     setMessage("");
-    const signerOffice = office ?? "";
-    const signerDesignation = designation ?? "";
+    let signerProfile: Record<string, unknown> | null = null;
+    try {
+      const signerSnapshot = await getDoc(doc(db, "users", user.uid));
+      if (signerSnapshot.exists()) signerProfile = signerSnapshot.data();
+    } catch {
+      // Fall through to a clear profile verification error below.
+    }
+    if (!signerProfile) {
+      setError("Could not verify your approval profile. Refresh and try again.");
+      setSavingKey(null);
+      return;
+    }
+    const signerOffice = approvalSignerOffice(signerProfile);
+    const signerDesignation = typeof signerProfile.designation === "string" ? signerProfile.designation : "";
+    const signerName = typeof signerProfile.name === "string" ? signerProfile.name : "";
     let ownerProfile: Record<string, unknown> | null = null;
     if (record.ownerId && record.ownerId !== user.uid) {
       try {
@@ -196,16 +228,18 @@ export default function CertificateApproval({ user, role, office, division, unit
       && record.recordType !== "blank"
       && isRegularFieldOperationsOwner
       && isChiefAdmin
+      && signerProfile.profileFieldsVersion === 4
+      && signerProfile.accountRole === "admin"
       && signerOffice === "Division"
-      && division === "Field Operations Division"
-      && unit === "Field Operations Division"
-      && signerDesignation.trim() === "Chief"
+      && signerProfile.division === "Field Operations Division"
+      && signerProfile.unit === "Field Operations Division"
+      && signerDesignation === "Chief"
       && status === "Approved";
     const decision = {
       status,
       decidedAt: serverTimestamp(),
       decidedBy: user.uid,
-      signerName: accountName?.trim() || user.displayName || user.email || "Approver",
+      signerName,
       signerDesignation,
       signerOffice,
       signatureAsset: useChiefSignature ? "field_operations_division_chief_signature.png" : "",
