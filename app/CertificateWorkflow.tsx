@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { certificateAppearanceSignatoryForOwner } from "@/lib/certificate-signatory";
 
 export type CertificateWorkflowStatus = "Pending" | "Approved" | "Disapproved";
 
@@ -13,6 +14,11 @@ export type CertificateWorkflowFields = {
   signerDesignation?: string;
   signerOffice?: string;
   signatureAsset?: string;
+  ownerRole?: string;
+  ownerOffice?: string;
+  ownerDivision?: string;
+  ownerUnit?: string;
+  decidedBy?: string;
   signatoryName?: string;
   designation?: string;
   signatoryPosition?: string;
@@ -77,24 +83,41 @@ export function CertificateDisapprovalStamp({ record }: { record: CertificateWor
 }
 
 const publicAsset = (path: string) => `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${path}`;
-const fieldOperationsAppearanceSignatures = new Map([
-  ["field_operations_division_chief_signature.png", "Chief"],
-  ["agristat_and_drrm_focal_persons_amia_project_leader.png", "AGRISTAT/DRRM/AMIA Project Leader"],
-]);
+
+export function fieldOperationsAppearanceApprovalSignatureAsset(record: CertificateWorkflowFields) {
+  if (certificateWorkflowStatus(record.status) !== "Approved"
+    || (record.ownerRole !== "regular" && record.ownerRole !== "user")) return "";
+  const ownerOffice = record.certificateOffice?.trim() || record.ownerOffice?.trim() || "";
+  const ownerDivision = record.certificateDivision?.trim() || record.ownerDivision?.trim() || "";
+  const ownerUnit = record.certificateUnit?.trim() || record.ownerUnit?.trim() || "";
+  const routedSignatory = certificateAppearanceSignatoryForOwner(ownerOffice, ownerDivision, ownerUnit);
+  if (!routedSignatory || record.signerDesignation?.trim() !== routedSignatory.designation) return "";
+  const hasInvalidSavedSignature = Boolean(record.signatureAsset)
+    && (record.signatureAsset !== routedSignatory.signatureAsset || record.signerOffice !== "Division");
+  const hasConflictingSignerOffice = Boolean(record.signerOffice) && record.signerOffice !== "Division";
+  if (hasInvalidSavedSignature || hasConflictingSignerOffice) return "";
+  if (routedSignatory.designation === "AGRISTAT/DRRM/AMIA Project Leader") {
+    const assignedSignerId = record.signatoryAdminId?.trim() ?? "";
+    const decidedBy = record.decidedBy?.trim() ?? "";
+    const signerName = record.signerName?.trim().toLocaleUpperCase("en") ?? "";
+    const assignedSignerName = record.signatoryName?.trim().toLocaleUpperCase("en") ?? "";
+    const matchesAssignedProjectLeader = assignedSignerId && decidedBy
+      ? decidedBy === assignedSignerId
+      : Boolean(signerName && signerName === assignedSignerName);
+    if (!matchesAssignedProjectLeader) return "";
+  }
+  return routedSignatory.signatureAsset;
+}
 
 export function hasFieldOperationsAppearanceApprovalSignature(record: CertificateWorkflowFields) {
-  const expectedDesignation = record.signatureAsset ? fieldOperationsAppearanceSignatures.get(record.signatureAsset) : undefined;
-  return certificateWorkflowStatus(record.status) === "Approved"
-    && Boolean(expectedDesignation)
-    && record.signerDesignation?.trim() === expectedDesignation
-    && record.signerOffice === "Division";
+  return Boolean(fieldOperationsAppearanceApprovalSignatureAsset(record));
 }
 
 export function appearanceCertificateSignatory(record: CertificateWorkflowFields, defaultName: string, defaultPosition: string) {
   const isProjectLeaderScope = record.certificateOffice === "Division"
     && record.certificateDivision === "Field Operations Division"
     && ["AGRISTAT", "AMIA", "DRRM"].includes(record.certificateUnit ?? "");
-  const isApprovedProjectLeaderSignatory = record.signatureAsset === "agristat_and_drrm_focal_persons_amia_project_leader.png"
+  const isApprovedProjectLeaderSignatory = fieldOperationsAppearanceApprovalSignatureAsset(record) === "agristat_and_drrm_focal_persons_amia_project_leader.png"
     && hasFieldOperationsAppearanceApprovalSignature(record);
   const hasRoutedProjectLeaderSignatory = isProjectLeaderScope
     && record.designation === "AGRISTAT/DRRM/AMIA Project Leader"
@@ -117,7 +140,8 @@ export function appearanceCertificateSignatory(record: CertificateWorkflowFields
 }
 
 export function CertificateApprovalSignature({ record }: { record: CertificateWorkflowFields }) {
-  if (!hasFieldOperationsAppearanceApprovalSignature(record) || !record.signatureAsset) return null;
+  const signatureAsset = fieldOperationsAppearanceApprovalSignatureAsset(record);
+  if (!signatureAsset) return null;
   const approvedAt = toDate(record.decidedAt);
   const dateParts = approvedAt
     ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(approvedAt)
@@ -129,7 +153,7 @@ export function CertificateApprovalSignature({ record }: { record: CertificateWo
     : "";
   const signerName = (record.signerName?.trim() || record.signerDesignation || "Field Operations Division").toLocaleUpperCase("en");
   return <div className="certificate-approved-signature" aria-label={`Digitally signed by ${signerName}${approvalDate ? ` on ${approvalDate}` : ""}`}>
-    <img src={publicAsset(`/${record.signatureAsset}`)} alt="" />
+    <img src={publicAsset(`/${signatureAsset}`)} alt="" />
     <div className="certificate-approved-signature-meta">
       <span>Digitally Signed By</span>
       <strong>{signerName}</strong>
