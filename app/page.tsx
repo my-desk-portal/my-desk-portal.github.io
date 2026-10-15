@@ -82,7 +82,7 @@ type Unit = string;
 type AccountAssignment = string;
 type PermitDecision = { status?: "Pending" | "Approved" | "Disapproved"; decidedAt?: unknown; signerName?: string; decidedBy?: string; approvedPermitNo?: string };
 type Permit = { id: string; permitNo: string; permitNos?: string[]; date: string; names: string[]; personIds?: string[]; recipientIds?: string[]; personUnits?: Unit[]; unit: Unit; purpose: string; ownerId?: string; ownerRole?: AccountRole; ownerOffice?: string; ownerDivision?: string; ownerUnit?: string; ownerDesignation?: string; ownerAssignment?: string; personStatuses?: Record<string, PermitDecision>; createdAt?: unknown };
-type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; participantPositions?: string[]; participantOffices?: string[]; participantUserIds?: string[]; participantIds?: string[]; recipientIds?: string[]; signatoryName?: string; signatoryDesignation?: string; ownerId: string; ownerUnit?: string; createdAt?: unknown };
+type SpecialOrder = { id: string; subject: string; activityTitle: string; organizer: string; dateFrom: string; dateTo: string; timeFrom?: string; timeTo?: string; venue: string; participants: string[]; participantPositions?: string[]; participantUnits?: string[]; participantOffices?: string[]; participantUserIds?: string[]; participantIds?: string[]; recipientIds?: string[]; signatoryName?: string; signatoryDesignation?: string; ownerId: string; ownerUnit?: string; createdAt?: unknown };
 
 const specialOrderSignatories = [
   { name: "ENGR. RICARDO M. OÑATE JR.", designation: "Regional Executive Director" },
@@ -1309,7 +1309,7 @@ function SpecialOrderForm({ user, ownerOffice, ownerDivision, ownerUnit, onSaved
   const [venue, setVenue] = useState("");
   const [signatorySelection, setSignatorySelection] = useState("");
   const selectedSignatory = specialOrderSignatoryOptions.find((option) => option.value === signatorySelection);
-  const [participants, setParticipants] = useState([{ userId: "", manual: false, name: "", position: "", office: "" }]);
+  const [participants, setParticipants] = useState([{ userId: "", manual: false, name: "", position: "", unit: "" }]);
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
   const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
@@ -1347,13 +1347,13 @@ function SpecialOrderForm({ user, ownerOffice, ownerDivision, ownerUnit, onSaved
         userId: participant.manual ? "" : participant.userId,
         name: participant.manual ? participant.name.trim() : selectedPerson?.name ?? "",
         position: participant.manual ? participant.position.trim() : selectedPerson?.position ?? "",
-        office: participant.manual ? participant.office.trim() : selectedPerson?.office ?? "",
+        unit: participant.manual ? participant.unit.trim() : selectedPerson?.unit ?? "",
       };
     }).filter((participant) => Boolean(participant.name)).filter((participant, index, all) => !participant.userId || all.findIndex((candidate) => candidate.userId === participant.userId) === index);
     const participantIds = [...new Set(participantRecords.map((participant) => participant.userId).filter(Boolean))];
     const participantList = participantRecords.map((participant) => participant.name);
     const participantPositions = participantRecords.map((participant) => participant.position);
-    const participantOffices = participantRecords.map((participant) => participant.office);
+    const participantUnits = participantRecords.map((participant) => participant.unit);
     const participantUserIds = participantRecords.map((participant) => participant.userId);
     if (!participantList.length) { onError("Select at least one designated personnel."); return; }
     if (!selectedSignatory) { onError("Select a signatory."); return; }
@@ -1362,7 +1362,7 @@ function SpecialOrderForm({ user, ownerOffice, ownerDivision, ownerUnit, onSaved
       const signatory = { signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.position };
       const firestore = db;
       const orderRef = doc(collection(firestore, "specialOrders"));
-      const record = { subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venue: venue.trim(), participants: participantList, participantPositions, participantOffices, participantUserIds, participantIds, recipientIds: participantIds.filter((id) => id !== user.uid), ...signatory, ownerId: user.uid, ownerUnit, createdAt: serverTimestamp() };
+      const record = { subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venue: venue.trim(), participants: participantList, participantPositions, participantUnits, participantUserIds, participantIds, recipientIds: participantIds.filter((id) => id !== user.uid), ...signatory, ownerId: user.uid, ownerUnit, createdAt: serverTimestamp() };
       const batch = writeBatch(firestore);
       batch.set(orderRef, record);
       [...new Set(record.recipientIds)].forEach((recipientId) => {
@@ -1375,9 +1375,9 @@ function SpecialOrderForm({ user, ownerOffice, ownerDivision, ownerUnit, onSaved
     finally { setBusy(false); }
   }
 
-  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated personnel.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><div className="wide-field special-order-activity-fields"><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label></div><div className="special-order-schedule-fields"><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div></div><label className="wide-field">Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder="Street, Building, City, Province" required /></label><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => { return <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); updateParticipant(index, { userId: selectedId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.office ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => { const enabled = event.target.checked; updateParticipant(index, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", office: "" }); }} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant remove-action" aria-label={`Remove personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
+  return <section className="content-section form-section special-order-form-section"><div className="section-heading"><div><p className="eyebrow">New record</p><h2>Create special order</h2><p className="muted">Add the activity details and designated personnel.</p></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div><form className="permit-form" onSubmit={save}><div className="wide-field special-order-activity-fields"><label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label><label>Title of the Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label><label>Organizer or Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label></div><div className="special-order-schedule-fields"><div className="date-range-field"><span>Date</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div></div><div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div></div><label className="wide-field">Venue<input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder="Street, Building, City, Province" required /></label><div className="participant-fields wide-field"><span>Designated Personnel</span>{participants.map((participant, index) => { return <div className="participant-input" key={index}>{participant.manual ? <div className="participant-manual-fields"><label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label><label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label><label>Personnel Unit / Program / Project<input aria-label={`Personnel ${index + 1} Unit / Program / Project`} value={participant.unit} onChange={(event) => updateParticipant(index, { unit: event.target.value })} required /></label></div> : <select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); updateParticipant(index, { userId: selectedId, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", unit: selectedPerson?.unit ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select>}<label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => { const enabled = event.target.checked; updateParticipant(index, enabled ? { manual: true, userId: "" } : { manual: false, userId: "", name: "", position: "", unit: "" }); }} />Manual</label>{participants.length > 1 && <button type="button" className="remove-participant remove-action" aria-label={`Remove personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
       </div>;
-    })}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { name: "", position: "", office: "", userId: "", manual: false }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload the page to try again.</span>}</div>
+    })}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { name: "", position: "", unit: "", userId: "", manual: false }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload the page to try again.</span>}</div>
     <label className="wide-field">Signatory<select aria-label="Signatory" value={signatorySelection} onChange={(event) => { setSignatorySelection(event.target.value); onError(""); }} required><option value="" disabled>Select a signatory</option>{specialOrderSignatoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
     <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save"}</button></div>
   </form></section>;
@@ -1388,7 +1388,7 @@ function SpecialOrderList({ orders, ownerId, preparedByNames, fallbackPreparedBy
   return <section className="content-section"><div className="section-heading"><div><p className="eyebrow">Your records</p><h2>Special Orders</h2><p className="muted">{orders.length} {orders.length === 1 ? "order" : "orders"} available to your Unit / Program / Project.</p></div><button className="primary-button" onClick={onNew}>Add</button></div>{orders.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No special orders yet</h3><p>Create your first order to see it here.</p><button className="text-button plain-action document-create-action" onClick={onNew}>Create a Special Order</button></div> : <div className="permit-table"><RecordPagination totalRecords={orders.length} currentPage={currentPage} pageCount={pageCount} onPageChange={setPage} label="Special Order" /><div className="table-head special-order-list-head"><span>Subject</span><span>Activity</span><span>Schedule</span><span>Prepared By</span><span></span></div>{visibleRecords.map((order) => { const isOwner = order.ownerId === ownerId; return <div className="table-row special-order-list-row" key={order.id}><strong>{order.subject}</strong><span>{order.activityTitle}</span><span>{formatDate(order.dateFrom)}{order.dateTo !== order.dateFrom && ` - ${formatDate(order.dateTo)}`}</span><span>{preparedByNames[order.ownerId] || (isOwner ? fallbackPreparedBy : "") || "—"}</span><span className="permit-row-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPrint(order)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span></div>; })}</div>}</section>;
 }
 
-type EditableSpecialOrderParticipant = { name: string; position: string; office: string; userId: string; manual: boolean };
+type EditableSpecialOrderParticipant = { name: string; position: string; unit: string; userId: string; manual: boolean };
 const normalizeSpecialOrderPersonnelName = (name: string) => name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 
 function SpecialOrderParticipantEditor({ order, userId, office, division, assignment, onCancel, onSaved }: { order: SpecialOrder; userId: string; office: string; division?: string; assignment: string; onCancel: () => void; onSaved: (order: SpecialOrder) => void }) {
@@ -1405,7 +1405,7 @@ function SpecialOrderParticipantEditor({ order, userId, office, division, assign
   const [participants, setParticipants] = useState<EditableSpecialOrderParticipant[]>(() => order.participants.map((name, index) => ({
     name,
     position: order.participantPositions?.[index] ?? "",
-    office: order.participantOffices?.[index] ?? "",
+    unit: order.participantUnits?.[index] ?? order.participantOffices?.[index] ?? "",
     userId: alignedUserIds?.[index] ?? "",
     manual: !alignedUserIds?.[index],
   })));
@@ -1427,10 +1427,10 @@ function SpecialOrderParticipantEditor({ order, userId, office, division, assign
             const nameMatches = entries.filter((person) => normalizeSpecialOrderPersonnelName(person.name) === normalizedName);
             const metadataMatches = nameMatches.filter((person) =>
               (!participant.position || normalizeSpecialOrderPersonnelName(person.position) === normalizeSpecialOrderPersonnelName(participant.position))
-              && (!participant.office || normalizeSpecialOrderPersonnelName(person.office) === normalizeSpecialOrderPersonnelName(participant.office)));
+              && (!participant.unit || normalizeSpecialOrderPersonnelName(person.unit) === normalizeSpecialOrderPersonnelName(participant.unit) || normalizeSpecialOrderPersonnelName(person.office) === normalizeSpecialOrderPersonnelName(participant.unit)));
             const person = nameMatches.length === 1 ? nameMatches[0] : metadataMatches.length === 1 ? metadataMatches[0] : undefined;
             if (!person) return participant;
-            return { ...participant, name: person.name, position: person.position, office: person.office, userId: person.userId, manual: false };
+            return { ...participant, name: person.name, position: person.position, unit: person.unit, userId: person.userId, manual: false };
           }));
           setPersonnelStatus("ready");
         }
@@ -1457,7 +1457,7 @@ function SpecialOrderParticipantEditor({ order, userId, office, division, assign
         userId: participant.manual ? "" : participant.userId,
         name: participant.manual ? participant.name.trim() : selectedPerson?.name ?? participant.name.trim(),
         position: participant.manual ? participant.position.trim() : selectedPerson?.position ?? participant.position.trim(),
-        office: participant.manual ? participant.office.trim() : selectedPerson?.office ?? participant.office.trim(),
+        unit: participant.manual ? participant.unit.trim() : selectedPerson?.unit ?? participant.unit.trim(),
       };
     }).filter((participant) => Boolean(participant.name)).filter((participant, index, all) => !participant.userId || all.findIndex((candidate) => candidate.userId === participant.userId) === index);
     if (!cleaned.length) { setError("Keep at least one personnel name in the Special Order."); return; }
@@ -1465,7 +1465,7 @@ function SpecialOrderParticipantEditor({ order, userId, office, division, assign
     try {
       const names = cleaned.map((participant) => participant.name);
       const positions = cleaned.map((participant) => participant.position);
-      const offices = cleaned.map((participant) => participant.office);
+      const participantUnits = cleaned.map((participant) => participant.unit);
       const participantUserIds = cleaned.map((participant) => participant.userId);
       const participantIds = [...new Set(participantUserIds.filter(Boolean))];
       const recipientIds = participantIds.filter((id) => id !== userId);
@@ -1479,7 +1479,7 @@ function SpecialOrderParticipantEditor({ order, userId, office, division, assign
         venue: venue.trim(),
         participants: names,
         participantPositions: positions,
-        participantOffices: offices,
+        participantUnits,
         participantUserIds,
         participantIds,
         recipientIds,
@@ -1527,11 +1527,11 @@ function SpecialOrderParticipantEditor({ order, userId, office, division, assign
         {participant.manual ? <div className="participant-manual-fields">
           <label>Personnel Name<input aria-label={`Personnel ${index + 1} name`} value={participant.name} onChange={(event) => updateParticipant(index, { name: event.target.value })} required /></label>
           <label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={participant.position} onChange={(event) => updateParticipant(index, { position: event.target.value })} required /></label>
-          <label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={participant.office} onChange={(event) => updateParticipant(index, { office: event.target.value })} required /></label>
+          <label>Personnel Unit / Program / Project<input aria-label={`Personnel ${index + 1} Unit / Program / Project`} value={participant.unit} onChange={(event) => updateParticipant(index, { unit: event.target.value })} required /></label>
         </div> : <div className="participant-manual-fields">
-          <label>Personnel Name<select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedPerson = personnel.find((person) => person.userId === event.target.value); updateParticipant(index, { userId: event.target.value, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", office: selectedPerson?.office ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select></label>
+          <label>Personnel Name<select aria-label={`Designated personnel ${index + 1}`} value={participant.userId} onChange={(event) => { const selectedPerson = personnel.find((person) => person.userId === event.target.value); updateParticipant(index, { userId: event.target.value, name: selectedPerson?.name ?? "", position: selectedPerson?.position ?? "", unit: selectedPerson?.unit ?? "" }); }} required={index === 0} disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.filter((person) => person.userId === participant.userId || !selectedParticipantUserIds.has(person.userId)).map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select></label>
           <label>Personnel Position<input aria-label={`Personnel ${index + 1} position`} value={systemPerson?.position ?? participant.position} readOnly /></label>
-          <label>Personnel Office<input aria-label={`Personnel ${index + 1} office`} value={systemPerson?.office ?? participant.office} readOnly /></label>
+          <label>Personnel Unit / Program / Project<input aria-label={`Personnel ${index + 1} Unit / Program / Project`} value={systemPerson?.unit ?? participant.unit} readOnly /></label>
         </div>}
         <label className="participant-manual-toggle"><input type="checkbox" checked={participant.manual} onChange={(event) => {
           const enabled = event.target.checked;
@@ -1539,12 +1539,12 @@ function SpecialOrderParticipantEditor({ order, userId, office, division, assign
           const matchingPeople = personnel.filter((person) => normalizeSpecialOrderPersonnelName(person.name) === normalizeSpecialOrderPersonnelName(participant.name));
           const matchedPerson = matchingPeople.length === 1 ? matchingPeople[0] : undefined;
           updateParticipant(index, matchedPerson
-            ? { manual: false, userId: matchedPerson.userId, name: matchedPerson.name, position: matchedPerson.position, office: matchedPerson.office }
-            : { manual: false, userId: "", name: "", position: "", office: "" });
+            ? { manual: false, userId: matchedPerson.userId, name: matchedPerson.name, position: matchedPerson.position, unit: matchedPerson.unit }
+            : { manual: false, userId: "", name: "", position: "", unit: "" });
         }} />Manual</label>
         {participants.length > 1 && <button type="button" className="remove-participant remove-action" aria-label={`Remove personnel ${index + 1}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
       </div>;
-    })}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { name: "", position: "", office: "", userId: "", manual: false }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload the page to try again.</span>}</div>
+    })}<button type="button" className="text-button plain-action add-item-text-button add-participant" onClick={() => setParticipants((current) => [...current, { name: "", position: "", unit: "", userId: "", manual: false }])}>+ Add personnel</button>{personnelStatus === "error" && <span className="auth-message auth-message-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload the page to try again.</span>}</div>
     <div className="form-actions"><button className="primary-button" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button></div>
   </form></section>;
 }
@@ -1807,7 +1807,7 @@ function SpecialOrderPreview({ order, onClose }: { order: SpecialOrder; onClose:
     <section className={`special-order-participants ${className}`}>
       {!continued && <div className="special-order-spacer" aria-hidden="true" />}
       <h2>{continued ? "Designated Personnel (continued):" : "Designated Personnel:"}</h2>
-      <ol>{participants.map((participant, index) => { const participantIndex = participantOffset + index; const participantRecord = order.participantUserIds?.[participantIndex] ? personnel.find((person) => person.userId === order.participantUserIds?.[participantIndex]) : personnel.find((person) => person.name === participant); const position = order.participantPositions?.[participantIndex] || participantRecord?.position; const office = order.participantOffices?.[participantIndex] || participantRecord?.office; return <li key={`${pageKey}-${index}`}><strong>{participant}</strong>{position && <> - <em>{position}</em></>}{office && <>, {office}</>}</li>; })}</ol>
+      <ol>{participants.map((participant, index) => { const participantIndex = participantOffset + index; const participantRecord = order.participantUserIds?.[participantIndex] ? personnel.find((person) => person.userId === order.participantUserIds?.[participantIndex]) : personnel.find((person) => person.name === participant); const position = order.participantPositions?.[participantIndex] || participantRecord?.position; const savedUnit = order.participantUnits?.[participantIndex] || participantRecord?.unit; const legacyUnit = order.participantOffices?.[participantIndex]; const unit = savedUnit || (legacyUnit && legacyUnit !== "Division" ? legacyUnit : ""); return <li key={`${pageKey}-${index}`}><strong>{participant}</strong>{position && <> - <em>{position}</em></>}{unit && <>, {unit}</>}</li>; })}</ol>
     </section>
     {includeClosing && renderClosingUnits(closingUnits.slice(0, closingUnitsOnLastAttendeePage))}
   </>;
@@ -2749,6 +2749,7 @@ export default function Home() {
         venue: order.venue,
         participants: [...order.participants],
         ...(order.participantPositions ? { participantPositions: [...order.participantPositions] } : {}),
+        ...(order.participantUnits ? { participantUnits: [...order.participantUnits] } : {}),
         ...(order.participantOffices ? { participantOffices: [...order.participantOffices] } : {}),
         participantUserIds,
         participantIds,
