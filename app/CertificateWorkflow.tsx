@@ -90,7 +90,9 @@ export function fieldOperationsAppearanceApprovalSignatureAsset(record: Certific
   const ownerDivision = record.certificateDivision?.trim() || record.ownerDivision?.trim() || "";
   const ownerUnit = record.certificateUnit?.trim() || record.ownerUnit?.trim() || "";
   const routedSignatory = certificateAppearanceSignatoryForOwner(ownerOffice, ownerDivision, ownerUnit);
-  if (!routedSignatory || record.signerDesignation?.trim() !== routedSignatory.designation) return "";
+  if (!routedSignatory) return "";
+  const signerDesignation = record.signerDesignation?.trim() ?? "";
+  if (signerDesignation && signerDesignation !== routedSignatory.designation) return "";
   const hasInvalidSavedSignature = Boolean(record.signatureAsset)
     && (record.signatureAsset !== routedSignatory.signatureAsset || record.signerOffice !== "Division");
   const hasConflictingSignerOffice = Boolean(record.signerOffice) && record.signerOffice !== "Division";
@@ -100,10 +102,13 @@ export function fieldOperationsAppearanceApprovalSignatureAsset(record: Certific
     const decidedBy = record.decidedBy?.trim() ?? "";
     const signerName = record.signerName?.trim().toLocaleUpperCase("en") ?? "";
     const assignedSignerName = record.signatoryName?.trim().toLocaleUpperCase("en") ?? "";
-    const matchesAssignedProjectLeader = assignedSignerId && decidedBy
-      ? decidedBy === assignedSignerId
-      : Boolean(signerName && signerName === assignedSignerName);
-    if (!matchesAssignedProjectLeader) return "";
+    if (assignedSignerId && decidedBy && decidedBy !== assignedSignerId) return "";
+    if (signerName && assignedSignerName && signerName !== assignedSignerName) return "";
+    const matchesAssignedProjectLeader = Boolean(assignedSignerId && decidedBy && decidedBy === assignedSignerId)
+      || Boolean(signerName && assignedSignerName && signerName === assignedSignerName);
+    // Older approved records may not have saved signerDesignation. They still
+    // carry the assigned approver and signer name, which identify this route.
+    if (!matchesAssignedProjectLeader && signerDesignation !== routedSignatory.designation) return "";
   }
   return routedSignatory.signatureAsset;
 }
