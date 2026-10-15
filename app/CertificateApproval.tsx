@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch, type QueryConstraint } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, type QueryConstraint } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { db } from "@/lib/firebase";
@@ -432,9 +432,11 @@ export default function CertificateApproval({ user, role, office, division, unit
       && normalizeAccountStatus(signerProfile.accountStatus) === "Approved"
       && isFieldOperationsAppearanceApprover(signerProfile)
       && signerDesignation === ownerSignatory?.designation;
+    const signerMatchesAssignedProjectLeader = !record.signatoryAdminId || record.signatoryAdminId === user.uid;
     const useAppearanceSignature = record.collectionName === "certificatesOfAppearance"
       && isRegularFieldOperationsOwner
       && signerMatchesAppearanceRoute
+      && (ownerSignatory?.designation !== "AGRISTAT/DRRM/AMIA Project Leader" || signerMatchesAssignedProjectLeader)
       && status === "Approved";
     const decision = {
       status,
@@ -463,14 +465,18 @@ export default function CertificateApproval({ user, role, office, division, unit
           destination: record.destination || record.eventDestination || "",
         });
       }
-      const decisionBatch = writeBatch(db);
-      decisionBatch.update(certificateRef, decision);
-      if (decisionNotification) {
-        decisionBatch.set(decisionNotification.reference, decisionNotification.data);
-      }
-      await decisionBatch.commit();
+      await updateDoc(certificateRef, decision);
       setRecords((current) => current.map((item) => item.id === record.id && item.collectionName === record.collectionName ? { ...item, ...decision, decidedAt: new Date() } : item));
-      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${decisionNotification ? "; the owner was notified." : "."}`);
+      let notificationSent = false;
+      if (decisionNotification) {
+        try {
+          await setDoc(decisionNotification.reference, decisionNotification.data);
+          notificationSent = true;
+        } catch (cause) {
+          console.warn("Certificate decision was saved, but the owner notification could not be sent.", cause);
+        }
+      }
+      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${notificationSent ? "; the owner was notified." : decisionNotification ? "; the owner notification could not be sent." : "."}`);
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       if (code === "permission-denied") {
