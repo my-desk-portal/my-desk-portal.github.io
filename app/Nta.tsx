@@ -140,18 +140,36 @@ function NtaForm({ user, office, division, unit, onSaved, onCancel }: { user: Us
     if (!db) { setError("Database is not configured."); return; }
     if (!unit) { setError("Your Unit / Program / Project is still loading. Try saving again in a moment."); return; }
     if (!selectedSignatory) { setError("Select a signatory."); return; }
+    const formData = new FormData(event.currentTarget);
+    const readField = (name: string, fallback: string) => {
+      const submitted = formData.get(name);
+      return typeof submitted === "string" ? submitted.trim() || fallback.trim() : fallback.trim();
+    };
+    const submittedSubject = readField("subject", subject);
+    const submittedActivityTitle = readField("activityTitle", activityTitle);
+    const submittedOrganizer = readField("organizer", organizer);
+    const submittedDateFrom = mode === "individual" ? readField("dateFrom", dateFrom) : dateFrom;
+    const submittedDateTo = mode === "individual" ? readField("dateTo", dateTo) : dateTo;
+    const submittedTimeFrom = mode === "individual" ? readField("timeFrom", timeFrom) : timeFrom;
+    const submittedTimeTo = mode === "individual" ? readField("timeTo", timeTo) : timeTo;
+    const submittedVenue = mode === "individual" ? readField("venue", venue) : venue;
+    if ([submittedSubject, submittedActivityTitle, submittedOrganizer].some((value) => !value || value === ntaFormHelpText)
+      || (mode === "individual" && [submittedDateFrom, submittedDateTo, submittedVenue].some((value) => !value || value === ntaFormHelpText))) {
+      setError("Enter the subject, activity title, organizer, date, and venue before saving.");
+      return;
+    }
     setBusy(true); setError("");
     const schedulesByRecipient = new Map<string, Array<{ dateFrom: string; dateTo: string; venue: string }>>();
-    if (mode === "individual" && !manualRecipient && toUserId) schedulesByRecipient.set(toUserId, [{ dateFrom, dateTo, venue: venue.trim() }]);
+    if (mode === "individual" && !manualRecipient && toUserId) schedulesByRecipient.set(toUserId, [{ dateFrom: submittedDateFrom, dateTo: submittedDateTo, venue: submittedVenue }]);
     if (isGroupMode(mode)) batches.forEach((batch) => batch.attendees.forEach((attendee) => {
       if (!attendee.userId) return;
       schedulesByRecipient.set(attendee.userId, [...(schedulesByRecipient.get(attendee.userId) ?? []), { dateFrom: batch.dateFrom, dateTo: batch.dateTo, venue: batch.venue.trim() }]);
     }));
     const recipientIds = [...schedulesByRecipient.keys()].filter((id) => id !== user.uid);
-    const common = { mode, subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim(), signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.position, recipientIds, ownerId: user.uid, ownerUnit: unit, createdAt: serverTimestamp() };
+    const common = { mode, subject: submittedSubject, activityTitle: submittedActivityTitle, organizer: submittedOrganizer, signatoryName: selectedSignatory.name, signatoryDesignation: selectedSignatory.position, recipientIds, ownerId: user.uid, ownerUnit: unit, createdAt: serverTimestamp() };
     try {
       const data = mode === "individual"
-        ? { ...common, to: to.trim(), toUserId: manualRecipient ? "" : toUserId, positionDesignation: positionDesignation.trim(), dateFrom, dateTo, timeFrom, timeTo, venueType, venue: venue.trim(), link: venueType === "virtual" ? link.trim() : "" }
+        ? { ...common, to: to.trim(), toUserId: manualRecipient ? "" : toUserId, positionDesignation: positionDesignation.trim(), dateFrom: submittedDateFrom, dateTo: submittedDateTo, timeFrom: submittedTimeFrom, timeTo: submittedTimeTo, venueType, venue: submittedVenue, link: venueType === "virtual" ? link.trim() : "" }
         : { ...common, batches: batches.map((batch) => ({ ...batch, venue: batch.venue.trim(), link: batch.venueType === "virtual" ? batch.link.trim() : "", attendees: batch.attendees.map((attendee) => { const selectedPerson = attendee.manual ? undefined : personnel.find((person) => person.userId === attendee.userId); return { ...attendee, userId: attendee.manual ? "" : attendee.userId ?? "", name: attendee.manual ? attendee.name.trim() : selectedPerson?.name ?? attendee.name.trim(), position: attendee.manual ? attendee.position?.trim() ?? "" : selectedPerson?.position ?? attendee.position?.trim() ?? "", office: attendee.manual ? attendee.office.trim() : selectedPerson?.office ?? attendee.office.trim() }; }) })) };
       const firestore = db;
       const recordRef = doc(collection(firestore, "ntaRecords"));
@@ -180,25 +198,25 @@ function NtaForm({ user, office, division, unit, onSaved, onCancel }: { user: Us
           <label>Personnel Position<input value={positionDesignation} onChange={(event) => setPositionDesignation(event.target.value)} required /></label>
         </> : <label>Personnel Name<select value={toUserId} onChange={(event) => { const selectedId = event.target.value; const selectedPerson = personnel.find((person) => person.userId === selectedId); setToUserId(selectedId); setTo(selectedPerson?.name ?? ""); setPositionDesignation(selectedPerson?.position ?? ""); }} required disabled={personnelStatus !== "ready"}><option value="" disabled>{personnelStatus === "loading" ? "Loading personnel..." : personnelStatus === "error" ? "Personnel list unavailable" : "Select a personnel"}</option>{personnel.map((person) => <option key={person.userId} value={person.userId}>{personnelDisplayName(person)}</option>)}</select>{personnelStatus === "error" && <span className="nta-personnel-error" role="alert">Unable to load personnel from user accounts. Use manual input or reload to try again.</span>}</label>}<label className="nta-manual-recipient-toggle"><input type="checkbox" aria-label="Enter personnel and position manually" checked={manualRecipient} onChange={(event) => { const enabled = event.target.checked; setManualRecipient(enabled); setToUserId(""); if (!enabled) { setTo(""); setPositionDesignation(""); } }} />Manual</label></div></div>
         <div className="wide-field nta-activity-fields">
-          <label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
-          <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
-          <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
+          <label>Subject<input name="subject" value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
+          <label>Title of Activity<input name="activityTitle" value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
+          <label>Organizer / Host<input name="organizer" value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
         </div>
         <div className="wide-field nta-schedule-fields">
-        <div className="date-range-field"><span>Date (From – To)</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} required /></div></div>
-        <div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div>
+        <div className="date-range-field"><span>Date (From – To)</span><div><input name="dateFrom" aria-label="Date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} required /><span>to</span><input name="dateTo" aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} required /></div></div>
+        <div className="date-range-field"><span>Time</span><div><input name="timeFrom" aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} required /><span>to</span><input name="timeTo" aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} required /></div></div>
         </div>
         <div className={`wide-field nta-venue-fields${venueType === "virtual" ? " is-virtual" : ""}`}>
           <label>Venue type<select value={venueType} onChange={(event) => setVenueType(event.target.value as "physical" | "virtual")}><option value="physical">Physical venue</option><option value="virtual">Virtual platform</option></select></label>
-        <label>{venueType === "virtual" ? "Platform name" : "Venue address"}<input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder={venueType === "virtual" ? "Google Meet, Zoom, etc." : "Street, Building, City, Province"} required /></label>
+        <label>{venueType === "virtual" ? "Platform name" : "Venue address"}<input name="venue" value={venue} onChange={(event) => setVenue(event.target.value)} placeholder={venueType === "virtual" ? "Google Meet, Zoom, etc." : "Street, Building, City, Province"} required /></label>
         {venueType === "virtual" && <label>Meeting link<input type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://" required /></label>}
         </div>
         {signatoryField(true)}
       </> : <>
         <div className="wide-field nta-activity-fields">
-          <label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
-          <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
-          <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
+          <label>Subject<input name="subject" value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
+          <label>Title of Activity<input name="activityTitle" value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
+          <label>Organizer / Host<input name="organizer" value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
         </div>
         <div className="wide-field nta-batches">{batches.map((batch, batchIndex) => <fieldset className="nta-batch-fieldset" key={batchIndex}><legend>Group {batch.number || batchIndex + 1}</legend>
           <div className="date-range-field"><span>Date (From – To)</span><div><input aria-label={`Group ${batchIndex + 1} date from`} type="date" value={batch.dateFrom} onChange={(event) => updateBatch(batchIndex, { dateFrom: event.target.value })} required /><span>to</span><input aria-label={`Group ${batchIndex + 1} date to`} type="date" min={batch.dateFrom} value={batch.dateTo} onChange={(event) => updateBatch(batchIndex, { dateTo: event.target.value })} required /></div></div>
@@ -221,6 +239,7 @@ function NtaEditor({ record, userId, office, division, unit, onCancel, onSaved, 
   const [toUserId, setToUserId] = useState(record.toUserId ?? record.recipientIds?.[0] ?? "");
   const [positionDesignation, setPositionDesignation] = useState(record.positionDesignation ?? "");
   const [manualRecipient, setManualRecipient] = useState(!(record.toUserId ?? record.recipientIds?.[0]));
+  const [subject, setSubject] = useState(cleanNtaField(record.subject));
   const [activityTitle, setActivityTitle] = useState(cleanNtaField(record.activityTitle));
   const [organizer, setOrganizer] = useState(cleanNtaField(record.organizer));
   const [dateFrom, setDateFrom] = useState(record.dateFrom ?? "");
@@ -231,7 +250,7 @@ function NtaEditor({ record, userId, office, division, unit, onCancel, onSaved, 
   const [venue, setVenue] = useState(cleanNtaField(record.venue));
   const [link, setLink] = useState(record.link ?? "");
   const [batches, setBatches] = useState<NtaBatch[]>(() => (record.batches ?? []).map((batch) => ({ ...batch, timeFrom: batch.timeFrom ?? "", timeTo: batch.timeTo ?? "", venueType: batch.venueType ?? "physical", venue: cleanNtaField(batch.venue), link: batch.link ?? "", attendees: batch.attendees.map((attendee) => ({ ...attendee, manual: attendee.manual ?? !attendee.userId })) })));
-  const hasLegacyPlaceholder = record.activityTitle === ntaFormHelpText || record.organizer === ntaFormHelpText || (record.mode === "individual" && record.venue === ntaFormHelpText) || (record.batches ?? []).some((batch) => batch.venue === ntaFormHelpText);
+  const hasLegacyPlaceholder = record.subject === ntaFormHelpText || record.activityTitle === ntaFormHelpText || record.organizer === ntaFormHelpText || (record.mode === "individual" && record.venue === ntaFormHelpText) || (record.batches ?? []).some((batch) => batch.venue === ntaFormHelpText);
   const [personnel, setPersonnel] = useState<PersonnelEntry[]>([]);
   const [personnelStatus, setPersonnelStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
@@ -266,6 +285,8 @@ function NtaEditor({ record, userId, office, division, unit, onCancel, onSaved, 
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!db) { setError("Database is not configured."); return; }
+    if ([subject, activityTitle, organizer].some((value) => !cleanNtaField(value.trim()))) { setError("Enter a subject, activity title, and organizer before saving."); return; }
+    if (record.mode === "individual" && (!dateFrom || !dateTo || !venue.trim())) { setError("Enter the date and venue before saving."); return; }
     const cleanedBatches = batches.map((batch) => ({ ...batch, attendees: batch.attendees.map((attendee) => { const selected = attendee.manual ? undefined : personnel.find((person) => person.userId === attendee.userId); return { ...attendee, userId: attendee.manual ? "" : attendee.userId ?? "", name: attendee.manual ? attendee.name.trim() : selected?.name ?? attendee.name.trim(), position: attendee.manual ? attendee.position?.trim() ?? "" : selected?.position ?? attendee.position?.trim() ?? "", office: attendee.manual ? attendee.office.trim() : selected?.office ?? attendee.office.trim() }; }) }));
     const selectedPerson = !manualRecipient ? personnel.find((person) => person.userId === toUserId) : undefined;
     const individualName = manualRecipient ? to.trim() : selectedPerson?.name ?? to.trim();
@@ -289,7 +310,7 @@ function NtaEditor({ record, userId, office, division, unit, onCancel, onSaved, 
       schedulesByRecipient.forEach((schedules, recipientId) => {
         notificationDrafts.set(recipientId, { recipientId, ownerId: userId, documentId: record.id, documentType: "Notice to Attend", activityTitle: activityTitle.trim(), schedules });
       });
-      const sharedUpdates = { activityTitle: activityTitle.trim(), organizer: organizer.trim() };
+      const sharedUpdates = { subject: subject.trim(), activityTitle: activityTitle.trim(), organizer: organizer.trim() };
       const updates = record.mode === "individual"
         ? { ...sharedUpdates, to: individualName, toUserId: manualRecipient ? "" : toUserId, positionDesignation: individualPosition, dateFrom, dateTo: dateTo || dateFrom, timeFrom, timeTo, venueType, venue: venue.trim(), link: venueType === "virtual" ? link.trim() : "", recipientIds }
         : { ...sharedUpdates, batches: cleanedBatches, recipientIds };
@@ -330,9 +351,10 @@ function NtaEditor({ record, userId, office, division, unit, onCancel, onSaved, 
       <div><p className="eyebrow">Edit record</p><h2>Edit {record.mode === "individual" ? "individual notice" : record.mode === "multiple" ? "multiple personnel notice" : "group notice"}</h2><p className="muted">Update the activity information, schedule, venue, and designated personnel.</p></div>
       <button type="button" className="ghost-button" onClick={onCancel}>Cancel</button>
     </div>
-    {hasLegacyPlaceholder && <p className="error-message nta-error" role="alert">Some saved activity details contained form guidance text and were cleared. Enter the missing title, organizer, or venue before saving.</p>}
+    {hasLegacyPlaceholder && <p className="error-message nta-error" role="alert">Some saved activity details contained form guidance text and were cleared. Enter the missing subject, title, organizer, or venue before saving.</p>}
     {error && <p className="error-message nta-error">{error}</p>}
     <form className="permit-form" onSubmit={save}>
+      <label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
       <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
       <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
       {record.mode === "individual" ? <>
@@ -384,7 +406,7 @@ function NtaList({ records, ownerId, preparedByNames, fallbackPreparedBy, deleti
         const time = start || end ? `${start}${start && end ? " – " : ""}${end}` : "";
         return [date, time].filter(Boolean).join(" · ");
       }).filter(Boolean);
-    return <div className="table-row nta-list-row" key={record.id}><span>{record.subject}</span><span>{cleanNtaField(record.activityTitle) || "—"}</span><span className="nta-list-schedules">{schedules.length ? schedules.map((schedule, index) => <span key={`${record.id}-schedule-${index}`}>{schedule}</span>) : <span>—</span>}</span><span>{preparedByNames[record.ownerId] || (isOwner ? fallbackPreparedBy : "") || "—"}</span><span className="nta-list-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPreview(record)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(record)}>{copyingId === record.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</span></div>;
+    return <div className="table-row nta-list-row" key={record.id}><span>{cleanNtaField(record.subject) || "—"}</span><span>{cleanNtaField(record.activityTitle) || "—"}</span><span className="nta-list-schedules">{schedules.length ? schedules.map((schedule, index) => <span key={`${record.id}-schedule-${index}`}>{schedule}</span>) : <span>—</span>}</span><span>{preparedByNames[record.ownerId] || (isOwner ? fallbackPreparedBy : "") || "—"}</span><span className="nta-list-actions">{isOwner && <button type="button" className="row-action" onClick={() => onEdit(record)}>Edit</button>}<button type="button" className="row-action" onClick={() => onPreview(record)}>View</button><button type="button" className="row-action" disabled={copyingId !== null || deletingId !== null} onClick={() => onCopy(record)}>{copyingId === record.id ? "Copying..." : "Copy"}</button>{isOwner && <button type="button" className="delete-button" disabled={deletingId !== null || copyingId !== null} onClick={() => onDelete(record)}>{deletingId === record.id ? "Deleting..." : "Delete"}</button>}</span></div>;
   })}</div>}</section>;
 }
 
@@ -428,13 +450,13 @@ function NtaPage({ record, page, rosterSections = [], showFixedCopy = false, fir
   return <article className="nta-document-page"><img className="nta-letterhead" src={asset("/Document-Header-Footer.jpg")} alt="" /><div className={`nta-document-content ${page}${showFixedCopy ? " nta-roster-copy-page" : ""}${record.mode === "multiple" ? " nta-multiple-personnel" : record.mode === "batch" ? " nta-group-notice" : ""}`}>
     {(individual || batchOverview) && <header className="nta-doc-title"><h1>NOTICE TO ATTEND</h1><p>No. ____________________</p><p>Series of {new Date().getFullYear()}</p></header>}
     {page === "batch-copy" ? <NtaFixedCopy /> : page === "individual-continuation" ? <NtaIndividualClosing units={individualClosingUnits} signatoryName={signatoryName} signatoryDesignation={signatoryDesignation} continuation compacted={individualClosingCompacted} /> : individual ? <>
-      <section className="nta-to-subject"><div className="nta-to-recipient"><p><b>TO</b><strong>:</strong><strong>{record.to?.toUpperCase()}</strong></p>{record.positionDesignation && <p className="nta-position-line"><span aria-hidden="true" /><span aria-hidden="true" /><span>{record.positionDesignation}</span></p>}</div><p><b>SUBJECT</b><strong>:</strong><strong>{record.subject.toUpperCase()}</strong></p></section>
+      <section className="nta-to-subject"><div className="nta-to-recipient"><p><b>TO</b><strong>:</strong><strong>{record.to?.toUpperCase()}</strong></p>{record.positionDesignation && <p className="nta-position-line"><span aria-hidden="true" /><span aria-hidden="true" /><span>{record.positionDesignation}</span></p>}</div><p><b>SUBJECT</b><strong>:</strong><strong>{cleanNtaField(record.subject).toUpperCase() || "—"}</strong></p></section>
       <hr className="nta-rule" />
       <p className="nta-directed">You are hereby directed to attend the activity with the following details:</p>
       <dl className="nta-details"><div><dt>Title of Activity</dt><b>:</b><dd>{cleanNtaField(record.activityTitle) || "—"}</dd></div><div><dt>Organizer / Host</dt><b>:</b><dd>{cleanNtaField(record.organizer) || "—"}</dd></div><div><dt>Date(s)</dt><b>:</b><dd>{formatDateRange(record.dateFrom ?? "", record.dateTo ?? "")}</dd></div>{(record.timeFrom || record.timeTo) && <div><dt>Time</dt><b>:</b><dd>{record.timeFrom ? formatTime(record.timeFrom) : ""}{record.timeFrom && record.timeTo ? " – " : ""}{record.timeTo ? formatTime(record.timeTo) : ""}</dd></div>}<div><dt>Venue / Platform</dt><b>:</b><dd>{cleanNtaField(record.venue) || "—"}</dd></div>{record.venueType === "virtual" && <div><dt>Link</dt><b>:</b><dd className="nta-link">{record.link}</dd></div>}</dl>
       <NtaIndividualClosing units={individualClosingUnits} signatoryName={signatoryName} signatoryDesignation={signatoryDesignation} signatoryPulledBack={individualSignatoryPulledBack} compacted={individualClosingCompacted} />
     </> : batchOverview ? <>
-      <section className="nta-to-subject"><p><b>TO</b><strong>:</strong><strong>ALL CONCERNED PERSONNEL</strong></p><p className="nta-office-line"><span /> <strong>This Office</strong></p><p><b>SUBJECT</b><strong>:</strong><strong>{record.subject.toUpperCase()}</strong></p></section>
+      <section className="nta-to-subject"><p><b>TO</b><strong>:</strong><strong>ALL CONCERNED PERSONNEL</strong></p><p className="nta-office-line"><span /> <strong>This Office</strong></p><p><b>SUBJECT</b><strong>:</strong><strong>{cleanNtaField(record.subject).toUpperCase() || "—"}</strong></p></section>
       <hr className="nta-rule" />
       <p className="nta-directed">You are hereby directed to attend the activity with the following details:</p>
       <dl className="nta-details nta-batch-overview">{[
