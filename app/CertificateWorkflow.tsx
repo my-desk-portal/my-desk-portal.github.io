@@ -18,7 +18,6 @@ export type CertificateWorkflowFields = {
   ownerOffice?: string;
   ownerDivision?: string;
   ownerUnit?: string;
-  decidedBy?: string;
   signatoryName?: string;
   designation?: string;
   signatoryPosition?: string;
