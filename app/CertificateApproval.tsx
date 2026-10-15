@@ -432,7 +432,7 @@ export default function CertificateApproval({ user, role, office, division, unit
       && normalizeAccountStatus(signerProfile.accountStatus) === "Approved"
       && isFieldOperationsAppearanceApprover(signerProfile)
       && signerDesignation === ownerSignatory?.designation;
-    const signerMatchesAssignedProjectLeader = !record.signatoryAdminId || record.signatoryAdminId === user.uid;
+    const signerMatchesAssignedProjectLeader = record.signatoryAdminId === undefined || record.signatoryAdminId === user.uid;
     const useAppearanceSignature = record.collectionName === "certificatesOfAppearance"
       && isRegularFieldOperationsOwner
       && signerMatchesAppearanceRoute
