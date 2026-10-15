@@ -443,8 +443,33 @@ service cloud.firestore {
             || (signatureAsset == "agristat_and_drrm_focal_persons_amia_project_leader.png"
               && certificateScopeUnit(resource.data) in ["AGRISTAT", "AMIA", "DRRM"]
               && isFodAppearanceApproverProfile(profile, "AGRISTAT/DRRM/AMIA Project Leader")
-              && resource.data.get("signatoryAdminId", request.auth.uid) == request.auth.uid
-              && request.resource.data.signerDesignation == "AGRISTAT/DRRM/AMIA Project Leader"))));
+              && request.resource.data.signerDesignation == "AGRISTAT/DRRM/AMIA Project Leader"))))
+        && (!allowAppearanceSignature
+          || newStatus != "Approved"
+          || !isFodAppearanceApproverProfile(profile, "AGRISTAT/DRRM/AMIA Project Leader")
+          || request.resource.data.signerOffice != "Division"
+          || request.resource.data.signerDesignation != "AGRISTAT/DRRM/AMIA Project Leader"
+          || !isFodAppearanceOwnerRecord(resource.data)
+          || !(certificateScopeUnit(resource.data) in ["AGRISTAT", "AMIA", "DRRM"])
+          || signatureAsset == "agristat_and_drrm_focal_persons_amia_project_leader.png");
+    }
+    function validApprovedProjectLeaderSignatureBackfill() {
+      let approverId = resource.data.get("decidedBy", "missing-approver");
+      let approverPath = /databases/$(database)/documents/users/$(approverId);
+      return request.auth != null
+        && isVerifiedUser()
+        && approverId is string
+        && approverId == request.auth.uid
+        && exists(approverPath)
+        && isFodAppearanceApproverProfile(get(approverPath).data, "AGRISTAT/DRRM/AMIA Project Leader")
+        && resource.data.get("status", "") == "Approved"
+        && request.resource.data.get("status", "") == "Approved"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["signatureAsset"])
+        && request.resource.data.get("signatureAsset", "") == "agristat_and_drrm_focal_persons_amia_project_leader.png"
+        && resource.data.get("signerOffice", "") == "Division"
+        && resource.data.get("signerDesignation", "") in ["", "AGRISTAT/DRRM/AMIA Project Leader"]
+        && isFodAppearanceOwnerRecord(resource.data)
+        && certificateScopeUnit(resource.data) in ["AGRISTAT", "AMIA", "DRRM"];
     }
     function isValidPermitDecisionUpdate() {
       let decisionKey = request.resource.data.get("lastDecisionKey", "");
@@ -1051,7 +1076,9 @@ service cloud.firestore {
           && request.resource.data.get("signatoryPosition", null) == resource.data.get("signatoryPosition", null)
           && request.resource.data.get("signatoryAdminId", null) == resource.data.get("signatoryAdminId", null))
         || (canReviewAppearanceCertificate(resource.data)
-          && validCertificateDecisionUpdate(true));
+          && validCertificateDecisionUpdate(true))
+        || (canReviewAppearanceCertificate(resource.data)
+          && validApprovedProjectLeaderSignatureBackfill());
       allow delete: if isVerifiedUser()
         && resource.data.get("status", "Pending") != "Approved"
         && (resource.data.ownerId == request.auth.uid || canReviewAppearanceCertificate(resource.data));

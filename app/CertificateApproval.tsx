@@ -13,7 +13,7 @@ import { blankAppearancePurpose } from "@/lib/certificate-title";
 import { makeBlankCertificatePdf } from "@/lib/blank-certificate-pdf";
 import { tevDivisions, type TevDivision } from "@/lib/mytev";
 import { loadPdfTools } from "@/lib/pdf-tools";
-import { appearanceCertificateSignatory, CertificateApprovalSignature, CertificateDisapprovalStamp, CertificateStatusBadge, certificateWorkflowStatus, hasFieldOperationsAppearanceApprovalSignature, type CertificateWorkflowFields, type CertificateWorkflowStatus } from "./CertificateWorkflow";
+import { appearanceCertificateSignatory, CertificateApprovalSignature, CertificateDisapprovalStamp, CertificateStatusBadge, certificateWorkflowStatus, fieldOperationsAppearanceApprovalSignatureAsset, hasFieldOperationsAppearanceApprovalSignature, type CertificateWorkflowFields, type CertificateWorkflowStatus } from "./CertificateWorkflow";
 import DeleteConfirmation from "./DeleteConfirmation";
 import RecordPagination, { useRecordPagination } from "./RecordPagination";
 import "./certificate-approval.css";
@@ -340,7 +340,7 @@ export default function CertificateApproval({ user, role, office, division, unit
           }
         }));
         if (!active) return;
-        setRecords(loadedRecords.map((record) => {
+        const enrichedRecords = loadedRecords.map((record) => {
           if (record.collectionName !== "certificatesOfAppearance") return record;
           const storedOwnerOffice = record.ownerOffice?.trim() ?? "";
           const ownerOffice = (storedOwnerOffice ? accountOffice({ office: storedOwnerOffice, profileFieldsVersion: 3 }) : null)
@@ -373,7 +373,22 @@ export default function CertificateApproval({ user, role, office, division, unit
               signatoryAdminId: currentProjectLeader.id,
             } : {}),
           };
-        }).sort((left, right) => (right.createdAt?.toMillis?.() ?? 0) - (left.createdAt?.toMillis?.() ?? 0)));
+        }).sort((left, right) => (right.createdAt?.toMillis?.() ?? 0) - (left.createdAt?.toMillis?.() ?? 0));
+        setRecords(enrichedRecords);
+        if (isFodProjectLeaderAdmin) {
+          enrichedRecords.forEach((record) => {
+            const signatureAsset = fieldOperationsAppearanceApprovalSignatureAsset(record);
+            if (record.collectionName === "certificatesOfAppearance"
+              && certificateWorkflowStatus(record.status) === "Approved"
+              && !record.signatureAsset
+              && record.decidedBy === user.uid
+              && signatureAsset === "agristat_and_drrm_focal_persons_amia_project_leader.png") {
+              void updateDoc(doc(firestore, record.collectionName, record.id), { signatureAsset }).catch(() => {
+                // The preview still resolves the assigned image if a legacy record cannot be repaired.
+              });
+            }
+          });
+        }
       } catch (cause) {
         if (!active) return;
         const code = (cause as { code?: string }).code;
@@ -432,11 +447,9 @@ export default function CertificateApproval({ user, role, office, division, unit
       && normalizeAccountStatus(signerProfile.accountStatus) === "Approved"
       && isFieldOperationsAppearanceApprover(signerProfile)
       && signerDesignation === ownerSignatory?.designation;
-    const signerMatchesAssignedProjectLeader = record.signatoryAdminId === undefined || record.signatoryAdminId === user.uid;
     const useAppearanceSignature = record.collectionName === "certificatesOfAppearance"
       && isRegularFieldOperationsOwner
       && signerMatchesAppearanceRoute
-      && (ownerSignatory?.designation !== "AGRISTAT/DRRM/AMIA Project Leader" || signerMatchesAssignedProjectLeader)
       && status === "Approved";
     const decision = {
       status,
@@ -465,18 +478,8 @@ export default function CertificateApproval({ user, role, office, division, unit
           destination: record.destination || record.eventDestination || "",
         });
       }
-      let appliedDecision = decision;
-      let signatureSkipped = false;
-      try {
-        await updateDoc(certificateRef, decision);
-      } catch (cause) {
-        const code = (cause as { code?: string }).code;
-        if (!decision.signatureAsset || code !== "permission-denied") throw cause;
-        appliedDecision = { ...decision, signatureAsset: "" };
-        await updateDoc(certificateRef, appliedDecision);
-        signatureSkipped = true;
-      }
-      setRecords((current) => current.map((item) => item.id === record.id && item.collectionName === record.collectionName ? { ...item, ...appliedDecision, decidedAt: new Date() } : item));
+      await updateDoc(certificateRef, decision);
+      setRecords((current) => current.map((item) => item.id === record.id && item.collectionName === record.collectionName ? { ...item, ...decision, decidedAt: new Date() } : item));
       let notificationSent = false;
       if (decisionNotification) {
         try {
@@ -486,7 +489,7 @@ export default function CertificateApproval({ user, role, office, division, unit
           console.warn("Certificate decision was saved, but the owner notification could not be sent.", cause);
         }
       }
-      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${signatureSkipped ? "; the assigned signatory image will appear in the preview." : ""}${notificationSent ? "; the owner was notified." : decisionNotification ? "; the owner notification could not be sent." : "."}`);
+      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${notificationSent ? "; the owner was notified." : decisionNotification ? "; the owner notification could not be sent." : "."}`);
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       if (code === "permission-denied") {

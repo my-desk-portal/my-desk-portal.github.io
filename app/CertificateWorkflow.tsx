@@ -97,18 +97,10 @@ export function fieldOperationsAppearanceApprovalSignatureAsset(record: Certific
     && (record.signatureAsset !== routedSignatory.signatureAsset || record.signerOffice !== "Division");
   const hasConflictingSignerOffice = Boolean(record.signerOffice) && record.signerOffice !== "Division";
   if (hasInvalidSavedSignature || hasConflictingSignerOffice) return "";
-  if (routedSignatory.designation === "AGRISTAT/DRRM/AMIA Project Leader") {
-    const assignedSignerId = record.signatoryAdminId?.trim() ?? "";
-    const decidedBy = record.decidedBy?.trim() ?? "";
+  if (routedSignatory.designation === "AGRISTAT/DRRM/AMIA Project Leader" && !signerDesignation) {
     const signerName = record.signerName?.trim().toLocaleUpperCase("en") ?? "";
     const assignedSignerName = record.signatoryName?.trim().toLocaleUpperCase("en") ?? "";
-    if (assignedSignerId && decidedBy && decidedBy !== assignedSignerId) return "";
-    if (signerName && assignedSignerName && signerName !== assignedSignerName) return "";
-    const matchesAssignedProjectLeader = Boolean(assignedSignerId && decidedBy && decidedBy === assignedSignerId)
-      || Boolean(signerName && assignedSignerName && signerName === assignedSignerName);
-    // Older approved records may not have saved signerDesignation. They still
-    // carry the assigned approver and signer name, which identify this route.
-    if (!matchesAssignedProjectLeader && signerDesignation !== routedSignatory.designation) return "";
+    if (!signerName || signerName !== assignedSignerName) return "";
   }
   return routedSignatory.signatureAsset;
 }
