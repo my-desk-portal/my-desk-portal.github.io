@@ -5,7 +5,9 @@ import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp } f
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { ADMIN_EMAIL, SUPERADMIN_EMAIL, normalizeAccountRole, type AccountRole } from "@/lib/user-roles";
+import { accountProfileSelection } from "@/lib/account-profile";
 import { isFieldOperationsChiefPermitSignatory, isFieldOperationsPermitOwner, isFieldOperationsProjectLeaderPermitOwner, isFieldOperationsProjectLeaderPermitSignatory } from "@/lib/permit-signatory";
+import { loadPersonnel, type PersonnelEntry } from "@/lib/personnel";
 import { normalizeWorkflowStatus, type WorkflowStatus } from "./workflow-status";
 import { assignApprovedPermitNumbers, displayPermitNumber, highestApprovedPermitSequence, permitNumberYear } from "./permit-number";
 import RecordPagination, { recordPageSize, useRecordPagination } from "./RecordPagination";
@@ -29,6 +31,7 @@ export type AdminPermit = {
   ownerOffice?: string;
   ownerDivision?: string;
   ownerUnit?: string;
+  ownerAssignment?: string;
   personStatuses?: Record<string, PersonDecision>;
 };
 
@@ -56,6 +59,25 @@ function personStatus(permit: AdminPermit, index: number): PermitStatus {
   return normalizeWorkflowStatus(permit.personStatuses?.[decisionKey(permit, index)]?.status);
 }
 
+function permitOwnerScope(permit: AdminPermit, account?: PersonnelEntry) {
+  const office = permit.ownerOffice || account?.office || "";
+  const savedProfile = permit.ownerDivision && permit.ownerUnit
+    ? accountProfileSelection({ office, division: permit.ownerDivision, unit: permit.ownerUnit, profileFieldsVersion: 4 })
+    : null;
+  const legacyProfile = accountProfileSelection({
+    office,
+    assignment: permit.ownerAssignment || permit.ownerUnit || account?.unit || account?.division || "",
+    profileFieldsVersion: 3,
+  });
+  const profile = savedProfile?.unit ? savedProfile : legacyProfile;
+  return {
+    ownerRole: permit.ownerRole ?? account?.accountRole,
+    ownerOffice: profile.office,
+    ownerDivision: profile.division,
+    ownerUnit: profile.unit,
+  };
+}
+
 function monthString(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -67,6 +89,7 @@ function displayDate(value: string) {
 
 export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canManagePermits, accountRole, office, division, unit, designation }: { user: User; mode: "statistics" | "status"; focusNotificationKey?: string | null; canManagePermits: boolean; accountRole: AccountRole; office: string; division: string; unit: string; designation: string }) {
   const [permits, setPermits] = useState<AdminPermit[]>([]);
+  const [permitOwnerAccounts, setPermitOwnerAccounts] = useState<Record<string, PersonnelEntry>>({});
   const [month, setMonth] = useState(monthString(new Date()));
   const [unitFilter, setUnitFilter] = useState<PermitUnitFilter>("All");
   const [loading, setLoading] = useState(true);
@@ -74,6 +97,17 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
   const [error, setError] = useState("");
   const isScopedFieldOperationsChief = isFieldOperationsChiefPermitSignatory({ accountRole, office, division, unit, designation });
   const isScopedFieldOperationsProjectLeader = isFieldOperationsProjectLeaderPermitSignatory({ accountRole, office, division, unit, designation });
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPersonnel({ includeAllAccounts: true, deduplicateByName: false }).then((accounts) => {
+      if (cancelled) return;
+      setPermitOwnerAccounts(Object.fromEntries(accounts.map((account) => [account.userId, account])));
+    }).catch(() => {
+      if (!cancelled) setPermitOwnerAccounts({});
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!db) { setLoading(false); return; }
@@ -108,10 +142,10 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
   }))), [permits]);
   const statusScopeEntries = useMemo(() => {
     if (mode !== "status") return entries;
-    if (isScopedFieldOperationsChief) return entries.filter((entry) => isFieldOperationsPermitOwner(entry.permit));
-    if (isScopedFieldOperationsProjectLeader) return entries.filter((entry) => isFieldOperationsProjectLeaderPermitOwner(entry.permit));
+    if (isScopedFieldOperationsChief) return entries.filter((entry) => isFieldOperationsPermitOwner(permitOwnerScope(entry.permit, permitOwnerAccounts[entry.permit.ownerId ?? ""])));
+    if (isScopedFieldOperationsProjectLeader) return entries.filter((entry) => isFieldOperationsProjectLeaderPermitOwner(permitOwnerScope(entry.permit, permitOwnerAccounts[entry.permit.ownerId ?? ""])));
     return entries;
-  }, [entries, isScopedFieldOperationsChief, isScopedFieldOperationsProjectLeader, mode]);
+  }, [entries, isScopedFieldOperationsChief, isScopedFieldOperationsProjectLeader, mode, permitOwnerAccounts]);
   const availableAssignments = useMemo(() => [...new Set(statusScopeEntries.map((entry) => entry.unit).filter((unit): unit is string => Boolean(unit?.trim())))]
     .sort((first, second) => first.localeCompare(second, "en", { sensitivity: "base" })), [statusScopeEntries]);
   const approvedPermitNumbers = useMemo(() => assignApprovedPermitNumbers(entries

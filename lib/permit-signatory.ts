@@ -30,7 +30,8 @@ function isRegularFieldOperationsPermitOwner(profile: {
   ownerDivision?: unknown;
   ownerUnit?: unknown;
 }, allowedUnits: Set<string>) {
-  const isRegular = profile.ownerRole === "regular" || profile.ownerRole === "user";
+  const ownerRole = typeof profile.ownerRole === "string" ? profile.ownerRole.trim().toLowerCase() : "";
+  const isRegular = ownerRole === "regular" || ownerRole === "user";
   return isRegular
     && profile.ownerOffice === "Division"
     && profile.ownerDivision === "Field Operations Division"
