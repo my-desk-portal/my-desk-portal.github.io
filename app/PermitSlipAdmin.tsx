@@ -290,7 +290,6 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
        return (
          <tr
            id={`permit-status-${encodeURIComponent(key)}`}
-           className={key === focusNotificationKey ? "permit-admin-notification-target" : undefined}
            key={key}
          >
            <td data-label="PS No.">{displayedNumber}</td>
