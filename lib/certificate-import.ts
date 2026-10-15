@@ -149,18 +149,23 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
   const headerColumns = [...headerCells].map(([index, value]) => ({ index, name: normalizeHeader(value) }));
   const columnsNamed = (...names: string[]) => headerColumns.filter((column) => names.includes(column.name)).map((column) => column.index);
   const columnNamed = (...names: string[]) => columnsNamed(...names)[0];
+  const attendeeNameColumn = columnNamed("attendeename", "name");
+  const attendeeGenderColumn = columnNamed("attendeegender", "gender");
   const missingColumns = requiredColumns.filter((column) => columnNamed(column) === undefined);
   const officeColumns = columnsNamed("office");
-  const attendeeOfficeColumn = columnNamed("attendeeoffice") ?? officeColumns[0];
-  const certificateOfficeColumn = columnNamed("certificateoffice") ?? officeColumns[1];
+  const explicitAttendeeOfficeColumn = columnNamed("attendeeoffice");
+  const attendeeOfficeColumn = explicitAttendeeOfficeColumn ?? officeColumns[0];
+  const certificateOfficeColumn = columnNamed("certificateoffice")
+    ?? (explicitAttendeeOfficeColumn === undefined ? officeColumns[1] : officeColumns[0]);
   const certificateDivisionColumn = columnNamed("certificatedivision") ?? (certificateOfficeColumn === undefined ? undefined : columnNamed("division"));
   const certificateUnitColumn = columnNamed("certificateunit", "unitprogramproject", "unit", "programproject");
-  const signatoryDivisionColumn = columnNamed("signatorydivision", "divisionname")
-    ?? (certificateOfficeColumn === undefined ? columnNamed("division") : certificateDivisionColumn);
-  if (missingColumns.length || attendeeOfficeColumn === undefined || columnNamed("name") === undefined || columnNamed("gender") === undefined
+  const explicitSignatoryDivisionColumn = columnNamed("signatorydivision", "divisionname");
+  const fallbackSignatoryDivisionColumn = certificateOfficeColumn === undefined ? columnNamed("division") : certificateDivisionColumn;
+  const signatoryDivisionColumn = explicitSignatoryDivisionColumn ?? fallbackSignatoryDivisionColumn;
+  if (missingColumns.length || attendeeOfficeColumn === undefined || attendeeNameColumn === undefined || attendeeGenderColumn === undefined
     || signatoryDivisionColumn === undefined
     || (certificateOfficeColumn !== undefined && (certificateDivisionColumn === undefined || certificateUnitColumn === undefined))) {
-    throw new Error("Use the CA_Importing_Template.xlsx columns: Title, Destination, Date From, Date To, Name, Gender, and attendee Office, plus either Signatory Division or certificate Office, Division, and Unit / Program / Project. Add Signatory Division when the certificate Division is not one of the listed DA divisions.");
+    throw new Error("Use the CA_Importing_Template.xlsx columns: Title, Destination, Date From, Date To, Attendee Name, Attendee Gender, Attendee Office, certificate Office, Division, and Unit / Program / Project. Add Signatory Division when the certificate Division is not one of the listed DA divisions.");
   }
 
   const recordsByEvent = new Map<string, ImportedAppearanceRecord>();
@@ -175,14 +180,15 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
 
     const eventTitle = valueFor(values, "title");
     const destination = valueFor(values, "destination");
-    const name = valueFor(values, "name");
+    const name = valueAt(values, attendeeNameColumn);
     const office = valueAt(values, attendeeOfficeColumn);
     const certificateOffice = valueAt(values, certificateOfficeColumn);
     const certificateDivision = valueAt(values, certificateDivisionColumn);
     const certificateUnit = valueAt(values, certificateUnitColumn);
     const eventDateFrom = parseDate(valueFor(values, "datefrom"));
     const eventDateTo = parseDate(valueFor(values, "dateto"));
-    const rawDivision = valueAt(values, signatoryDivisionColumn);
+    const rawDivision = valueAt(values, signatoryDivisionColumn)
+      || valueAt(values, fallbackSignatoryDivisionColumn);
     const division = (divisionAliases[rawDivision] ?? rawDivision) as TevDivision;
     if (!certificateImportDivisions.has(division)) {
       const needsExplicitSignatoryDivision = certificateOfficeColumn !== undefined && signatoryDivisionColumn === certificateDivisionColumn;
@@ -215,7 +221,7 @@ export function parseCertificateImportWorkbook(bytes: Uint8Array): ImportedAppea
       }
     }
 
-    const rawGender = valueFor(values, "gender").trim().toLowerCase();
+    const rawGender = valueAt(values, attendeeGenderColumn).trim().toLowerCase();
     const gender = rawGender === "f" || rawGender === "female"
       ? "female"
       : rawGender === "m" || rawGender === "male"
