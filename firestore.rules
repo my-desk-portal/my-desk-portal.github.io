@@ -443,15 +443,8 @@ service cloud.firestore {
             || (signatureAsset == "agristat_and_drrm_focal_persons_amia_project_leader.png"
               && certificateScopeUnit(resource.data) in ["AGRISTAT", "AMIA", "DRRM"]
               && isFodAppearanceApproverProfile(profile, "AGRISTAT/DRRM/AMIA Project Leader")
-              && request.resource.data.signerDesignation == "AGRISTAT/DRRM/AMIA Project Leader"))))
-        && (!allowAppearanceSignature
-          || newStatus != "Approved"
-          || !isFodAppearanceApproverProfile(profile, "AGRISTAT/DRRM/AMIA Project Leader")
-          || request.resource.data.signerOffice != "Division"
-          || request.resource.data.signerDesignation != "AGRISTAT/DRRM/AMIA Project Leader"
-          || !isFodAppearanceOwnerRecord(resource.data)
-          || !(certificateScopeUnit(resource.data) in ["AGRISTAT", "AMIA", "DRRM"])
-          || signatureAsset == "agristat_and_drrm_focal_persons_amia_project_leader.png");
+              && resource.data.get("signatoryAdminId", request.auth.uid) == request.auth.uid
+              && request.resource.data.signerDesignation == "AGRISTAT/DRRM/AMIA Project Leader"))));
     }
     function validApprovedProjectLeaderSignatureBackfill() {
       let approverId = resource.data.get("decidedBy", "missing-approver");

@@ -447,9 +447,11 @@ export default function CertificateApproval({ user, role, office, division, unit
       && normalizeAccountStatus(signerProfile.accountStatus) === "Approved"
       && isFieldOperationsAppearanceApprover(signerProfile)
       && signerDesignation === ownerSignatory?.designation;
+    const signerMatchesAssignedProjectLeader = record.signatoryAdminId === undefined || record.signatoryAdminId === user.uid;
     const useAppearanceSignature = record.collectionName === "certificatesOfAppearance"
       && isRegularFieldOperationsOwner
       && signerMatchesAppearanceRoute
+      && (ownerSignatory?.designation !== "AGRISTAT/DRRM/AMIA Project Leader" || signerMatchesAssignedProjectLeader)
       && status === "Approved";
     const decision = {
       status,
@@ -478,8 +480,18 @@ export default function CertificateApproval({ user, role, office, division, unit
           destination: record.destination || record.eventDestination || "",
         });
       }
-      await updateDoc(certificateRef, decision);
-      setRecords((current) => current.map((item) => item.id === record.id && item.collectionName === record.collectionName ? { ...item, ...decision, decidedAt: new Date() } : item));
+      let appliedDecision = decision;
+      let signatureSkipped = false;
+      try {
+        await updateDoc(certificateRef, decision);
+      } catch (cause) {
+        const code = (cause as { code?: string }).code;
+        if (!decision.signatureAsset || code !== "permission-denied") throw cause;
+        appliedDecision = { ...decision, signatureAsset: "" };
+        await updateDoc(certificateRef, appliedDecision);
+        signatureSkipped = true;
+      }
+      setRecords((current) => current.map((item) => item.id === record.id && item.collectionName === record.collectionName ? { ...item, ...appliedDecision, decidedAt: new Date() } : item));
       let notificationSent = false;
       if (decisionNotification) {
         try {
@@ -489,7 +501,7 @@ export default function CertificateApproval({ user, role, office, division, unit
           console.warn("Certificate decision was saved, but the owner notification could not be sent.", cause);
         }
       }
-      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${notificationSent ? "; the owner was notified." : decisionNotification ? "; the owner notification could not be sent." : "."}`);
+      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${signatureSkipped ? " without the official signature image" : ""}${notificationSent ? "; the owner was notified." : decisionNotification ? "; the owner notification could not be sent." : "."}`);
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       if (code === "permission-denied") {
