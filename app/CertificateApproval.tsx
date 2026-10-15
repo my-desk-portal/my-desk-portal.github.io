@@ -510,7 +510,9 @@ export default function CertificateApproval({ user, role, office, division, unit
           console.warn("Certificate decision was saved, but the owner notification could not be sent.", cause);
         }
       }
-      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${signatureSkipped ? "; the approved signatory image will appear in the certificate preview" : ""}${notificationSent ? "; the owner was notified." : decisionNotification ? "; the owner notification could not be sent." : "."}`);
+      setMessage(record.certificateType === "Appearance" && status === "Approved"
+        ? "Appearance certificate approved."
+        : `${record.certificateType} certificate ${status.toLowerCase()}${signatureSkipped ? "; the approved signatory image will appear in the certificate preview" : ""}${notificationSent ? "; the owner was notified." : decisionNotification ? "; the owner notification could not be sent." : "."}`);
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       if (code === "permission-denied") {
