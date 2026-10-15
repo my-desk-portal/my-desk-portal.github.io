@@ -75,7 +75,7 @@
   .appreciation-record-head{display:none}
   .appreciation-record-row{align-items:start;gap:7px;grid-template-columns:minmax(0,1fr) auto;padding:15px 4px}
   .appreciation-record-row>span:nth-of-type(n+2),.appreciation-record-row>strong{grid-column:1/-1}
-  .appreciation-record-actions{align-content:start;display:grid;gap:8px;grid-column:2;grid-row:1/6}
+  .appreciation-record-actions{align-content:start;display:grid;gap:8px;grid-column:2;grid-row:1/7}
   .appreciation-record-actions .row-action{text-align:right}
   .appreciation-preview-backdrop{align-content:start;grid-template-columns:minmax(0,1fr);overflow-x:hidden;padding:12px}
   .appreciation-preview-toolbar{display:grid;gap:8px;grid-template-columns:repeat(3,minmax(0,1fr));justify-content:stretch;max-width:11in;width:100%}
