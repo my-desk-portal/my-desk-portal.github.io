@@ -491,6 +491,15 @@ export default function CertificateApproval({ user, role, office, division, unit
         await updateDoc(certificateRef, appliedDecision);
         signatureSkipped = true;
       }
+      if (signatureSkipped && decision.signatureAsset === "agristat_and_drrm_focal_persons_amia_project_leader.png") {
+        try {
+          await updateDoc(certificateRef, { signatureAsset: decision.signatureAsset });
+          appliedDecision = { ...appliedDecision, signatureAsset: decision.signatureAsset };
+          signatureSkipped = false;
+        } catch {
+          // The certificate preview resolves the approved signatory image from its scope if this repair is denied.
+        }
+      }
       setRecords((current) => current.map((item) => item.id === record.id && item.collectionName === record.collectionName ? { ...item, ...appliedDecision, decidedAt: new Date() } : item));
       let notificationSent = false;
       if (decisionNotification) {
@@ -501,7 +510,7 @@ export default function CertificateApproval({ user, role, office, division, unit
           console.warn("Certificate decision was saved, but the owner notification could not be sent.", cause);
         }
       }
-      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${signatureSkipped ? " without the official signature image" : ""}${notificationSent ? "; the owner was notified." : decisionNotification ? "; the owner notification could not be sent." : "."}`);
+      setMessage(`${record.certificateType} certificate ${status.toLowerCase()}${signatureSkipped ? "; the approved signatory image will appear in the certificate preview" : ""}${notificationSent ? "; the owner was notified." : decisionNotification ? "; the owner notification could not be sent." : "."}`);
     } catch (cause) {
       const code = (cause as { code?: string }).code;
       if (code === "permission-denied") {

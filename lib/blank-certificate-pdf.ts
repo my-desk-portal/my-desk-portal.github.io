@@ -1,5 +1,5 @@
 import { divisionSignatory, type TevDivision } from "@/lib/mytev";
-import { appearanceCertificateSignatory, certificateDisapprovalStampDetails, hasFieldOperationsAppearanceApprovalSignature, type CertificateWorkflowFields } from "@/app/CertificateWorkflow";
+import { appearanceCertificateSignatory, certificateDisapprovalStampDetails, fieldOperationsAppearanceApprovalSignatureAsset, type CertificateWorkflowFields } from "@/app/CertificateWorkflow";
 
 type BlankCertificatePdfRecord = CertificateWorkflowFields & {
   division: string;
@@ -90,8 +90,9 @@ export async function makeBlankCertificatePdf(record: BlankCertificatePdfRecord)
     page.drawImage(signatoryImage, { x: 260, y, width: 271.5, height: 32 });
   }
 
-  if (hasFieldOperationsAppearanceApprovalSignature(record) && record.signatureAsset) {
-    const signatureResponse = await fetch(publicAsset(`/${record.signatureAsset}`));
+  const signatureAsset = fieldOperationsAppearanceApprovalSignatureAsset(record);
+  if (signatureAsset) {
+    const signatureResponse = await fetch(publicAsset(`/${signatureAsset}`));
     if (!signatureResponse.ok) throw new Error("The Certificate of Appearance signatory signature could not be loaded.");
     const signatureImage = await pdf.embedPng(await signatureResponse.arrayBuffer());
     const [regularFont, boldFont] = await Promise.all([pdf.embedFont("Helvetica"), pdf.embedFont("Helvetica-Bold")]);
