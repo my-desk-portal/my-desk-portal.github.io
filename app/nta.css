@@ -57,7 +57,14 @@
 .nta-edit-section .permit-form>label>input,.nta-edit-section .permit-form>label>select,
 .nta-edit-section .date-range-field input,.nta-edit-section .nta-attendee-input>select,
 .nta-edit-section .nta-attendee-manual-fields input{min-height:52px}
-.nta-edit-section .nta-edit-venue-type-field{grid-column:1/-1;min-width:0;width:100%}
+.nta-edit-section .nta-edit-activity-fields,.nta-edit-section .nta-edit-venue-fields{display:grid;gap:24px 28px;grid-column:1/-1;min-width:0}
+.nta-edit-section .nta-edit-activity-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
+.nta-edit-section .nta-edit-venue-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.nta-edit-section .nta-edit-venue-fields.is-virtual{grid-template-columns:repeat(3,minmax(0,1fr))}
+.nta-edit-section .nta-edit-activity-fields>*,.nta-edit-section .nta-edit-venue-fields>*{min-width:0}
+.nta-edit-section .nta-edit-activity-fields input,.nta-edit-section .nta-edit-venue-fields input,
+.nta-edit-section .nta-edit-venue-fields select{min-height:52px;width:100%}
+.nta-edit-section .nta-edit-venue-type-field{min-width:0;width:100%}
 .nta-edit-section .nta-edit-venue-type-field select{min-height:clamp(52px,5vw,64px);width:100%}
 .nta-edit-section .date-range-field>div{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
 .nta-edit-section .date-range-field>div>input{min-width:0;width:100%}
@@ -71,7 +78,7 @@
   .nta-edit-section .section-heading{align-items:stretch;flex-direction:column}
   .nta-edit-section .section-heading .ghost-button{min-height:48px;width:100%}
   .nta-edit-section .permit-form{gap:20px}
-  .nta-edit-section .nta-edit-venue-type-field{grid-column:auto;width:100%}
+  .nta-edit-section .nta-edit-activity-fields,.nta-edit-section .nta-edit-venue-fields{gap:20px;grid-template-columns:minmax(0,1fr)}
   .nta-edit-section .nta-batch-fieldset{padding:16px}
   .nta-edit-section .date-range-field>div{gap:6px}
   .nta-edit-section .date-range-field>div>span{font-size:11px}

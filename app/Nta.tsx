@@ -354,9 +354,11 @@ function NtaEditor({ record, userId, office, division, unit, onCancel, onSaved, 
     {hasLegacyPlaceholder && <p className="error-message nta-error" role="alert">Some saved activity details contained form guidance text and were cleared. Enter the missing subject, title, organizer, or venue before saving.</p>}
     {error && <p className="error-message nta-error">{error}</p>}
     <form className="permit-form" onSubmit={save}>
-      <label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
-      <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
-      <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
+      <div className="wide-field nta-edit-activity-fields">
+        <label>Subject<input value={subject} onChange={(event) => setSubject(event.target.value)} required /></label>
+        <label>Title of Activity<input value={activityTitle} onChange={(event) => setActivityTitle(event.target.value)} required /></label>
+        <label>Organizer / Host<input value={organizer} onChange={(event) => setOrganizer(event.target.value)} required /></label>
+      </div>
       {record.mode === "individual" ? <>
         <div className="wide-field nta-recipient-fields">
           <div className={`nta-recipient-field-grid${manualRecipient ? "" : " nta-recipient-dropdown-grid"}`}>
@@ -369,9 +371,11 @@ function NtaEditor({ record, userId, office, division, unit, onCancel, onSaved, 
         </div>
         <div className="date-range-field"><span>Date (From – To)</span><div><input aria-label="Date from" type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); if (dateTo && event.target.value > dateTo) setDateTo(event.target.value); }} required /><span>to</span><input aria-label="Date to" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} required /></div></div>
         <div className="date-range-field"><span>Time</span><div><input aria-label="Time from" type="time" value={timeFrom} onChange={(event) => setTimeFrom(event.target.value)} /><span>to</span><input aria-label="Time to" type="time" value={timeTo} onChange={(event) => setTimeTo(event.target.value)} /></div></div>
-        <label className="wide-field nta-edit-venue-type-field">Venue type<select value={venueType} onChange={(event) => setVenueType(event.target.value as "physical" | "virtual")}><option value="physical">Physical venue</option><option value="virtual">Virtual platform</option></select></label>
-        <label className="wide-field">{venueType === "virtual" ? "Platform name" : "Venue address"}<input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder={venueType === "virtual" ? "Google Meet, Zoom, etc." : "Street, Building, City, Province"} required /></label>
-        {venueType === "virtual" && <label className="wide-field">Meeting link<input type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://" required /></label>}
+        <div className={`wide-field nta-edit-venue-fields${venueType === "virtual" ? " is-virtual" : ""}`}>
+          <label className="nta-edit-venue-type-field">Venue type<select value={venueType} onChange={(event) => setVenueType(event.target.value as "physical" | "virtual")}><option value="physical">Physical venue</option><option value="virtual">Virtual platform</option></select></label>
+          <label>{venueType === "virtual" ? "Platform name" : "Venue address"}<input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder={venueType === "virtual" ? "Google Meet, Zoom, etc." : "Street, Building, City, Province"} required /></label>
+          {venueType === "virtual" && <label>Meeting link<input type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://" required /></label>}
+        </div>
       </> : <div className="wide-field nta-batches">
         {batches.map((batch, batchIndex) => <fieldset className="nta-batch-fieldset" key={batchIndex}>
           <legend>Group {batch.number || batchIndex + 1}</legend>
