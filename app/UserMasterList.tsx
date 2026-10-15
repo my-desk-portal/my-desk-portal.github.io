@@ -138,7 +138,7 @@ export default function UserMasterList({ user }: { user: User }) {
         {searchQuery.trim() && <span className="user-master-list-results">{filteredAccounts.length} matching {filteredAccounts.length === 1 ? "account" : "accounts"}</span>}
       </div>
       {filteredAccounts.length === 0 ? <div className="empty-state"><span className="empty-number">00</span><h3>No matching accounts</h3><p>Try a different name, position, designation, office, division, unit, role, or status.</p></div> : <>
-      <div className="user-master-list-table-wrap"><table className="user-master-list-table"><thead><tr><th>Name</th><th>Position</th><th>Designation</th><th>Office</th><th>Division</th><th>Unit / Program / Project</th><th>Role</th><th>Status / Action</th></tr></thead><tbody>
+      <div className="user-master-list-table-wrap"><table className="user-master-list-table"><thead><tr><th>Name</th><th>Designation</th><th>Office</th><th>Division</th><th>Unit / Program / Project</th><th>Role</th><th>Status / Action</th></tr></thead><tbody>
       {visibleRecords.map((account) => {
         const status = normalizeAccountStatus(account.accountStatus);
         const role = normalizeAccountRole(account.accountRole);
@@ -147,7 +147,6 @@ export default function UserMasterList({ user }: { user: User }) {
         const profile = accountProfileSelection(account);
         return <tr key={account.id}>
           <td data-label="Name"><strong>{account.name || "—"}</strong></td>
-          <td data-label="Position">{account.position || "—"}</td>
           <td data-label="Designation">{account.designation || "—"}</td>
           <td data-label="Office">{profile.office || "—"}</td>
           <td data-label="Division">{profile.division || "—"}</td>
