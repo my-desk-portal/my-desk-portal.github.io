@@ -135,7 +135,7 @@ function NtaForm({ user, office, division, unit, onSaved, onCancel }: { user: Us
   }
 
   const selectedAttendeeUserIds = new Set(batches.flatMap((batch) => batch.attendees.flatMap((attendee) => !attendee.manual && attendee.userId ? [attendee.userId] : [])));
-  async function save(event: React.FormEvent) {
+  async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!db) { setError("Database is not configured."); return; }
     if (!unit) { setError("Your Unit / Program / Project is still loading. Try saving again in a moment."); return; }
