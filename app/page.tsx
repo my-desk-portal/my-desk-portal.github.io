@@ -2837,7 +2837,7 @@ export default function Home() {
   const firstName = fullName.split(" ")[0] || "";
   const activeAccountProfile = accountProfile?.userId === user.uid ? accountProfile : null;
   const accountRole = normalizeAccountRole(activeAccountProfile?.accountRole, user.email);
-  const certificateOwnerScope = accountProfileSelection(activeAccountProfile ?? {});
+  const certificateOwnerScope = accountProfileSelection({ ...(activeAccountProfile ?? {}), profileFieldsVersion: 4 });
   const isAdmin = isPermitAdmin(user.email, accountRole);
   const isSuperAdmin = accountRole === "superadmin";
   const canAccessCertificateApproval = isSuperAdmin || (accountRole === "admin" && (activeAccountProfile?.designation === "Chief" || isFieldOperationsAppearanceApprover(activeAccountProfile ?? {})));
