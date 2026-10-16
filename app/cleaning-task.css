@@ -478,6 +478,40 @@
   background: #edf7ef;
 }
 
+.cleaning-task-location-fields {
+  display: grid;
+  gap: 14px;
+  margin: -8px 0 24px;
+  text-align: left;
+}
+
+.cleaning-task-location-fields label {
+  display: grid;
+  gap: 6px;
+  color: #26323a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cleaning-task-location-fields input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 13px;
+  border: 1px solid #cfdad3;
+  border-radius: 10px;
+  color: #26323a;
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
+}
+
+.cleaning-task-location-fields input:focus-visible {
+  border-color: #d85532;
+  outline: 3px solid #efb5a3;
+  outline-offset: 2px;
+}
+
 .cleaning-assignment-admin {
   width: 100%;
   min-width: 0;

@@ -1,21 +1,23 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import "./delete-confirmation.css";
 
-export default function DeleteConfirmation({ open, title, description, busy = false, confirmLabel = "Delete", busyLabel = "Deleting...", onCancel, onConfirm }: {
+export default function DeleteConfirmation({ open, title, description, busy = false, confirmDisabled = false, confirmLabel = "Delete", busyLabel = "Deleting...", children, onCancel, onConfirm }: {
   open: boolean;
   title: string;
   description: string;
   busy?: boolean;
+  confirmDisabled?: boolean;
   confirmLabel?: string;
   busyLabel?: string;
+  children?: ReactNode;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const dialogRef = useRef<HTMLElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
-  const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const onCancelRef = useRef(onCancel);
   const busyRef = useRef(busy);
   onCancelRef.current = onCancel;
@@ -24,27 +26,29 @@ export default function DeleteConfirmation({ open, title, description, busy = fa
   useEffect(() => {
     if (!open) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    cancelButtonRef.current?.focus();
+    const initialInput = dialogRef.current?.querySelector<HTMLElement>("input:not(:disabled), select:not(:disabled), textarea:not(:disabled)");
+    (initialInput ?? cancelButtonRef.current)?.focus();
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && !busyRef.current) {
         event.preventDefault();
         onCancelRef.current();
       }
       if (event.key !== "Tab") return;
-      const cancelButton = cancelButtonRef.current;
-      const deleteButton = deleteButtonRef.current;
-      if (!cancelButton || !deleteButton) return;
       if (busyRef.current) {
         event.preventDefault();
         dialogRef.current?.focus();
         return;
       }
-      if (event.shiftKey && (document.activeElement === cancelButton || !dialogRef.current?.contains(document.activeElement))) {
+      const focusableElements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex='-1'])") ?? []);
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+      if (!firstFocusable || !lastFocusable) return;
+      if (event.shiftKey && (document.activeElement === firstFocusable || !dialogRef.current?.contains(document.activeElement))) {
         event.preventDefault();
-        deleteButton.focus();
-      } else if (!event.shiftKey && (document.activeElement === deleteButton || !dialogRef.current?.contains(document.activeElement))) {
+        lastFocusable.focus();
+      } else if (!event.shiftKey && (document.activeElement === lastFocusable || !dialogRef.current?.contains(document.activeElement))) {
         event.preventDefault();
-        cancelButton.focus();
+        firstFocusable.focus();
       }
     }
     document.addEventListener("keydown", handleKeyDown);
@@ -60,9 +64,10 @@ export default function DeleteConfirmation({ open, title, description, busy = fa
     <section ref={dialogRef} className="delete-confirmation-dialog" role="alertdialog" aria-modal="true" aria-busy={busy} aria-labelledby="delete-confirmation-title" aria-describedby="delete-confirmation-description" tabIndex={-1}>
       <h2 id="delete-confirmation-title">{title}</h2>
       <p id="delete-confirmation-description">{description}</p>
+      {children}
       <div className="delete-confirmation-actions">
         <button type="button" className="delete-confirmation-cancel" ref={cancelButtonRef} disabled={busy} onClick={onCancel}>Cancel</button>
-        <button type="button" className="delete-confirmation-confirm" ref={deleteButtonRef} disabled={busy} onClick={onConfirm}>{busy ? busyLabel : confirmLabel}</button>
+        <button type="button" className="delete-confirmation-confirm" ref={confirmButtonRef} disabled={busy || confirmDisabled} onClick={onConfirm}>{busy ? busyLabel : confirmLabel}</button>
       </div>
     </section>
   </div>;

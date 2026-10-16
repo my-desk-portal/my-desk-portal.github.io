@@ -35,43 +35,6 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function getBrowserLocation() {
-  return new Promise<GeolocationCoordinates>((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("This browser does not provide location access."));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => resolve(coords),
-      (error) => reject(new Error(error.code === error.PERMISSION_DENIED
-        ? "Allow location access to attach your Barangay and City to the cleaning photo."
-        : "Your current location could not be determined. Try again.")),
-      { enableHighAccuracy: false, maximumAge: 0, timeout: 15000 },
-    );
-  });
-}
-
-async function resolveBarangayCity(latitude: number, longitude: number) {
-  const url = new URL("https://api.bigdatacloud.net/data/reverse-geocode-client");
-  url.search = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude), localityLanguage: "en" }).toString();
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Your location could not be formatted. Try again in a moment.");
-  const result = await response.json() as {
-    locality?: string;
-    city?: string;
-    localityInfo?: { administrative?: Array<{ name?: string; description?: string; adminLevel?: number }> };
-  };
-  const barangayBoundary = result.localityInfo?.administrative?.find((entry) => entry.adminLevel === 10
-    || /\bbarangay\b/i.test(`${entry.name ?? ""} ${entry.description ?? ""}`));
-  const locality = barangayBoundary?.name?.trim() || result.locality?.trim() || "";
-  const city = result.city?.trim() ?? "";
-  if (!city) throw new Error("Your location could not be matched to a Barangay and City. Try again from a nearby area.");
-  const barangay = locality && locality.toLowerCase() !== city.toLowerCase()
-    ? (/^barangay\b/i.test(locality) ? locality : `Barangay ${locality}`)
-    : "Barangay not listed";
-  return `${barangay}, ${city}`;
-}
-
 async function loadCollagePhoto(file: File) {
   if (typeof createImageBitmap === "function") {
     const bitmap = await createImageBitmap(file);
@@ -187,6 +150,8 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingPhotos, setPendingPhotos] = useState<File[] | null>(null);
+  const [currentBarangay, setCurrentBarangay] = useState("");
+  const [currentCity, setCurrentCity] = useState("");
   const [month, setMonth] = useState(() => manilaDateKey().slice(0, 7));
   const [now, setNow] = useState(() => new Date());
   const { startUpload } = useUploadThing("cleaningTaskImage", {
@@ -232,7 +197,7 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
     return Boolean(latestDueAssignment && typeof deadline === "number" && now.getTime() >= deadline);
   }
 
-  async function uploadCleaningPhotos(files: File[]) {
+  async function uploadCleaningPhotos(files: File[], location: string) {
     setBusy(true);
     try {
       const collageFile = await mergeCleaningPhotos(files);
@@ -247,8 +212,6 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
         if (!db) throw new Error("Cleaning Task storage is unavailable.");
         await updateDoc(doc(db, "cleaningTaskImages", unit), { previousFileKey: "", previousFileOwnerId: "" });
       }
-      const coordinates = await getBrowserLocation();
-      const location = await resolveBarangayCity(coordinates.latitude, coordinates.longitude);
       const uploadedFiles = await startUpload([collageFile]);
       const uploaded = uploadedFiles?.[0] as {
         key?: string;
@@ -337,6 +300,8 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
       setError("Cleaning Task image uploads are not configured yet.");
       return;
     }
+    setCurrentBarangay("");
+    setCurrentCity("");
     setPendingPhotos(files);
   }
 
@@ -358,11 +323,6 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
     <div className="cleaning-task-layout">
       <section className="cleaning-task-photos" aria-label="Latest cleaning task photos">
         {loading ? <p className="muted">Loading Cleaning Task posts...</p> : images.length === 0 ? <div className="cleaning-task-empty"><strong>No photos posted yet</strong><span>The first assigned team photo will appear here.</span></div> : images.map((image) => {
-          const [barangay, ...cityParts] = image.location.split(",").map((part) => part.trim());
-          const city = cityParts.join(", ");
-          const location = city
-            ? `${/\bcity\b/i.test(city) ? city : `${city} City`}, ${barangay}`
-            : image.location;
           return <article className="cleaning-task-photo" key={image.id}>
             <header className="cleaning-task-photo-heading"><h3>Cleaning Task Photo Verification</h3></header>
             <div className="cleaning-task-photo-visual">
@@ -372,7 +332,7 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
             <footer className="cleaning-task-photo-meta">
               <div><strong>Uploader:</strong><span>{image.uploaderName} - {image.unit}</span></div>
               <div><strong>Timestamp:</strong><span>{displayCleaningDateTime(image.uploadedAt)}</span></div>
-              <div><strong>Location:</strong><span>{location}</span></div>
+              <div><strong>Location:</strong><span>{image.location}</span></div>
             </footer>
           </article>;
         })}
@@ -405,17 +365,24 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
     </div>
     <DeleteConfirmation
       open={pendingPhotos !== null}
-      title="Location sharing for this upload"
-      description="To label this collage, your live coordinates and request IP will be sent directly to BigDataCloud for Barangay and City lookup. My Desk stores only the formatted location. Continue?"
-      confirmLabel="Continue"
-      onCancel={() => setPendingPhotos(null)}
+      title="Current Location for this upload"
+      description="Enter your current barangay and city. This location will be saved with the photo as Current Barangay, Current City."
+      confirmLabel="Upload photos"
+      confirmDisabled={!currentBarangay.trim() || !currentCity.trim()}
+      onCancel={() => { setPendingPhotos(null); setCurrentBarangay(""); setCurrentCity(""); }}
       onConfirm={() => {
         if (!pendingPhotos) return;
         const selectedPhotos = pendingPhotos;
+        const location = `${currentBarangay.trim()}, ${currentCity.trim()}`;
         setPendingPhotos(null);
-        void uploadCleaningPhotos(selectedPhotos);
+        void uploadCleaningPhotos(selectedPhotos, location);
       }}
-    />
+    >
+      <div className="cleaning-task-location-fields">
+        <label>Current Barangay<input autoComplete="address-level3" maxLength={88} required value={currentBarangay} onChange={(event) => setCurrentBarangay(event.target.value)} placeholder="Enter your current barangay" /></label>
+        <label>Current City<input autoComplete="address-level2" maxLength={88} required value={currentCity} onChange={(event) => setCurrentCity(event.target.value)} placeholder="Enter your current city" /></label>
+      </div>
+    </DeleteConfirmation>
   </section>;
 }
 
