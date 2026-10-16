@@ -348,7 +348,7 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
         <p className="eyebrow">Weekly office upkeep</p>
         <div className="cleaning-task-title-row">
           <h2>{mode === "workspace" ? "Cleaning Task" : "Cleaning Task Updates"}</h2>
-          {mode === "workspace" && canUpload && <label className={`cleaning-task-upload-button${busy ? " is-busy" : ""}`}><span>Upload photo</span><input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose exactly 4 photos to upload as one collage" multiple onChange={(event) => void handleImageSelection(event)} disabled={busy || !currentAssignment || currentAssignment.unit !== unit || !isOngoing(currentAssignment, now)} /></label>}
+          {mode === "workspace" && canUpload && <label className={`cleaning-task-upload-button${busy ? " is-busy" : ""}`}><span>Upload 4 photos</span><input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose exactly 4 photos to upload as one collage" multiple onChange={(event) => void handleImageSelection(event)} disabled={busy || !currentAssignment || currentAssignment.unit !== unit || !isOngoing(currentAssignment, now)} /></label>}
         </div>
         <p className="muted">{mode === "workspace" ? "Post the current week’s photo when your Unit / Program / Project is assigned." : "Latest photos and the AGRISTAT, AMIA, and DRRM weekly cleaning schedule."}</p>
       </div>
