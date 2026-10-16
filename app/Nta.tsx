@@ -515,7 +515,7 @@ function NtaBatchTable({ batch, startIndex = 0, showCaption = true }: { batch: N
 
 function NtaBatchParticipants({ batch, startIndex = 0, showCaption = true, multiplePersonnel = false }: { batch: NtaBatch; startIndex?: number; showCaption?: boolean; multiplePersonnel?: boolean }) {
   if (!multiplePersonnel) return <NtaBatchTable batch={batch} startIndex={startIndex} showCaption={showCaption} />;
-  const detail = (attendee: NtaAttendee) => [attendee.position, attendee.unit].filter(Boolean).join(", ");
+  const detail = (attendee: NtaAttendee) => [attendee.position, attendee.unit].filter(Boolean).join(" - ");
   return <section className="nta-attendance-batch">{showCaption && <p className="nta-batch-caption">{formatBatchCaption(batch, true)}</p>}<ol className="nta-participant-list" start={startIndex + 1}>{batch.attendees.map((attendee, index) => <li data-nta-attendee-row key={`${attendee.name}-${index}`}><strong>{attendee.name}</strong>{detail(attendee) && <>{", "}<em>{detail(attendee)}</em></>}</li>)}</ol></section>;
 }
 
