@@ -28,11 +28,28 @@
   margin: 0;
 }
 
+.cleaning-task-heading-copy {
+  width: 100%;
+}
+
+.cleaning-task-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.cleaning-task-title-row h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .cleaning-task-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(340px, .85fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.25rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .cleaning-task-photos,
@@ -40,9 +57,19 @@
   min-width: 0;
 }
 
+.cleaning-task-photos {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
 .cleaning-task-photo {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
   overflow: hidden;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
   border: 1px solid #e5e9e6;
   border-radius: 12px;
   background: #f8faf8;
@@ -67,9 +94,12 @@
 
 .cleaning-task-photo > img {
   display: block;
+  flex: 1 1 0;
   width: 100%;
+  height: 1px;
+  min-height: 280px;
   max-height: 520px;
-  object-fit: cover;
+  object-fit: contain;
   background: #edf1ed;
 }
 
@@ -89,6 +119,7 @@
 
 .cleaning-task-empty {
   display: grid;
+  flex: 1 1 auto;
   min-height: 230px;
   align-content: center;
   justify-items: center;
@@ -105,43 +136,14 @@
   color: #263a2d;
 }
 
-.cleaning-task-empty + .cleaning-task-upload-box {
-  margin-top: .75rem;
-}
-
-.cleaning-task-upload-box {
-  display: grid;
-  gap: .65rem;
-  padding: .9rem;
-  border: 1px solid #e5e9e6;
-  border-radius: 12px;
-  background: #fff;
-}
-
-.cleaning-task-upload-box > div {
-  display: grid;
-  gap: .25rem;
-}
-
-.cleaning-task-upload-box > div span,
-.cleaning-task-upload-box small,
-.cleaning-task-week-note {
-  color: #66766b;
-  font-size: .8rem;
-  line-height: 1.45;
-}
-
-.cleaning-task-upload-box small a {
-  color: #386b4b;
-}
-
 .cleaning-task-upload-button {
   position: relative;
   display: inline-flex;
   justify-content: center;
   width: fit-content;
-  min-width: 150px;
-  padding: .7rem 1rem;
+  min-width: 145px;
+  flex: 0 0 auto;
+  padding: .68rem 1rem;
   overflow: hidden;
   border-radius: 9px;
   color: #fff;
@@ -543,6 +545,20 @@
   .cleaning-task-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .cleaning-task-title-row {
+    gap: .5rem;
+  }
+
+  .cleaning-task-title-row h2 {
+    font-size: clamp(1.15rem, 5vw, 1.5rem);
+  }
+
+  .cleaning-task-upload-button {
+    min-width: 105px;
+    padding: .6rem .7rem;
+    font-size: .76rem;
   }
 
   .cleaning-task-calendar > header {

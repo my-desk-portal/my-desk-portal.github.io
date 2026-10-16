@@ -71,6 +71,72 @@ async function resolveBarangayCity(latitude: number, longitude: number) {
   return `${barangay}, ${city}`;
 }
 
+async function loadCollagePhoto(file: File) {
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(file);
+    return {
+      image: bitmap as CanvasImageSource,
+      width: bitmap.width,
+      height: bitmap.height,
+      cleanup: () => bitmap.close(),
+    };
+  }
+
+  const url = URL.createObjectURL(file);
+  const image = new Image();
+  image.src = url;
+  try {
+    await image.decode();
+  } catch (cause) {
+    URL.revokeObjectURL(url);
+    throw cause;
+  }
+  return {
+    image: image as CanvasImageSource,
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+    cleanup: () => URL.revokeObjectURL(url),
+  };
+}
+
+async function mergeCleaningPhotos(files: File[]) {
+  const columns = 2;
+  const cellWidth = 1200;
+  const cellHeight = 900;
+  const inset = 20;
+  const canvas = document.createElement("canvas");
+  canvas.width = columns * cellWidth;
+  canvas.height = 2 * cellHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Your browser could not prepare the four-photo collage.");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+
+  for (const [index, file] of files.entries()) {
+    const photo = await loadCollagePhoto(file);
+    try {
+      const scale = Math.min((cellWidth - inset * 2) / photo.width, (cellHeight - inset * 2) / photo.height);
+      const width = photo.width * scale;
+      const height = photo.height * scale;
+      const cellX = (index % columns) * cellWidth;
+      const cellY = Math.floor(index / columns) * cellHeight;
+      const x = cellX + (cellWidth - width) / 2;
+      const y = cellY + (cellHeight - height) / 2;
+      context.drawImage(photo.image, x, y, width, height);
+    } finally {
+      photo.cleanup();
+    }
+  }
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => result ? resolve(result) : reject(new Error("The four-photo collage could not be encoded.")), "image/jpeg", .9);
+  });
+  if (blob.size > maxCleaningImageBytes) throw new Error("The merged collage is too large to upload. Choose smaller source photos.");
+  return new File([blob], `cleaning-task-${Date.now()}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+}
+
 function isOngoing(assignment: CleaningTaskAssignment, now: Date) {
   const start = assignment.startAt?.toDate?.().getTime();
   const end = assignment.endAt?.toDate?.().getTime();
@@ -156,9 +222,9 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
   }
 
   async function handleImageSelection(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0];
+    const files = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
-    if (!file) return;
+    if (files.length === 0) return;
     setError("");
     setSuccess("");
     if (!canUpload || role === "superadmin") {
@@ -173,21 +239,27 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
       setError("Your Unit / Program / Project is not assigned for the current work week.");
       return;
     }
-    if (!allowedImageTypes.has(file.type)) {
-      setError("Choose a JPEG, PNG, or WebP image.");
+    if (files.length !== 4) {
+      setError("Select exactly 4 images to create the Cleaning Task collage.");
       return;
     }
-    if (file.size > maxCleaningImageBytes) {
-      setError("Cleaning Task images must be 32 MB or smaller.");
+    if (files.some((file) => !allowedImageTypes.has(file.type))) {
+      setError("All 4 photos must be JPEG, PNG, or WebP images.");
+      return;
+    }
+    if (files.some((file) => file.size > maxCleaningImageBytes)) {
+      setError("Each source photo must be 32 MB or smaller.");
       return;
     }
     if (!uploadThingConfigured) {
       setError("Cleaning Task image uploads are not configured yet.");
       return;
     }
+    if (!window.confirm("To label this collage, your live coordinates and request IP will be sent directly to BigDataCloud for Barangay and City lookup. My Desk stores only the formatted location. Continue?")) return;
     setBusy(true);
-    const existing = ownUnitImage;
     try {
+      const collageFile = await mergeCleaningPhotos(files);
+      const existing = ownUnitImage;
       if (existing?.previousFileKey) {
         const cleanedPendingFile = await fetch(uploadThingUrl.replace(/\/api\/uploadthing\/?$/, "/api/delete-cleaning-task-image"), {
           method: "POST",
@@ -200,7 +272,7 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
       }
       const coordinates = await getBrowserLocation();
       const location = await resolveBarangayCity(coordinates.latitude, coordinates.longitude);
-      const uploadedFiles = await startUpload([file]);
+      const uploadedFiles = await startUpload([collageFile]);
       const uploaded = uploadedFiles?.[0] as {
         key?: string;
         ufsUrl?: string;
@@ -245,8 +317,8 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
         }
       }
       setSuccess(oldPhotoRemoved
-        ? "Your Cleaning Task photo is now posted; the previous photo has been removed."
-        : "Your Cleaning Task photo is posted. The previous photo cleanup will retry after a future replacement.");
+        ? "Your four-photo Cleaning Task collage is now posted; the previous photo has been removed."
+        : "Your four-photo Cleaning Task collage is posted. The previous photo cleanup will retry after a future replacement.");
     } catch (cause) {
       setError(errorMessage(cause, "Could not save your Cleaning Task image."));
     } finally {
@@ -258,8 +330,14 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
 
   return <section className={`cleaning-task-board${mode === "workspace" ? " is-workspace" : " is-landing"}`}>
     <header className="cleaning-task-heading">
-      <div><p className="eyebrow">Weekly office upkeep</p><h2>{mode === "workspace" ? "Cleaning Task" : "Cleaning Task Updates"}</h2>
-        <p className="muted">{mode === "workspace" ? "Post the current week’s photo when your Unit / Program / Project is assigned." : "Latest photos and the AGRISTAT, AMIA, and DRRM weekly cleaning schedule."}</p></div>
+      <div className="cleaning-task-heading-copy">
+        <p className="eyebrow">Weekly office upkeep</p>
+        <div className="cleaning-task-title-row">
+          <h2>{mode === "workspace" ? "Cleaning Task" : "Cleaning Task Updates"}</h2>
+          {mode === "workspace" && canUpload && <label className={`cleaning-task-upload-button${busy ? " is-busy" : ""}`}><span>Upload photo</span><input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose exactly 4 photos to upload as one collage" multiple onChange={(event) => void handleImageSelection(event)} disabled={busy || !currentAssignment || currentAssignment.unit !== unit || !isOngoing(currentAssignment, now)} /></label>}
+        </div>
+        <p className="muted">{mode === "workspace" ? "Post the current week’s photo when your Unit / Program / Project is assigned." : "Latest photos and the AGRISTAT, AMIA, and DRRM weekly cleaning schedule."}</p>
+      </div>
     </header>
     {error && <p className="cleaning-task-message is-error" role="alert">{error}</p>}
     {success && <p className="cleaning-task-message is-success" role="status">{success}</p>}
@@ -267,14 +345,9 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
       <section className="cleaning-task-photos" aria-label="Latest cleaning task photos">
         {loading ? <p className="muted">Loading Cleaning Task posts...</p> : images.length === 0 ? <div className="cleaning-task-empty"><strong>No photos posted yet</strong><span>The first assigned team photo will appear here.</span></div> : images.map((image) => <article className="cleaning-task-photo" key={image.id}>
           <div className="cleaning-task-photo-meta"><strong>Uploaded by {image.uploaderName} - {image.unit}</strong><span>{displayCleaningDateTime(image.uploadedAt)} | {image.location}</span></div>
-          <img src={image.imageURL} alt={`${image.unit} Cleaning Task uploaded by ${image.uploaderName}`} loading="lazy" />
+          <img src={image.imageURL} alt={`Four-photo ${image.unit} Cleaning Task collage uploaded by ${image.uploaderName}`} loading="lazy" />
           {missedAssignment(image) && <div className="cleaning-task-outdated" role="status"><span aria-hidden="true">⚠</span> MOV is outdated!</div>}
         </article>)}
-        {mode === "workspace" && canUpload && <div className="cleaning-task-upload-box">
-          <div><strong>{ownUnitImage ? "Replace this Unit / Program / Project photo" : "Upload this week’s photo"}</strong><span>{currentAssignment?.unit === unit && isOngoing(currentAssignment, now) ? "Your unit is assigned this week (Monday to Friday)." : "Upload becomes available when your unit is assigned for the current work week."}</span></div>
-          <label className={`cleaning-task-upload-button${busy ? " is-busy" : ""}`}><span>{busy ? "Saving photo..." : ownUnitImage ? "Replace photo" : "Upload photo"}</span><input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload a Cleaning Task image" onChange={(event) => void handleImageSelection(event)} disabled={busy || !currentAssignment || currentAssignment.unit !== unit || !isOngoing(currentAssignment, now)} /></label>
-          <small>JPEG, PNG, or WebP. Up to 32 MB. Location sharing sends your live coordinates and request IP to BigDataCloud for lookup; My Desk saves only the formatted Barangay, City.</small>
-        </div>}
       </section>
       <section className="cleaning-task-calendar" aria-label="Cleaning Task assignment calendar">
         <header className="cleaning-calendar-header">
