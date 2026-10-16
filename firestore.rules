@@ -175,17 +175,18 @@ service cloud.firestore {
         && order.people[0] is map
         && order.people[0].get("name", "") is string
         && order.people[0].get("name", "").size() > 0
-        && order.people[0].get("name", "") == get(userPath).data.get("name", "");
+        && order.people[0].get("name", "").lower().replace("[.,'’-]+", " ").replace(" +", " ").trim()
+          == get(userPath).data.get("name", "").lower().replace("[.,'’-]+", " ").replace(" +", " ").trim();
     }
     function canUpdateTravelOrderAsRecipient(order) {
       return isPersonalTravelOrder(order, request.auth.uid)
         || (order.get("recipientId", "") == request.auth.uid
           && order.get("people", []) is list
-          && order.people.size() > 0)
+          && order.people.size() == 1)
         || (order.get("recipientIds", []) is list
           && request.auth.uid in order.recipientIds
           && order.get("people", []) is list
-          && order.people.size() > 0)
+          && order.people.size() == 1)
         || (order.get("people", []) is list
           && order.people.size() == 1
           && order.people[0] is map

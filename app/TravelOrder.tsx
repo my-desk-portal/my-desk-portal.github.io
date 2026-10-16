@@ -82,9 +82,13 @@ function normalizePersonName(value: string) {
   return value.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/\s+/g, " ");
 }
 
+function normalizeLegacyTravelOrderName(value: string) {
+  return value.normalize("NFKC").toLocaleLowerCase().replace(/[.,'’\-]+/gu, " ").trim().replace(/\s+/gu, " ");
+}
+
 function isAssignedTravelOrderRecipient(order: TravelOrder, userId: string) {
   if (order.legacyRecipientView) {
-    return order.legacyRecipientAssignmentMatch === true;
+    return order.legacySourcePeopleCount === 1 && order.legacyRecipientAssignmentMatch === true;
   }
   return order.recipientId === userId
     || order.recipientIds?.includes(userId) === true
@@ -515,8 +519,8 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
           legacyRecipientView: true,
           legacySourceOrderId: item.id,
           legacySourcePeopleCount: people.length,
-          legacyRecipientAssignmentMatch: listedForAccount || (people.length === 1 && person.userId === user.uid),
-          legacyNameMatch: people.length === 1 && currentAccountName.length > 0 && typeof person.name === "string" && person.name.trim() === currentAccountName,
+          legacyRecipientAssignmentMatch: people.length === 1 && (listedForAccount || person.userId === user.uid),
+          legacyNameMatch: people.length === 1 && normalizedAccountName.length > 0 && typeof person.name === "string" && normalizeLegacyTravelOrderName(person.name) === normalizeLegacyTravelOrderName(currentAccountName),
           status: normalizeWorkflowStatus(data.status),
         } as TravelOrder];
       });
@@ -688,7 +692,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
       && order.legacySourcePeopleCount === 1
       && order.legacyNameMatch === true
       && order.people.length === 1
-      && order.people[0].name.trim() === accountName;
+      && normalizeLegacyTravelOrderName(order.people[0].name) === normalizeLegacyTravelOrderName(accountName);
     if (!isOwner && !isRecipient && !isNamedLegacyRecipient) return false;
     if (order.status !== "Pending") {
       setError("Approved or Disapproved Travel Orders cannot change status.");
