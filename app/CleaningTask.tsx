@@ -104,7 +104,7 @@ async function mergeCleaningPhotos(files: File[]) {
   const columns = 2;
   const cellWidth = 1200;
   const cellHeight = 900;
-  const inset = 20;
+  const targetRatio = cellWidth / cellHeight;
   const canvas = document.createElement("canvas");
   canvas.width = columns * cellWidth;
   canvas.height = 2 * cellHeight;
@@ -118,14 +118,20 @@ async function mergeCleaningPhotos(files: File[]) {
   for (const [index, file] of files.entries()) {
     const photo = await loadCollagePhoto(file);
     try {
-      const scale = Math.min((cellWidth - inset * 2) / photo.width, (cellHeight - inset * 2) / photo.height);
-      const width = photo.width * scale;
-      const height = photo.height * scale;
+      let sourceX = 0;
+      let sourceY = 0;
+      let sourceWidth = photo.width;
+      let sourceHeight = photo.height;
+      if (photo.width / photo.height > targetRatio) {
+        sourceWidth = photo.height * targetRatio;
+        sourceX = (photo.width - sourceWidth) / 2;
+      } else {
+        sourceHeight = photo.width / targetRatio;
+        sourceY = (photo.height - sourceHeight) / 2;
+      }
       const cellX = (index % columns) * cellWidth;
       const cellY = Math.floor(index / columns) * cellHeight;
-      const x = cellX + (cellWidth - width) / 2;
-      const y = cellY + (cellHeight - height) / 2;
-      context.drawImage(photo.image, x, y, width, height);
+      context.drawImage(photo.image, sourceX, sourceY, sourceWidth, sourceHeight, cellX, cellY, cellWidth, cellHeight);
     } finally {
       photo.cleanup();
     }
