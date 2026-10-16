@@ -373,7 +373,7 @@
 }
 
 .cleaning-calendar-day.is-today {
-  border: 2px solid #c94920;
+  border: 1px solid #e3e9e4;
   font-weight: 800;
 }
 
