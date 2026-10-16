@@ -8,6 +8,7 @@ import { generateReactHelpers } from "@uploadthing/react";
 import { db } from "@/lib/firebase";
 import { accountDesignation } from "@/lib/account-profile";
 import type { AccountRole } from "@/lib/user-roles";
+import DeleteConfirmation from "./DeleteConfirmation";
 import {
   cleaningTaskCalendarWeeks,
   cleaningTaskUnits,
@@ -176,6 +177,7 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingPhotos, setPendingPhotos] = useState<File[] | null>(null);
   const [month, setMonth] = useState(() => manilaDateKey().slice(0, 7));
   const [now, setNow] = useState(() => new Date());
   const { startUpload } = useUploadThing("cleaningTaskImage", {
@@ -221,41 +223,7 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
     return Boolean(latestDueAssignment && typeof deadline === "number" && now.getTime() >= deadline);
   }
 
-  async function handleImageSelection(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.currentTarget.files ?? []);
-    event.currentTarget.value = "";
-    if (files.length === 0) return;
-    setError("");
-    setSuccess("");
-    if (!canUpload || role === "superadmin") {
-      setError("This account cannot upload Cleaning Task images.");
-      return;
-    }
-    if (!isCleaningTaskUnit(unit)) {
-      setError("Your profile must have AGRISTAT, AMIA, or DRRM as its Unit / Program / Project.");
-      return;
-    }
-    if (!currentAssignment || currentAssignment.unit !== unit || !isOngoing(currentAssignment, now)) {
-      setError("Your Unit / Program / Project is not assigned for the current work week.");
-      return;
-    }
-    if (files.length !== 4) {
-      setError("Select exactly 4 images to create the Cleaning Task collage.");
-      return;
-    }
-    if (files.some((file) => !allowedImageTypes.has(file.type))) {
-      setError("All 4 photos must be JPEG, PNG, or WebP images.");
-      return;
-    }
-    if (files.some((file) => file.size > maxCleaningImageBytes)) {
-      setError("Each source photo must be 32 MB or smaller.");
-      return;
-    }
-    if (!uploadThingConfigured) {
-      setError("Cleaning Task image uploads are not configured yet.");
-      return;
-    }
-    if (!window.confirm("To label this collage, your live coordinates and request IP will be sent directly to BigDataCloud for Barangay and City lookup. My Desk stores only the formatted location. Continue?")) return;
+  async function uploadCleaningPhotos(files: File[]) {
     setBusy(true);
     try {
       const collageFile = await mergeCleaningPhotos(files);
@@ -326,6 +294,43 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
     }
   }
 
+  async function handleImageSelection(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    if (files.length === 0) return;
+    setError("");
+    setSuccess("");
+    if (!canUpload || role === "superadmin") {
+      setError("This account cannot upload Cleaning Task images.");
+      return;
+    }
+    if (!isCleaningTaskUnit(unit)) {
+      setError("Your profile must have AGRISTAT, AMIA, or DRRM as its Unit / Program / Project.");
+      return;
+    }
+    if (!currentAssignment || currentAssignment.unit !== unit || !isOngoing(currentAssignment, now)) {
+      setError("Your Unit / Program / Project is not assigned for the current work week.");
+      return;
+    }
+    if (files.length !== 4) {
+      setError("Select exactly 4 images to create the Cleaning Task collage.");
+      return;
+    }
+    if (files.some((file) => !allowedImageTypes.has(file.type))) {
+      setError("All 4 photos must be JPEG, PNG, or WebP images.");
+      return;
+    }
+    if (files.some((file) => file.size > maxCleaningImageBytes)) {
+      setError("Each source photo must be 32 MB or smaller.");
+      return;
+    }
+    if (!uploadThingConfigured) {
+      setError("Cleaning Task image uploads are not configured yet.");
+      return;
+    }
+    setPendingPhotos(files);
+  }
+
   if (mode === "landing" && !canViewCleaningTaskLanding(role, unit)) return null;
 
   return <section className={`cleaning-task-board${mode === "workspace" ? " is-workspace" : " is-landing"}`}>
@@ -375,6 +380,19 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
         </div>
       </section>
     </div>
+    <DeleteConfirmation
+      open={pendingPhotos !== null}
+      title="Location sharing for this upload"
+      description="To label this collage, your live coordinates and request IP will be sent directly to BigDataCloud for Barangay and City lookup. My Desk stores only the formatted location. Continue?"
+      confirmLabel="Continue"
+      onCancel={() => setPendingPhotos(null)}
+      onConfirm={() => {
+        if (!pendingPhotos) return;
+        const selectedPhotos = pendingPhotos;
+        setPendingPhotos(null);
+        void uploadCleaningPhotos(selectedPhotos);
+      }}
+    />
   </section>;
 }
 
@@ -444,23 +462,20 @@ export function CleaningTaskAssignmentAdmin({ user }: { user: User }) {
   }
 
   return <section className="cleaning-assignment-admin content-section">
-    <div className="section-heading"><div><p className="eyebrow">Superadmin schedule</p><h2>Cleaning Task Assignment</h2><p className="muted">Assign one AGRISTAT, AMIA, or DRRM team to each Monday–Friday work week.</p></div></div>
+    <div className="section-heading cleaning-assignment-heading"><div><p className="eyebrow">Superadmin schedule</p><h2>Cleaning Task Assignment</h2><p className="muted">Assign one AGRISTAT, AMIA, or DRRM team to each Monday–Friday work week.</p></div><button className="primary-button cleaning-assignment-submit" type="submit" form="cleaning-assignment-form" disabled={saving || !selectedWeek}>{saving ? "Saving assignment..." : currentAssignment ? "Update assignment" : "Assign unit"}</button></div>
     {error && <p className="cleaning-task-message is-error" role="alert">{error}</p>}
     {message && <p className="cleaning-task-message is-success" role="status">{message}</p>}
-    <form className="cleaning-assignment-form" onSubmit={(event) => void saveAssignment(event)}>
+    <form id="cleaning-assignment-form" className="cleaning-assignment-form" onSubmit={(event) => void saveAssignment(event)}>
       <label>Month<select value={month.slice(5, 7)} onChange={(event) => { setMonth(`${year}-${event.target.value}`); setMessage(""); }} required>{Array.from({ length: 12 }, (_, index) => { const value = String(index + 1).padStart(2, "0"); const label = new Intl.DateTimeFormat("en-PH", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, index, 1))); return <option value={value} key={value}>{label}</option>; })}</select></label>
       <label>Year<input type="number" value={year} min="2020" max="2100" aria-label="Year" onChange={(event) => { const nextYear = event.target.value; setYear(nextYear); if (/^\d{4}$/.test(nextYear)) setMonth(`${nextYear}-${month.slice(5, 7) || "01"}`); }} required /></label>
       <label>Week<select value={weekStart} onChange={(event) => setWeekStart(event.target.value)} required>{weeks.map((week) => <option value={week.weekStart} key={week.weekStart}>Week {week.weekNumber} · {week.weekStart}</option>)}</select></label>
       <label>Cleaning Assignment for<select value={unit} onChange={(event) => setUnit(event.target.value as CleaningTaskUnit)}>{cleaningTaskUnits.map((taskUnit) => <option value={taskUnit} key={taskUnit}>{taskUnit}</option>)}</select></label>
       <div className="cleaning-assignment-actions">
         <div className="cleaning-assignment-preview"><span>Selected week</span><strong>{selectedWeek ? `Week ${selectedWeek.weekNumber} · ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`))} to ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`).getTime() + 4 * 24 * 60 * 60 * 1000))}` : "Choose a month and week"}</strong><small>Monday to Friday; weekends are not part of the assignment window.</small></div>
-        <div className="cleaning-assignment-action-side">
-          {currentAssignment && <div className="cleaning-assignment-current"><span>Current assignment</span><strong>{currentAssignment.unit} · Week {currentAssignment.weekNumber}</strong></div>}
-          <button className="primary-button" type="submit" disabled={saving || !selectedWeek}>{saving ? "Saving assignment..." : currentAssignment ? "Update assignment" : "Assign unit"}</button>
-        </div>
+        {currentAssignment && <div className="cleaning-assignment-current"><span>Current assignment</span><strong>{currentAssignment.unit} · Week {currentAssignment.weekNumber}</strong></div>}
       </div>
     </form>
-    <div className="cleaning-admin-calendar"><h3>{month}</h3>{loading ? <p className="muted">Loading weekly assignments...</p> : <div className="cleaning-admin-assignment-list">{weeks.map((week) => {
+    <div className="cleaning-admin-calendar">{loading ? <p className="muted">Loading weekly assignments...</p> : <div className="cleaning-admin-assignment-list">{weeks.map((week) => {
       const assignment = assignments.find((item) => item.weekStart === week.weekStart);
       return <button type="button" className={`cleaning-admin-week${week.weekStart === weekStart ? " is-selected" : ""}`} key={week.weekStart} onClick={() => { setWeekStart(week.weekStart); if (assignment) setUnit(assignment.unit); }}><span>Week {week.weekNumber}<small>{week.weekStart}</small></span><strong>{assignment?.unit ?? "Not assigned"}</strong></button>;
     })}</div>}</div>

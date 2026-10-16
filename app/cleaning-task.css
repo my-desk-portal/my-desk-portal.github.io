@@ -431,9 +431,22 @@
 
 .cleaning-assignment-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, .7fr) minmax(0, 1.2fr) minmax(0, 1.15fr);
   gap: 1rem clamp(.75rem, 1.5vw, 1.25rem);
   margin-top: clamp(1rem, 2vw, 1.5rem);
+}
+
+.cleaning-assignment-heading {
+  align-items: center;
+}
+
+.cleaning-assignment-heading > div {
+  min-width: 0;
+}
+
+.cleaning-assignment-submit {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .cleaning-assignment-form > label {
@@ -495,26 +508,12 @@
   gap: 1rem clamp(.75rem, 1.5vw, 1.25rem);
 }
 
-.cleaning-assignment-action-side {
-  display: grid;
-  justify-items: start;
-  gap: .75rem;
-  min-width: 0;
-}
-
-.cleaning-assignment-form .primary-button {
-  width: fit-content;
-  max-width: 100%;
-  align-self: center;
-  white-space: normal;
+.cleaning-assignment-preview {
+  grid-column: 1 / -1;
 }
 
 .cleaning-admin-calendar {
   margin-top: 1.5rem;
-}
-
-.cleaning-admin-calendar h3 {
-  color: #314437;
 }
 
 .cleaning-admin-assignment-list {
@@ -566,9 +565,22 @@
   .cleaning-task-layout {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .cleaning-assignment-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 560px) {
+  .cleaning-assignment-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cleaning-assignment-submit {
+    align-self: flex-end;
+  }
+
   .cleaning-task-heading {
     align-items: flex-start;
     flex-direction: column;
@@ -650,14 +662,6 @@
 
   .cleaning-assignment-actions {
     grid-column: 1;
-  }
-
-  .cleaning-assignment-action-side {
-    justify-items: stretch;
-  }
-
-  .cleaning-assignment-form .primary-button {
-    width: 100%;
   }
 
   .cleaning-admin-week {
