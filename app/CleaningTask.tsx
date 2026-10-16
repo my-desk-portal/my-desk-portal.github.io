@@ -452,9 +452,13 @@ export function CleaningTaskAssignmentAdmin({ user }: { user: User }) {
       <label>Year<input type="number" value={year} min="2020" max="2100" aria-label="Year" onChange={(event) => { const nextYear = event.target.value; setYear(nextYear); if (/^\d{4}$/.test(nextYear)) setMonth(`${nextYear}-${month.slice(5, 7) || "01"}`); }} required /></label>
       <label>Week<select value={weekStart} onChange={(event) => setWeekStart(event.target.value)} required>{weeks.map((week) => <option value={week.weekStart} key={week.weekStart}>Week {week.weekNumber} · {week.weekStart}</option>)}</select></label>
       <label>Cleaning Assignment for<select value={unit} onChange={(event) => setUnit(event.target.value as CleaningTaskUnit)}>{cleaningTaskUnits.map((taskUnit) => <option value={taskUnit} key={taskUnit}>{taskUnit}</option>)}</select></label>
-      <div className="cleaning-assignment-preview"><span>Selected week</span><strong>{selectedWeek ? `Week ${selectedWeek.weekNumber} · ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`))} to ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`).getTime() + 4 * 24 * 60 * 60 * 1000))}` : "Choose a month and week"}</strong><small>Monday to Friday; weekends are not part of the assignment window.</small></div>
-      {currentAssignment && <div className="cleaning-assignment-current"><span>Current assignment</span><strong>{currentAssignment.unit} · Week {currentAssignment.weekNumber}</strong></div>}
-      <button className="primary-button" type="submit" disabled={saving || !selectedWeek}>{saving ? "Saving assignment..." : currentAssignment ? "Update assignment" : "Assign unit"}</button>
+      <div className="cleaning-assignment-actions">
+        <div className="cleaning-assignment-preview"><span>Selected week</span><strong>{selectedWeek ? `Week ${selectedWeek.weekNumber} · ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`))} to ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`).getTime() + 4 * 24 * 60 * 60 * 1000))}` : "Choose a month and week"}</strong><small>Monday to Friday; weekends are not part of the assignment window.</small></div>
+        <div className="cleaning-assignment-action-side">
+          {currentAssignment && <div className="cleaning-assignment-current"><span>Current assignment</span><strong>{currentAssignment.unit} · Week {currentAssignment.weekNumber}</strong></div>}
+          <button className="primary-button" type="submit" disabled={saving || !selectedWeek}>{saving ? "Saving assignment..." : currentAssignment ? "Update assignment" : "Assign unit"}</button>
+        </div>
+      </div>
     </form>
     <div className="cleaning-admin-calendar"><h3>{month}</h3>{loading ? <p className="muted">Loading weekly assignments...</p> : <div className="cleaning-admin-assignment-list">{weeks.map((week) => {
       const assignment = assignments.find((item) => item.weekStart === week.weekStart);
