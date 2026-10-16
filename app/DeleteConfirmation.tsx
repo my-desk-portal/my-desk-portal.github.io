@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import "./delete-confirmation.css";
 
 export default function DeleteConfirmation({ open, title, description, busy = false, confirmDisabled = false, confirmLabel = "Delete", busyLabel = "Deleting...", children, onCancel, onConfirm }: {
@@ -58,9 +59,9 @@ export default function DeleteConfirmation({ open, title, description, busy = fa
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return <div className="delete-confirmation-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onCancel(); }}>
+  return createPortal(<div className="delete-confirmation-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onCancel(); }}>
     <section ref={dialogRef} className="delete-confirmation-dialog" role="alertdialog" aria-modal="true" aria-busy={busy} aria-labelledby="delete-confirmation-title" aria-describedby="delete-confirmation-description" tabIndex={-1}>
       <h2 id="delete-confirmation-title">{title}</h2>
       <p id="delete-confirmation-description">{description}</p>
@@ -70,5 +71,5 @@ export default function DeleteConfirmation({ open, title, description, busy = fa
         <button type="button" className="delete-confirmation-confirm" ref={confirmButtonRef} disabled={busy || confirmDisabled} onClick={onConfirm}>{busy ? busyLabel : confirmLabel}</button>
       </div>
     </section>
-  </div>;
+  </div>, document.body);
 }
