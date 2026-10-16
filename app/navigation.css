@@ -393,3 +393,22 @@
   .mobile-nav-submenu button:focus-visible,.mobile-profile-link:focus-visible,.mobile-sign-out:focus-visible{outline-color:#fff}
   .mobile-sign-out{border-top-color:#ffffff80;color:#fff;justify-content:flex-start;padding:8px 20px;text-align:left}
 }
+
+@media(max-width:1120px){
+  .topbar .notification-dropdown{
+    max-height:min(70vh,calc(100vh - 82px));
+    max-height:min(70dvh,calc(100dvh - 82px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)));
+    position:fixed;
+    right:max(12px,env(safe-area-inset-right,0px));
+    top:calc(70px + env(safe-area-inset-top,0px));
+    width:min(360px,calc(100vw - 24px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
+  }
+}
+
+@media(max-width:480px){
+  .topbar .notification-dropdown{
+    max-height:min(70vh,calc(100vh - 72px));
+    max-height:min(70dvh,calc(100dvh - 72px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)));
+    top:calc(60px + env(safe-area-inset-top,0px));
+  }
+}
