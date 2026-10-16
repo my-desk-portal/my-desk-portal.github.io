@@ -210,7 +210,7 @@ function createUploadRouter(env) {
 
     myDriveFile: upload({
       blob: { maxFileSize: "30MB", maxFileCount: 1, contentDisposition: "attachment" },
-    })
+    }, { awaitServerData: true })
       .middleware(async ({ req, files }) => {
         const idToken = firebaseIdToken(req);
         const user = await verifiedFirebaseUser(idToken, env.FIREBASE_API_KEY);
