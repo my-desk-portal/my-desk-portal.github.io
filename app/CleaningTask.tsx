@@ -357,11 +357,25 @@ export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, m
     {success && <p className="cleaning-task-message is-success" role="status">{success}</p>}
     <div className="cleaning-task-layout">
       <section className="cleaning-task-photos" aria-label="Latest cleaning task photos">
-        {loading ? <p className="muted">Loading Cleaning Task posts...</p> : images.length === 0 ? <div className="cleaning-task-empty"><strong>No photos posted yet</strong><span>The first assigned team photo will appear here.</span></div> : images.map((image) => <article className="cleaning-task-photo" key={image.id}>
-          <div className="cleaning-task-photo-meta"><strong>Uploaded by {image.uploaderName} - {image.unit}</strong><span>{displayCleaningDateTime(image.uploadedAt)} | {image.location}</span></div>
-          <img src={image.imageURL} alt={`Four-photo ${image.unit} Cleaning Task collage uploaded by ${image.uploaderName}`} loading="lazy" />
-          {missedAssignment(image) && <div className="cleaning-task-outdated" role="status"><span aria-hidden="true">⚠</span> MOV is outdated!</div>}
-        </article>)}
+        {loading ? <p className="muted">Loading Cleaning Task posts...</p> : images.length === 0 ? <div className="cleaning-task-empty"><strong>No photos posted yet</strong><span>The first assigned team photo will appear here.</span></div> : images.map((image) => {
+          const [barangay, ...cityParts] = image.location.split(",").map((part) => part.trim());
+          const city = cityParts.join(", ");
+          const location = city
+            ? `${/\bcity\b/i.test(city) ? city : `${city} City`}, ${barangay}`
+            : image.location;
+          return <article className="cleaning-task-photo" key={image.id}>
+            <header className="cleaning-task-photo-heading"><h3>Cleaning Task Photo Verification</h3></header>
+            <div className="cleaning-task-photo-visual">
+              <img src={image.imageURL} alt={`Four-photo ${image.unit} Cleaning Task collage uploaded by ${image.uploaderName}`} loading="lazy" />
+              {missedAssignment(image) && <div className="cleaning-task-outdated" role="status"><span aria-hidden="true">!</span> MOV is outdated!</div>}
+            </div>
+            <footer className="cleaning-task-photo-meta">
+              <div><strong>Uploader:</strong><span>{image.uploaderName} - {image.unit}</span></div>
+              <div><strong>Timestamp:</strong><span>{displayCleaningDateTime(image.uploadedAt)}</span></div>
+              <div><strong>Location:</strong><span>{location}</span></div>
+            </footer>
+          </article>;
+        })}
       </section>
       <section className="cleaning-task-calendar" aria-label="Cleaning Task assignment calendar">
         <header className="cleaning-calendar-header">
