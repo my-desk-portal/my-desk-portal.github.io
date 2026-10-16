@@ -86,6 +86,7 @@ const ntaLegacyHelpText = "Update the activity information, schedule, venue, and
 const ntaGuidanceText = new Set([ntaFormHelpText, ntaLegacyHelpText, "Add the activity details and designated personnel."]);
 const isNtaGuidanceText = (value?: string) => Boolean(value && ntaGuidanceText.has(value.trim()));
 const cleanNtaField = (value?: string) => isNtaGuidanceText(value) ? "" : value ?? "";
+const normalizePersonnelName = (value: string) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
 const initialBatch = (): NtaBatch => ({ number: "1", dateFrom: "", dateTo: "", timeFrom: "08:00", timeTo: "17:00", venueType: "physical", venue: "", link: "", attendees: [{ name: "", position: "", office: "", unit: "", userId: "", manual: false }] });
 
 function NtaForm({ user, office, division, unit, onSaved, onCancel }: { user: User; office: string; division?: string | null; unit: string | null; onSaved: (record: NtaRecord) => void; onCancel: () => void }) {
@@ -548,17 +549,29 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
   const rawBatches = record.batches ?? [];
   const [resolvedParticipantUnits, setResolvedParticipantUnits] = useState<Record<string, string>>({});
   useEffect(() => {
-    const missingUnitUserIds = [...new Set(rawBatches.flatMap((batch) => batch.attendees
-      .filter((attendee) => !attendee.unit?.trim() && attendee.userId)
-      .map((attendee) => attendee.userId!)))];
-    if (missingUnitUserIds.length === 0) return;
+    const attendeesMissingUnits = rawBatches.flatMap((batch) => batch.attendees
+      .filter((attendee) => !attendee.unit?.trim() && (attendee.userId || attendee.name.trim())));
+    if (attendeesMissingUnits.length === 0) return;
     let cancelled = false;
     void loadAccountPersonnel({ deduplicateByName: false }).then((entries) => {
       if (cancelled) return;
-      const requiredIds = new Set(missingUnitUserIds);
-      setResolvedParticipantUnits(Object.fromEntries(entries
-        .filter((person) => requiredIds.has(person.userId) && person.unit)
-        .map((person) => [person.userId, person.unit])));
+      const resolvedUnits = Object.fromEntries(entries
+        .filter((person) => person.unit)
+        .map((person) => [person.userId, person.unit]));
+      const unitsByName = new Map<string, Set<string>>();
+      entries.forEach((person) => {
+        const name = normalizePersonnelName(person.name);
+        if (!name || !person.unit) return;
+        const units = unitsByName.get(name) ?? new Set<string>();
+        units.add(person.unit);
+        unitsByName.set(name, units);
+      });
+      attendeesMissingUnits.forEach((attendee) => {
+        const name = normalizePersonnelName(attendee.name);
+        const matchingUnits = unitsByName.get(name);
+        if (name && matchingUnits?.size === 1) resolvedUnits[`name:${name}`] = [...matchingUnits][0];
+      });
+      setResolvedParticipantUnits(resolvedUnits);
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [record.id, rawBatches]);
@@ -566,7 +579,7 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
     ...batch,
     attendees: batch.attendees.map((attendee) => ({
       ...attendee,
-      unit: attendee.unit || (attendee.userId ? resolvedParticipantUnits[attendee.userId] : "") || "",
+      unit: attendee.unit || (attendee.userId ? resolvedParticipantUnits[attendee.userId] : "") || resolvedParticipantUnits[`name:${normalizePersonnelName(attendee.name)}`] || "",
     })),
   }));
   const firstPageRows = measuredFirstPageRows ?? batches[0]?.attendees.length ?? 0;
