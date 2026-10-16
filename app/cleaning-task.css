@@ -617,11 +617,12 @@
 }
 
 .cleaning-admin-week > strong {
+  flex: 0 0 auto;
   min-width: 0;
   color: #216d3b;
   font-size: .85rem;
-  overflow-wrap: anywhere;
   text-align: right;
+  white-space: nowrap;
 }
 
 @media (max-width: 920px) {
