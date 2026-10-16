@@ -115,6 +115,11 @@
   .travel-order-preview-pages{gap:14px}
   .travel-order-paper{width:min(94vw,210mm)}
 }
+@media(max-width:720px){
+  .travel-order-list-row{gap:12px;grid-template-columns:minmax(0,1fr);padding:17px 0}
+  .travel-order-list-row>[data-label]{grid-column:1;min-width:0;overflow-wrap:anywhere}
+  .travel-order-list-row>.travel-order-row-actions{flex-wrap:wrap;gap:14px;justify-content:flex-start;padding-top:3px}
+}
 @media print{
   .travel-order-preview-backdrop{background:#fff;padding:0;position:static}
   .travel-order-preview-pages{display:block;width:auto}

@@ -25,6 +25,10 @@
 .special-order-closing-tight .special-order-done{margin:4.6cqi 0 0}
 .special-order-closing-tight .special-order-signatory,.special-order-closing-tight.special-order-closing-pulled .special-order-signatory{margin-top:6.9cqi}
 @media(max-width:720px){
+  .special-order-list-head{display:none}
+  .special-order-list-row{gap:12px;grid-template-columns:minmax(0,1fr);padding:17px 0}
+  .special-order-list-row>span,.special-order-list-row>strong{grid-column:1;min-width:0;overflow-wrap:anywhere}
+  .special-order-list-row>.permit-row-actions{flex-wrap:wrap;gap:14px;justify-content:flex-start;padding-top:3px}
   .special-order-edit-section{padding:22px 16px}
   .special-order-edit-section .section-heading{align-items:stretch;flex-direction:column}
   .special-order-edit-section .section-heading .ghost-button{min-height:48px;width:100%}
