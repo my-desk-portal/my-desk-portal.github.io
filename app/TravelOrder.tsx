@@ -602,7 +602,11 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
         ...legacyRecipientRows,
       ];
       const completedSplitSources = new Set(loadedRows.flatMap((order) => [order.splitFromOrderId, order.recipientOwnerSourceId]).filter((id): id is string => Boolean(id)));
-      const visibleRows = loadedRows.filter((order) => !(completedSplitSources.has(order.id) && (order.people.length !== 1 || !order.recipientId)));
+      const ownedCopySources = new Set(loadedRows.filter((order) => order.recipientOwnerSourceId)
+        .flatMap((order) => [order.splitFromOrderId, order.recipientOwnerSourceId])
+        .filter((id): id is string => Boolean(id)));
+      const visibleRows = loadedRows.filter((order) => !ownedCopySources.has(order.id)
+        && !(completedSplitSources.has(order.id) && (order.people.length !== 1 || !order.recipientId)));
       const byId = new Map<string, TravelOrder>();
       visibleRows.forEach((order) => byId.set(order.id, order));
       const rows = [...byId.values()].map((row) => ({ ...row, status: normalizeWorkflowStatus(row.status) }));
@@ -647,7 +651,11 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
           [...ownerRows, ...recipientRows, ...legacyRecipientRows].forEach((order) => byId.set(order.id, order));
           const allRows = [...byId.values()];
           const splitSources = new Set(allRows.flatMap((order) => [order.splitFromOrderId, order.recipientOwnerSourceId]).filter((id): id is string => Boolean(id)));
-          const visibleRows = allRows.filter((order) => !(splitSources.has(order.id) && (order.people.length !== 1 || !order.recipientId)));
+          const ownedCopySources = new Set(allRows.filter((order) => order.recipientOwnerSourceId)
+            .flatMap((order) => [order.splitFromOrderId, order.recipientOwnerSourceId])
+            .filter((id): id is string => Boolean(id)));
+          const visibleRows = allRows.filter((order) => !ownedCopySources.has(order.id)
+            && !(splitSources.has(order.id) && (order.people.length !== 1 || !order.recipientId)));
           return visibleRows.sort((left, right) => ((right.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0) - ((left.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0));
         });
       }, (cause) => {
