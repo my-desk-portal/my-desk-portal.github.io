@@ -47,6 +47,7 @@ const maxTravelReferences = 8;
 const maxItineraries = 8;
 const maxTevPersonnel = 18;
 type TevPersonnel = { userId: string; profile: TevProfile; office: string; profileComplete: boolean; adminAccount: boolean };
+type TevPersonnelDraft = { key: string; userId: string; travelReferences: TevTravelReference[] };
 const tevEvidenceOptions = [
   { label: "Approved Itinerary of Travel", pattern: /\bapproved itinerary of travel\b/i },
   { label: "Approved PTR", pattern: /\bapproved ptr\b/i },
@@ -193,6 +194,35 @@ function MonthAwareDateInput({ value, month, label, minDate, required, onChange 
   </div>;
 }
 
+function TravelReferenceEditor({ references, month, title, description, labelPrefix, saving, onAdd, onUpdate, onRemove }: {
+  references: TevTravelReference[];
+  month: string;
+  title: string;
+  description: string;
+  labelPrefix: string;
+  saving: boolean;
+  onAdd: () => void;
+  onUpdate: (index: number, changes: Partial<TevTravelReference>) => void;
+  onRemove: (index: number) => void;
+}) {
+  return <>
+    <div className="mytev-form-group-heading"><div><h3>{title}</h3><p>{description}</p></div><button type="button" className="ghost-button mytev-add-reference" disabled={saving || references.length >= maxTravelReferences} onClick={onAdd}>Add reference</button></div>
+    <div className="mytev-reference-list">{references.map((reference, index) => {
+      const referenceLabel = `${labelPrefix} reference ${index + 1}`;
+      return <fieldset className="mytev-reference-row" key={`${labelPrefix}-travel-reference-${index}`}><legend>Travel reference {index + 1}</legend>
+        <label>Travel No.<input aria-label={`${referenceLabel} Travel No.`} value={reference.travelOrderNo} onChange={(event) => onUpdate(index, { travelOrderNo: event.target.value })} maxLength={40} required disabled={saving} /></label>
+        <div className="mytev-date-field mytev-reference-to-date"><span>TO Date (Records Unit)</span><MonthAwareDateInput label={`${referenceLabel} TO Date (Records Unit)`} month={month} value={reference.toDateRecordsUnit} onChange={(value) => onUpdate(index, { toDateRecordsUnit: value })} /></div>
+        <div className="mytev-date-field"><span>Date From</span><MonthAwareDateInput label={`${referenceLabel} Date From`} month={month} value={reference.dateFrom} required onChange={(value) => {
+          const dateTo = reference.dateTo && (!value || reference.dateTo >= value) ? reference.dateTo : "";
+          onUpdate(index, { dateFrom: value, dateTo });
+        }} /></div>
+        <div className="mytev-date-field"><span>Date To</span><MonthAwareDateInput label={`${referenceLabel} Date To`} month={month} minDate={reference.dateFrom} value={reference.dateTo} required onChange={(value) => onUpdate(index, { dateTo: value })} /></div>
+        {references.length > 1 && <button type="button" className="mytev-remove-reference remove-action" aria-label={`Remove ${referenceLabel}`} disabled={saving} onClick={() => onRemove(index)}>Remove</button>}
+      </fieldset>;
+    })}</div>
+  </>;
+}
+
 function documentId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -226,7 +256,7 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
   const [itineraries, setItineraries] = useState<TevItinerary[]>(() => initialRecord
     ? initialRecord.itineraries.map((itinerary) => ({ ...itinerary, rows: itinerary.rows.map((row) => ({ ...row, meansOfTransportation: normalizeTevTransportationMeansForEditor(row.meansOfTransportation), claims: [...row.claims] })) }))
     : [initialItinerary()]);
-  const [selectedPersonnelIds, setSelectedPersonnelIds] = useState<string[]>([]);
+  const [selectedPersonnelEntries, setSelectedPersonnelEntries] = useState<TevPersonnelDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -249,16 +279,42 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
   }
 
   function updateSelectedPersonnel(index: number, userId: string) {
-    setSelectedPersonnelIds((current) => current.map((selectedId, itemIndex) => itemIndex === index ? userId : selectedId));
+    setSelectedPersonnelEntries((current) => current.map((entry, itemIndex) => itemIndex === index ? {
+      ...entry,
+      userId,
+      ...(entry.userId !== userId ? { travelReferences: [blankTevTravelReference()] } : {}),
+    } : entry));
     setMessage("");
   }
 
   function addPersonnelSlot() {
-    setSelectedPersonnelIds((current) => current.length >= maxTevPersonnel ? current : [...current, ""]);
+    setSelectedPersonnelEntries((current) => current.length >= maxTevPersonnel ? current : [...current, { key: documentId(), userId: "", travelReferences: [blankTevTravelReference()] }]);
   }
 
   function removePersonnelSlot(index: number) {
-    setSelectedPersonnelIds((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setSelectedPersonnelEntries((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function updatePersonnelReference(personnelIndex: number, referenceIndex: number, changes: Partial<TevTravelReference>) {
+    setSelectedPersonnelEntries((current) => current.map((entry, entryIndex) => entryIndex !== personnelIndex ? entry : {
+      ...entry,
+      travelReferences: entry.travelReferences.map((reference, itemIndex) => itemIndex === referenceIndex ? { ...reference, ...changes } : reference),
+    }));
+    setMessage("");
+  }
+
+  function addPersonnelReference(personnelIndex: number) {
+    setSelectedPersonnelEntries((current) => current.map((entry, entryIndex) => entryIndex !== personnelIndex || entry.travelReferences.length >= maxTravelReferences ? entry : {
+      ...entry,
+      travelReferences: [...entry.travelReferences, blankTevTravelReference()],
+    }));
+  }
+
+  function removePersonnelReference(personnelIndex: number, referenceIndex: number) {
+    setSelectedPersonnelEntries((current) => current.map((entry, entryIndex) => entryIndex !== personnelIndex ? entry : {
+      ...entry,
+      travelReferences: entry.travelReferences.filter((_, itemIndex) => itemIndex !== referenceIndex),
+    }));
   }
 
   function updateItinerary(itineraryId: string, changes: Partial<Pick<TevItinerary, "dateFrom" | "dateTo">>) {
@@ -313,6 +369,15 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
       setMessage("Each Travel Order end date must be on or after its start date.");
       return;
     }
+    const selectedEntries = selectedPersonnelEntries.filter((entry) => entry.userId);
+    if (selectedEntries.some((entry) => !entry.travelReferences.length || entry.travelReferences.some((reference) => !reference.travelOrderNo.trim() || !reference.dateFrom || !reference.dateTo))) {
+      setMessage("Enter a Travel Order No. and date range for every reference for each selected personnel.");
+      return;
+    }
+    if (selectedEntries.some((entry) => entry.travelReferences.some((reference) => reference.dateTo < reference.dateFrom))) {
+      setMessage("Each selected personnel's Travel Order end date must be on or after its start date.");
+      return;
+    }
     if (!selectedEvidence.length) {
       setMessage("Select at least one evidence of travel.");
       return;
@@ -355,13 +420,24 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
     setMessage("");
     if (!db) { setMessage("myTEV storage is unavailable."); return; }
     const firestore = db;
-    const selectedPersonnel = [...new Set(selectedPersonnelIds.filter(Boolean))].map((userId) => personnel.find((person) => person.userId === userId));
-    if (selectedPersonnel.some((person) => !person)) {
+    const selectedPersonnel = selectedPersonnelEntries.filter((entry) => entry.userId).map((entry) => ({
+      ...entry,
+      person: personnel.find((candidate) => candidate.userId === entry.userId),
+    }));
+    if (selectedPersonnel.some((entry) => !entry.person)) {
       setMessage("A selected person is no longer available. Refresh and select them again.");
       return;
     }
-    if (selectedPersonnel.some((person) => !person?.profileComplete)) {
+    if (selectedPersonnel.some((entry) => !entry.person?.profileComplete)) {
       setMessage("Each selected person must complete their name, address, Tax Identification No., and position in Profile first.");
+      return;
+    }
+    if (selectedPersonnel.some((entry) => !entry.travelReferences.length || entry.travelReferences.some((reference) => !reference.travelOrderNo.trim() || !reference.dateFrom || !reference.dateTo))) {
+      setMessage("Enter a Travel Order No. and date range for every reference for each selected personnel.");
+      return;
+    }
+    if (selectedPersonnel.some((entry) => entry.travelReferences.some((reference) => reference.dateTo < reference.dateFrom))) {
+      setMessage("Each selected personnel's Travel Order end date must be on or after its start date.");
       return;
     }
     const result = normalizedItineraries();
@@ -388,16 +464,17 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
         onSaved({ ...initialRecord, ...recordData });
       } else {
         const reference = doc(collection(firestore, "myTevRecords"));
-        const selectedUserIds = selectedPersonnel.map((person) => person!.userId);
+        const selectedUserIds = selectedPersonnel.map((entry) => entry.person!.userId);
         const batch = writeBatch(firestore);
         batch.set(reference, { ...recordData, ...(selectedUserIds.length ? { sharedWith: selectedUserIds } : {}), createdAt: serverTimestamp() });
-        selectedPersonnel.forEach((person) => {
-          if (!person) return;
+        selectedPersonnel.forEach((entry) => {
+          const person = entry.person!;
           const personnelRecord = doc(collection(firestore, "myTevRecords"));
           batch.set(personnelRecord, {
             ...recordData,
             ownerId: person.userId,
             profile: person.profile,
+            travelReferences: entry.travelReferences.map((travelReference) => ({ ...travelReference, travelOrderNo: travelReference.travelOrderNo.trim() })),
             createdById: ownerId,
             sourceRecordId: reference.id,
             createdAt: serverTimestamp(),
@@ -436,27 +513,41 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
         <label className="mytev-division-field">Division<select value={divisionName} disabled={Boolean(initialRecord) || profileDivision !== null} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division}>{division}</option>)}</select></label>
       </div></section>
       {!initialRecord && <section className="mytev-form-group mytev-personnel-group">
-        <div className="mytev-form-group-heading"><div><h3>Personnel for this TEV</h3><p>Add personnel from your Office, Division, and Unit / Program / Project. Each person receives the same travel details with their own profile information on the TEV.</p></div><button type="button" className="ghost-button" disabled={selectedPersonnelIds.length >= maxTevPersonnel} onClick={addPersonnelSlot}>+ Add another personnel</button></div>
-        {selectedPersonnelIds.length > 0 && <div className="mytev-personnel-list">{selectedPersonnelIds.map((selectedId, index) => <div className="mytev-personnel-entry" key={`tev-personnel-${index}`}>
-          <label>Add a Personnel for this TEV<select aria-label={`Personnel for this TEV ${index + 1}`} value={selectedId} onChange={(event) => updateSelectedPersonnel(index, event.target.value)} disabled={saving}>
+        <div className="mytev-form-group-heading"><div><h3>Personnel for this TEV</h3><p>Add personnel from your Office, Division, and Unit / Program / Project. Each person receives a separate myTEV record with their own profile and Travel Order references.</p></div><button type="button" className="ghost-button" disabled={selectedPersonnelEntries.length >= maxTevPersonnel} onClick={addPersonnelSlot}>+ Add another personnel</button></div>
+        {selectedPersonnelEntries.length > 0 && <div className="mytev-personnel-list">{selectedPersonnelEntries.map((entry, index) => {
+          const selectedPerson = personnel.find((person) => person.userId === entry.userId);
+          return <div className="mytev-personnel-entry" key={entry.key}>
+          <label>Add a Personnel for this TEV<select aria-label={`Personnel for this TEV ${index + 1}`} value={entry.userId} onChange={(event) => updateSelectedPersonnel(index, event.target.value)} disabled={saving}>
             <option value="">Select a personnel</option>
-            {personnel.filter((person) => person.userId === selectedId || !selectedPersonnelIds.includes(person.userId)).map((person) => <option key={person.userId} value={person.userId} disabled={!person.profileComplete}>{person.profile.name} ({person.office || person.profile.unit}){person.profile.position ? ` - ${person.profile.position}` : ""}{person.profileComplete ? "" : " - Complete Profile first"}</option>)}
+            {personnel.filter((person) => person.userId === entry.userId || !selectedPersonnelEntries.some((selectedEntry, selectedIndex) => selectedIndex !== index && selectedEntry.userId === person.userId)).map((person) => <option key={person.userId} value={person.userId} disabled={!person.profileComplete}>{person.profile.name} ({person.office || person.profile.unit}){person.profile.position ? ` - ${person.profile.position}` : ""}{person.profileComplete ? "" : " - Complete Profile first"}</option>)}
           </select></label>
           <button type="button" className="mytev-remove-personnel remove-action" aria-label={`Remove personnel ${index + 1}`} disabled={saving} onClick={() => removePersonnelSlot(index)}>Remove</button>
-        </div>)}</div>}
+          {entry.userId && <div className="mytev-personnel-references"><TravelReferenceEditor
+            references={entry.travelReferences}
+            month={month}
+            title={`Travel Order references for ${selectedPerson?.profile.name ?? "this personnel"}`}
+            description="Enter this person's travel order number and approved date range for each trip."
+            labelPrefix={`${selectedPerson?.profile.name ?? `Personnel ${index + 1}`} Travel Order`}
+            saving={saving}
+            onAdd={() => addPersonnelReference(index)}
+            onUpdate={(referenceIndex, changes) => updatePersonnelReference(index, referenceIndex, changes)}
+            onRemove={(referenceIndex) => removePersonnelReference(index, referenceIndex)}
+          /></div>}
+        </div>;
+        })}</div>}
         {personnel.length === 0 && <p className="mytev-personnel-empty">No other personnel accounts are available.</p>}
       </section>}
-      <section className="mytev-form-group"><div className="mytev-form-group-heading"><div><h3>Travel Order references</h3><p>Enter the travel order number and approved date range for each trip.</p></div><button type="button" className="ghost-button mytev-add-reference" disabled={references.length >= maxTravelReferences} onClick={() => setReferences((current) => [...current, blankTevTravelReference()])}>Add reference</button></div>
-        <div className="mytev-reference-list">{references.map((reference, index) => <fieldset className="mytev-reference-row" key={`travel-reference-${index}`}><legend>Travel reference {index + 1}</legend>
-          <label>Travel No.<input value={reference.travelOrderNo} onChange={(event) => updateReference(index, { travelOrderNo: event.target.value })} maxLength={40} required /></label>
-          <div className="mytev-date-field mytev-reference-to-date"><span>TO Date (Records Unit)</span><MonthAwareDateInput label="TO Date (Records Unit)" month={month} value={reference.toDateRecordsUnit} onChange={(value) => updateReference(index, { toDateRecordsUnit: value })} /></div>
-          <div className="mytev-date-field"><span>Date From</span><MonthAwareDateInput label="Date From" month={month} value={reference.dateFrom} required onChange={(value) => {
-            const dateTo = reference.dateTo && (!value || reference.dateTo >= value) ? reference.dateTo : "";
-            updateReference(index, { dateFrom: value, dateTo });
-          }} /></div>
-          <div className="mytev-date-field"><span>Date To</span><MonthAwareDateInput label="Date To" month={month} minDate={reference.dateFrom} value={reference.dateTo} required onChange={(value) => updateReference(index, { dateTo: value })} /></div>
-          {references.length > 1 && <button type="button" className="mytev-remove-reference remove-action" aria-label={`Remove travel reference ${index + 1}`} onClick={() => setReferences((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>}
-        </fieldset>)}</div>
+      <section className="mytev-form-group"><TravelReferenceEditor
+        references={references}
+        month={month}
+        title={`Travel Order references for ${profile.name || "this TEV"}`}
+        description="Enter your travel order number and approved date range for each trip."
+        labelPrefix={`${profile.name || "Your"} Travel Order`}
+        saving={saving}
+        onAdd={() => setReferences((current) => current.length >= maxTravelReferences ? current : [...current, blankTevTravelReference()])}
+        onUpdate={updateReference}
+        onRemove={(index) => setReferences((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+      />
         <fieldset className="mytev-certification-picker"><legend>Certification of Travel Completed</legend><div className="mytev-certification-options">
           <label><input type="checkbox" checked={certification.strictlyInAccordance} onChange={(event) => updateCertification({ strictlyInAccordance: event.target.checked })} disabled={saving} /><span>Strictly in accordance with the approved itinerary.</span></label>
           <label><input type="checkbox" checked={certification.cutShort} onChange={(event) => updateCertification({ cutShort: event.target.checked })} disabled={saving} /><span>Cut short as explained below.</span></label>

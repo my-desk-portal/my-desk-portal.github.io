@@ -47,6 +47,7 @@
 .mytev-form input[readonly]{background:#f5f7f5;color:#55615b}
 .mytev-personnel-list{display:grid;gap:10px}
 .mytev-personnel-entry{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) auto;min-width:0}
+.mytev-personnel-references{border-left:2px solid var(--line);display:grid;gap:12px;grid-column:1/-1;margin:2px 0 8px 8px;min-width:0;padding-left:16px}
 .mytev-remove-personnel{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:12px;min-height:42px;padding:8px 12px}
 .mytev-remove-personnel:hover{background:#fff0eb;border-color:#e5b2a2;color:#9e3824}
 .mytev-personnel-empty{color:var(--muted);font-size:12px;margin:0}
