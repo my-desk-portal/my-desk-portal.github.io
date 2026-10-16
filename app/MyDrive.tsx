@@ -68,9 +68,13 @@ export default function MyDrive({ user }: { user: User }) {
   const [renaming, setRenaming] = useState(false);
   const [sortAscending, setSortAscending] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadErrorRef = useRef("");
   const { startUpload } = useUploadThing("myDriveFile", {
     headers: async () => ({ Authorization: `Bearer ${await user.getIdToken(true)}` }),
-    onUploadError: (uploadError) => setError(uploadError.message || "Could not upload your files. Try again."),
+    onUploadError: (uploadError) => {
+      uploadErrorRef.current = uploadError.message || "Could not upload your files. Try again.";
+      setError(uploadErrorRef.current);
+    },
   });
 
   useEffect(() => {
@@ -128,8 +132,11 @@ export default function MyDrive({ user }: { user: User }) {
     let uploadedCount = 0;
     try {
       for (const file of selected) {
+        uploadErrorRef.current = "";
         const result = await startUpload([file]);
-        if (!result?.length) throw new Error("The file upload did not finish.");
+        if (!result?.length) {
+          throw new Error(uploadErrorRef.current || "UploadThing did not confirm that this file finished uploading.");
+        }
         uploadedCount += 1;
       }
       if (uploadedCount > 0) setMessage(`${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded successfully.`);
