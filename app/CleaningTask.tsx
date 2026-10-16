@@ -35,6 +35,19 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function cleaningWeekDateRange(weekStart: string) {
+  const startDate = new Date(`${weekStart}T00:00:00+08:00`);
+  const endDate = new Date(startDate.getTime() + 4 * 24 * 60 * 60 * 1000);
+  const formatter = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric" });
+  const parts = (date: Date) => Object.fromEntries(formatter.formatToParts(date).map(({ type, value }) => [type, value] as const));
+  const start = parts(startDate);
+  const end = parts(endDate);
+
+  if (start.year === end.year && start.month === end.month) return `${start.month} ${start.day}–${end.day}, ${end.year}`;
+  if (start.year === end.year) return `${start.month} ${start.day}–${end.month} ${end.day}, ${end.year}`;
+  return `${start.month} ${start.day}, ${start.year}–${end.month} ${end.day}, ${end.year}`;
+}
+
 async function loadCollagePhoto(file: File) {
   if (typeof createImageBitmap === "function") {
     const bitmap = await createImageBitmap(file);
@@ -460,14 +473,10 @@ export function CleaningTaskAssignmentAdmin({ user }: { user: User }) {
       <label>Year<input type="number" value={year} min="2020" max="2100" aria-label="Year" onChange={(event) => { const nextYear = event.target.value; setYear(nextYear); if (/^\d{4}$/.test(nextYear)) setMonth(`${nextYear}-${month.slice(5, 7) || "01"}`); }} required /></label>
       <label>Week<select value={weekStart} onChange={(event) => setWeekStart(event.target.value)} required>{weeks.map((week) => <option value={week.weekStart} key={week.weekStart}>Week {week.weekNumber} · {week.weekStart}</option>)}</select></label>
       <label>Cleaning Assignment for<select value={unit} onChange={(event) => setUnit(event.target.value as CleaningTaskUnit)}>{cleaningTaskUnits.map((taskUnit) => <option value={taskUnit} key={taskUnit}>{taskUnit}</option>)}</select></label>
-      <div className="cleaning-assignment-actions">
-        <div className="cleaning-assignment-preview"><span>Selected week</span><strong>{selectedWeek ? `Week ${selectedWeek.weekNumber} · ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`))} to ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`).getTime() + 4 * 24 * 60 * 60 * 1000))}` : "Choose a month and week"}</strong><small>Monday to Friday; weekends are not part of the assignment window.</small></div>
-        {currentAssignment && <div className="cleaning-assignment-current"><span>Current assignment</span><strong>{currentAssignment.unit} · Week {currentAssignment.weekNumber}</strong></div>}
-      </div>
     </form>
     <div className="cleaning-admin-calendar">{loading ? <p className="muted">Loading weekly assignments...</p> : <div className="cleaning-admin-assignment-list">{weeks.map((week) => {
       const assignment = assignments.find((item) => item.weekStart === week.weekStart);
-      return <button type="button" className={`cleaning-admin-week${week.weekStart === weekStart ? " is-selected" : ""}`} key={week.weekStart} onClick={() => { setWeekStart(week.weekStart); if (assignment) setUnit(assignment.unit); }}><span>Week {week.weekNumber}<small>{week.weekStart}</small></span><strong>{assignment?.unit ?? "Not assigned"}</strong></button>;
+      return <button type="button" className={`cleaning-admin-week${week.weekStart === weekStart ? " is-selected" : ""}`} key={week.weekStart} onClick={() => { setWeekStart(week.weekStart); if (assignment) setUnit(assignment.unit); }}><span>Week {week.weekNumber}<small>{cleaningWeekDateRange(week.weekStart)}</small></span><strong>{assignment?.unit ?? "Not assigned"}</strong></button>;
     })}</div>}</div>
   </section>;
 }
