@@ -5,7 +5,7 @@ import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, up
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { accountProfileSelection, accountTevDivision } from "@/lib/account-profile";
-import { isApprovedAdminAccount, personnelMatchesAccountScope } from "@/lib/personnel";
+import { isApprovedAdminAccount } from "@/lib/personnel";
 import { isSuperadminRole } from "@/lib/user-roles";
 import { loadPdfTools } from "@/lib/pdf-tools";
 import { makeDocumentNotification } from "@/lib/document-notifications";
@@ -513,7 +513,7 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
         <label className="mytev-division-field">Division<select value={divisionName} disabled={Boolean(initialRecord) || profileDivision !== null} onChange={(event) => setDivisionName(event.target.value as TevDivision)} required>{tevDivisions.map((division) => <option key={division}>{division}</option>)}</select></label>
       </div></section>
       {!initialRecord && <section className="mytev-form-group mytev-personnel-group">
-        <div className="mytev-form-group-heading"><div><h3>Personnel for this TEV</h3><p>Add personnel from your Office, Division, and Unit / Program / Project. Each person receives a separate myTEV record with their own profile and Travel Order references.</p></div><button type="button" className="ghost-button" disabled={selectedPersonnelEntries.length >= maxTevPersonnel} onClick={addPersonnelSlot}>+ Add another personnel</button></div>
+        <div className="mytev-form-group-heading"><div><h3>Personnel for this TEV</h3><p>Add personnel from your Office and Division. Each person receives a separate myTEV record with their own profile and Travel Order references.</p></div><button type="button" className="ghost-button" disabled={selectedPersonnelEntries.length >= maxTevPersonnel} onClick={addPersonnelSlot}>+ Add another personnel</button></div>
         {selectedPersonnelEntries.length > 0 && <div className="mytev-personnel-list">{selectedPersonnelEntries.map((entry, index) => {
           const selectedPerson = personnel.find((person) => person.userId === entry.userId);
           return <div className="mytev-personnel-entry" key={entry.key}>
@@ -711,7 +711,7 @@ export default function MyTevModule({ user }: { user: User }) {
         position: typeof data.position === "string" ? data.position.trim() : "",
         unit: accountUnit,
       });
-      const allUnitPersonnel = accountsSnapshot.docs.flatMap((account) => {
+      const allDivisionPersonnel = accountsSnapshot.docs.flatMap((account) => {
         const accountData = account.data();
         if (account.id === user.uid || isSuperadminRole(accountData.accountRole)) return [];
         const adminAccount = isApprovedAdminAccount(accountData.accountRole, accountData.accountStatus);
@@ -732,17 +732,11 @@ export default function MyTevModule({ user }: { user: User }) {
         };
         const office = personnelProfile.office;
         if (!accountProfile.name || (!accountProfile.unit && !adminAccount)) return [];
-        if (!personnelMatchesAccountScope(office, accountProfile.unit, currentOffice, accountUnit, {
-          includeAdminAccounts: true,
-          accountRole: accountData.accountRole,
-          accountStatus: accountData.accountStatus,
-          division: currentProfile.division,
-          candidateDivision: personnelProfile.division,
-        })) return [];
+        if (!currentOffice || !currentProfile.division || office !== currentOffice || personnelProfile.division !== currentProfile.division) return [];
         const profileComplete = Boolean(office && accountProfile.address && accountProfile.taxIdentificationNo && accountProfile.position);
         return [{ userId: account.id, profile: accountProfile, recordProfile, office, profileComplete, adminAccount }];
       }).sort((first, second) => first.office.localeCompare(second.office) || first.profile.name.localeCompare(second.profile.name));
-      setPersonnel(allUnitPersonnel);
+      setPersonnel(allDivisionPersonnel);
       const loaded = recordsSnapshot.docs.map((item) => {
         const record = { id: item.id, ...item.data() } as MyTevRecord;
         return {
