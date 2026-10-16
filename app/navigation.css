@@ -412,3 +412,17 @@
     top:calc(60px + env(safe-area-inset-top,0px));
   }
 }
+
+@media(max-width:360px){
+  .topbar .notification-dropdown{
+    left:max(8px,env(safe-area-inset-left,0px));
+    right:max(8px,env(safe-area-inset-right,0px));
+    width:auto;
+  }
+  .topbar .notification-dropdown li,
+  .topbar .notification-dropdown .notification-item,
+  .topbar .notification-dropdown .notification-item>*{
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+}
