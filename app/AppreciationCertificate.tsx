@@ -104,7 +104,7 @@ function primarySpeakerFields(speakers: AppreciationSpeaker[]) {
   return { speakerName: primary.name, speakerGender: primary.gender, speakerPosition: primary.position, speakerOffice: primary.office };
 }
 
-export default function AppreciationCertificate({ user }: { user: User }) {
+export default function AppreciationCertificate({ user, focusRecordId, onFocusHandled }: { user: User; focusRecordId?: string; onFocusHandled?: () => void }) {
   const [records, setRecords] = useState<AppreciationRecord[]>([]);
   const [view, setView] = useState<"list" | "new" | "edit">("list");
   const [preview, setPreview] = useState<AppreciationRecord | null>(null);
@@ -118,6 +118,7 @@ export default function AppreciationCertificate({ user }: { user: User }) {
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState("");
   const [importMessage, setImportMessage] = useState("");
+  const handledFocusIdRef = useRef<string | null>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -135,6 +136,17 @@ export default function AppreciationCertificate({ user }: { user: User }) {
       })
       .finally(() => setLoading(false));
   }, [user.uid]);
+
+  useEffect(() => {
+    if (!focusRecordId) { handledFocusIdRef.current = null; return; }
+    if (handledFocusIdRef.current === focusRecordId || loading) return;
+    const record = records.find((item) => item.id === focusRecordId);
+    if (!record) return;
+    handledFocusIdRef.current = focusRecordId;
+    setPreview(record);
+    setError("");
+    onFocusHandled?.();
+  }, [focusRecordId, loading, onFocusHandled, records]);
 
   async function deleteRecord(record: AppreciationRecord) {
     if (!db) return;

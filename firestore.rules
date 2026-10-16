@@ -1376,7 +1376,7 @@ service cloud.firestore {
         && (resource.data.ownerId == request.auth.uid || canReviewUnitCertificate(resource.data));
     }
     match /leaveApplications/{leaveApplicationId} {
-      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow read: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isPermitAdmin());
       allow create: if isVerifiedUser()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.keys().hasAll(["ownerId", "filedDate", "name", "firstName", "middleName", "lastName", "office", "position", "salary", "leaveType", "leaveDetails", "specifyAbroad", "specifyIllness", "studyLeaveOtherPurpose", "workingDays", "inclusiveDateFrom", "inclusiveDateTo", "division", "signatoryName", "signatoryPosition", "status", "createdAt"])

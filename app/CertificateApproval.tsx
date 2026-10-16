@@ -149,7 +149,7 @@ function displaySchedule(record: CertificateQueueRecord) {
   return schedule;
 }
 
-export default function CertificateApproval({ user, role, office, division, unit, assignment, designation }: {
+export default function CertificateApproval({ user, role, office, division, unit, assignment, designation, focusRecordId, onFocusHandled }: {
   user: User;
   role: AccountRole;
   office?: string | null;
@@ -158,6 +158,8 @@ export default function CertificateApproval({ user, role, office, division, unit
   assignment?: string | null;
   designation?: string;
   accountName?: string;
+  focusRecordId?: string;
+  onFocusHandled?: () => void;
 }) {
   const [records, setRecords] = useState<CertificateQueueRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,6 +182,7 @@ export default function CertificateApproval({ user, role, office, division, unit
   const blankPreviewRequest = useRef(0);
   const blankPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
   const appearancePreviewPagesRef = useRef<HTMLDivElement>(null);
+  const handledFocusIdRef = useRef<string | null>(null);
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
   const isChiefAdmin = role === "admin" && hasAccountDesignation(designation, "Chief");
   const isFodChiefAdmin = isChiefAdmin && office === "Division" && division === "Field Operations Division" && unit === "Field Operations Division";
@@ -638,6 +641,17 @@ export default function CertificateApproval({ user, role, office, division, unit
     setAppearancePreviewRecord(record);
   }
 
+  useEffect(() => {
+    if (!focusRecordId) { handledFocusIdRef.current = null; return; }
+    if (handledFocusIdRef.current === focusRecordId || loading) return;
+    const record = records.find((item) => item.id === focusRecordId && item.collectionName === "certificatesOfAppearance");
+    if (!record) return;
+    handledFocusIdRef.current = focusRecordId;
+    setAppearancePreviewError(record.people?.length ? "" : "This appearance certificate has no attendees to preview.");
+    setAppearancePreviewRecord(record);
+    onFocusHandled?.();
+  }, [focusRecordId, loading, onFocusHandled, records]);
+
   async function waitForAppearanceImages() {
     if (!appearancePreviewPagesRef.current) throw new Error("The certificate preview is unavailable.");
     await Promise.all(Array.from(appearancePreviewPagesRef.current.querySelectorAll("img"), async (image) => {
@@ -771,6 +785,12 @@ function ApproverCertificatePaper({ record, person }: { record: CertificateQueue
   const signatory = appearanceCertificateSignatory(record, record.signatoryName ?? "", record.designation ?? "");
   return <article className="coa-certificate-card">
     <img className="coa-letterhead" src={appearanceLetterhead} alt="" />
+    <div className="coa-letterhead-header">
+      <span>Republic of the Philippines</span>
+      <strong>DEPARTMENT OF AGRICULTURE</strong>
+      <span>Regional Field Office 13</span>
+      <span>Capitol Site, Butuan City 8600</span>
+    </div>
     <h1 className="coa-title">CERTIFICATE OF APPEARANCE</h1>
     <div className="coa-copy">
       <p>This is to certify that <strong className="coa-name">{person.name}</strong> of the <strong className="coa-office">{person.office ?? record.office}</strong> has attended the <strong><em>“{record.eventTitle}”</em></strong> held in <strong>{record.destination}</strong> on <strong>{appearanceDisplayDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</strong>.</p>

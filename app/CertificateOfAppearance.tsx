@@ -144,7 +144,7 @@ function pronoun(gender: CertificateGender) {
   return gender === "female" ? "her" : gender === "male" ? "him" : "them";
 }
 
-export default function CertificateOfAppearance({ user, ownerOffice, ownerDivision, ownerUnit, role }: { user: User; ownerOffice?: string | null; ownerDivision?: string | null; ownerUnit?: string | null; role: AccountRole }) {
+export default function CertificateOfAppearance({ user, ownerOffice, ownerDivision, ownerUnit, role, focusRecordId, onFocusHandled }: { user: User; ownerOffice?: string | null; ownerDivision?: string | null; ownerUnit?: string | null; role: AccountRole; focusRecordId?: string; onFocusHandled?: () => void }) {
   const normalizedOwnerOffice = ownerOffice?.trim() ?? "";
   const normalizedOwnerDivision = ownerDivision?.trim() ?? "";
   const normalizedOwnerUnit = ownerUnit?.trim() ?? "";
@@ -160,6 +160,7 @@ export default function CertificateOfAppearance({ user, ownerOffice, ownerDivisi
   const [printing, setPrinting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
+  const handledFocusIdRef = useRef<string | null>(null);
   const [savingBlank, setSavingBlank] = useState(false);
   const [blankPreview, setBlankPreview] = useState<CertificateRecord | null>(null);
   const [blankPreviewUrl, setBlankPreviewUrl] = useState("");
@@ -285,6 +286,16 @@ export default function CertificateOfAppearance({ user, ownerOffice, ownerDivisi
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [user.uid, normalizedOwnerOffice]);
+
+  useEffect(() => {
+    if (!focusRecordId) { handledFocusIdRef.current = null; return; }
+    if (handledFocusIdRef.current === focusRecordId || loading) return;
+    const record = records.find((item) => item.id === focusRecordId);
+    if (!record) return;
+    handledFocusIdRef.current = focusRecordId;
+    setPreview(record);
+    onFocusHandled?.();
+  }, [focusRecordId, loading, onFocusHandled, records]);
 
   async function deleteRecord(record: CertificateRecord) {
     if (!db || certificateWorkflowStatus(record.status) === "Approved") return;

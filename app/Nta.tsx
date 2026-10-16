@@ -772,7 +772,7 @@ function NtaPreview({ record, onClose }: { record: NtaRecord; onClose: () => voi
   return <div className="preview-backdrop nta-preview-backdrop"><div className="preview-toolbar"><span>NTA preview</span><button type="button" className="ghost-button" onClick={onClose}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>{error && <small className="download-error">{error}</small>}{printError && <small className="download-error" role="alert">{printError}</small>}</div><div ref={pagesRef} className="nta-preview-pages">{record.mode === "individual" ? <><NtaPage record={record} page="individual" individualClosingUnits={individualFirstPageClosing} individualSignatoryPulledBack={individualSignatoryPulledBack} individualClosingCompacted={individualClosingCompacted} />{individualContinuationClosing.length > 0 && <NtaPage record={record} page="individual-continuation" individualClosingUnits={individualContinuationClosing} individualClosingCompacted={individualClosingCompacted} />}</> : <><NtaPage record={record} page="batch-overview" firstPageRows={firstPageRows} showFixedCopy={batchSinglePage} />{!batchSinglePage && <>{rosterPages.map((sections, index) => <NtaPage key={`batch-attendees-${index}`} record={record} page="batch-attendees" rosterSections={sections} showFixedCopy={index === rosterPages.length - 1 && closingOnRosterPage} />)}{(!rosterPages.length || !closingOnRosterPage) && <NtaPage record={record} page="batch-copy" showFixedCopy />}</>}</>}</div></div>;
 }
 
-export default function NtaModule({ user, office, division, unit }: { user: User; office: string; division?: string | null; unit: string | null }) {
+export default function NtaModule({ user, office, division, unit, focusRecordId, onFocusHandled }: { user: User; office: string; division?: string | null; unit: string | null; focusRecordId?: string; onFocusHandled?: () => void }) {
   const [records, setRecords] = useState<NtaRecord[]>([]);
   const [preparedByNames, setPreparedByNames] = useState<Record<string, string>>({});
   const [view, setView] = useState<"list" | "new">("list");
@@ -782,6 +782,7 @@ export default function NtaModule({ user, office, division, unit }: { user: User
   const [pendingDelete, setPendingDelete] = useState<NtaRecord | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const handledFocusIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!db) return;
     let cancelled = false;
@@ -804,6 +805,15 @@ export default function NtaModule({ user, office, division, unit }: { user: User
     }).catch(() => { if (!cancelled) setLoadError("Could not load Notices to Attend. Refresh and try again."); });
     return () => { cancelled = true; };
   }, [user.uid, unit]);
+  useEffect(() => {
+    if (!focusRecordId) { handledFocusIdRef.current = null; return; }
+    if (handledFocusIdRef.current === focusRecordId) return;
+    const record = records.find((item) => item.id === focusRecordId);
+    if (!record) return;
+    handledFocusIdRef.current = focusRecordId;
+    setPreview(record);
+    onFocusHandled?.();
+  }, [focusRecordId, records, onFocusHandled]);
   async function deleteRecord(record: NtaRecord) {
     if (!db || record.ownerId !== user.uid) return;
     setDeletingId(record.id);

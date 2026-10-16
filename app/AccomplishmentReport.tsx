@@ -262,7 +262,7 @@ function AccomplishmentReportPreview({ report, onClose }: { report: Report; onCl
   </div>;
 }
 
-export default function AccomplishmentReportModule({ user }: { user: User }) {
+export default function AccomplishmentReportModule({ user, focusMonth, focusCycle, onFocusHandled }: { user: User; focusMonth?: string; focusCycle?: 1 | 2; onFocusHandled?: () => void }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(reports);
@@ -277,6 +277,7 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
   const [message, setMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [editingReport, setEditingReport] = useState<Report | null>(null);
+  const handledFocusPeriodRef = useRef<string | null>(null);
   const [signatorySelection, setSignatorySelection] = useState("");
   const [today, setToday] = useState(manilaDateKey);
   const lastDay = lastDayOfMonth(month);
@@ -404,6 +405,27 @@ export default function AccomplishmentReportModule({ user }: { user: User }) {
       unsubscribe?.();
     };
   }, [user.uid]);
+
+  useEffect(() => {
+    if (!focusMonth || !focusCycle) { handledFocusPeriodRef.current = null; return; }
+    const focusPeriod = `${focusMonth}:${focusCycle}`;
+    if (handledFocusPeriodRef.current === focusPeriod || loading) return;
+    handledFocusPeriodRef.current = focusPeriod;
+    const existing = reports.find((report) => report.month === focusMonth && report.cycle === focusCycle);
+    if (existing) {
+      setSelectedReport(existing);
+    } else {
+      setEditingReport(null);
+      setSelectedReport(null);
+      setSignatorySelection(profile?.immediateSupervisor ?? "");
+      setMonth(focusMonth);
+      setCycle(focusCycle);
+      setActivities([""]);
+      setMessage(null);
+      setShowForm(true);
+    }
+    onFocusHandled?.();
+  }, [focusCycle, focusMonth, loading, onFocusHandled, profile, reports]);
 
   async function saveReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

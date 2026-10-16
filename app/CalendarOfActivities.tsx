@@ -473,7 +473,7 @@ function CalendarOfActivitiesList({ plans, currentUserId, onNew, onEdit, onView,
   </section>;
 }
 
-export default function CalendarOfActivitiesModule({ user, mode = "prepared", profileRevision = 0 }: { user: User; mode?: "prepared" | "approved-records"; profileRevision?: number }) {
+export default function CalendarOfActivitiesModule({ user, mode = "prepared", profileRevision = 0, focusCalendarId, onFocusHandled }: { user: User; mode?: "prepared" | "approved-records"; profileRevision?: number; focusCalendarId?: string; onFocusHandled?: () => void }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [adminAccounts, setAdminAccounts] = useState<Account[]>([]);
@@ -486,6 +486,7 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const handledFocusIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -566,6 +567,16 @@ export default function CalendarOfActivitiesModule({ user, mode = "prepared", pr
     void load();
     return () => { cancelled = true; };
   }, [user.uid, mode, profileRevision]);
+
+  useEffect(() => {
+    if (!focusCalendarId) { handledFocusIdRef.current = null; return; }
+    if (handledFocusIdRef.current === focusCalendarId || loading) return;
+    const plan = plans.find((item) => item.id === focusCalendarId);
+    if (!plan) return;
+    handledFocusIdRef.current = focusCalendarId;
+    setPreview(plan);
+    onFocusHandled?.();
+  }, [focusCalendarId, loading, onFocusHandled, plans]);
 
   async function updateCalendarOfActivitiesStatus(plan: CalendarOfActivities, status: CalendarOfActivitiesStatus) {
     const currentStatus = calendarOfActivitiesStatus(plan);

@@ -323,7 +323,7 @@ async function createLeaveApplicationPdf(record: LeaveApplicationRecord) {
   return pdf.save();
 }
 
-export default function LeaveApplicationModule({ user }: { user: User }) {
+export default function LeaveApplicationModule({ user, focusRecordId, onFocusHandled }: { user: User; focusRecordId?: string; onFocusHandled?: () => void }) {
   const [records, setRecords] = useState<LeaveApplicationRecord[]>([]);
   const { currentPage, pageCount, visibleRecords, setPage } = useRecordPagination(records);
   const [view, setView] = useState<"list" | "new">("list");
@@ -340,6 +340,7 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
   const [previewRendering, setPreviewRendering] = useState(false);
   const [previewRenderError, setPreviewRenderError] = useState("");
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const handledFocusIdRef = useRef<string | null>(null);
 
   const [profileDefaults, setProfileDefaults] = useState<{ name: string; office: Office | ""; position: string; applicant?: { first: string; middle: string; last: string } }>({ name: user.displayName ?? "", office: "", position: "" });
   const [filedDate, setFiledDate] = useState(localDateValue());
@@ -649,6 +650,32 @@ export default function LeaveApplicationModule({ user }: { user: User }) {
       setError(cause instanceof Error ? cause.message : "Could not create the Leave Application PDF.");
     } finally { setPreviewLoadingId(null); }
   }
+
+  useEffect(() => {
+    if (!focusRecordId) { handledFocusIdRef.current = null; return; }
+    if (handledFocusIdRef.current === focusRecordId || loading) return;
+    const existing = records.find((record) => record.id === focusRecordId);
+    if (existing) {
+      handledFocusIdRef.current = focusRecordId;
+      void openPreview(existing);
+      onFocusHandled?.();
+      return;
+    }
+    if (!db) return;
+    let active = true;
+    void getDoc(doc(db, "leaveApplications", focusRecordId)).then((snapshot) => {
+      if (!active || !snapshot.exists()) return;
+      const data = snapshot.data();
+      const record = { id: snapshot.id, ...data, status: leaveStatuses.includes(data.status) ? data.status : "Pending" } as LeaveApplicationRecord;
+      handledFocusIdRef.current = focusRecordId;
+      void openPreview(record);
+      onFocusHandled?.();
+    }).catch((cause) => {
+      const code = (cause as { code?: string }).code;
+      if (active) setError(code ? `Could not open the Leave Application (${code}).` : "Could not open the Leave Application.");
+    });
+    return () => { active = false; };
+  }, [focusRecordId, loading, onFocusHandled, openPreview, records]);
 
   function closePreview() {
     setPreviewRecord(null);

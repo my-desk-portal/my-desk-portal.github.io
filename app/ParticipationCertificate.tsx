@@ -104,7 +104,7 @@ function ordinalDay(value: string) {
   return <><strong>{day}<sup className="participation-ordinal-suffix">{suffix}</sup></strong> day of <strong>{month} {date.getFullYear()}</strong></>;
 }
 
-export default function ParticipationCertificate({ user }: { user: User }) {
+export default function ParticipationCertificate({ user, focusRecordId, onFocusHandled }: { user: User; focusRecordId?: string; onFocusHandled?: () => void }) {
   const [records, setRecords] = useState<ParticipationRecord[]>([]);
   const [view, setView] = useState<"list" | "new" | "edit">("list");
   const [editingRecord, setEditingRecord] = useState<ParticipationRecord | null>(null);
@@ -118,6 +118,7 @@ export default function ParticipationCertificate({ user }: { user: User }) {
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
   const [error, setError] = useState("");
+  const handledFocusIdRef = useRef<string | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -139,6 +140,17 @@ export default function ParticipationCertificate({ user }: { user: User }) {
       })
       .finally(() => setLoading(false));
   }, [user.uid]);
+
+  useEffect(() => {
+    if (!focusRecordId) { handledFocusIdRef.current = null; return; }
+    if (handledFocusIdRef.current === focusRecordId || loading) return;
+    const record = records.find((item) => item.id === focusRecordId);
+    if (!record) return;
+    handledFocusIdRef.current = focusRecordId;
+    setPreview(record);
+    setError("");
+    onFocusHandled?.();
+  }, [focusRecordId, loading, onFocusHandled, records]);
 
   async function deleteRecord(record: ParticipationRecord) {
     if (!db || certificateWorkflowStatus(record.status) === "Approved") return;

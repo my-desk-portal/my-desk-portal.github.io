@@ -619,7 +619,7 @@ function MyTevList({ records, loading, deletingId, rates, rateError, onNew, onEd
   </section>;
 }
 
-export default function MyTevModule({ user }: { user: User }) {
+export default function MyTevModule({ user, focusRecordId, onFocusHandled }: { user: User; focusRecordId?: string; onFocusHandled?: () => void }) {
   const [records, setRecords] = useState<MyTevRecord[]>([]);
   const [profile, setProfile] = useState<TevProfile | null>(null);
   const [profileDivision, setProfileDivision] = useState<TevDivision | null>(null);
@@ -638,6 +638,7 @@ export default function MyTevModule({ user }: { user: User }) {
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const handledFocusIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -759,6 +760,17 @@ export default function MyTevModule({ user }: { user: User }) {
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [user.uid, user.displayName]);
+
+  useEffect(() => {
+    if (!focusRecordId) { handledFocusIdRef.current = null; return; }
+    if (handledFocusIdRef.current === focusRecordId || loading) return;
+    const record = records.find((item) => item.id === focusRecordId || item.sourceRecordId === focusRecordId);
+    if (!record) return;
+    handledFocusIdRef.current = focusRecordId;
+    setPreview(record);
+    setPreviewError("");
+    onFocusHandled?.();
+  }, [focusRecordId, loading, onFocusHandled, records]);
 
   async function deleteRecord(record: MyTevRecord) {
     if (!db) return;

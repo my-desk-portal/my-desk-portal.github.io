@@ -422,7 +422,7 @@ function TravelOrderPreview({ order, onClose }: { order: TravelOrder; onClose: (
   return <div className="preview-backdrop travel-order-preview-backdrop"><div className="preview-toolbar"><span>Travel Order preview · {order.people.length} {order.people.length === 1 ? "page" : "pages"}</span><button type="button" className="ghost-button" onClick={onClose}>Close</button><button type="button" className="pdf-button" disabled={downloading} onClick={downloadPdf}>{downloading ? "Preparing PDF..." : "Download PDF"}</button><button type="button" className="pdf-button" disabled={printing} onClick={printPreview}>{printing ? "Preparing print..." : "Print"}</button>{error && <small className="download-error">{error}</small>}{printError && <small className="download-error" role="alert">{printError}</small>}</div><div ref={pagesRef} className="travel-order-preview-pages">{order.people.map((person, index) => <TravelOrderPaper key={`${order.id}-${index}`} order={order} person={person} />)}</div></div>;
 }
 
-export default function TravelOrderModule({ user, office, unit }: { user: User; office: string; unit: string | null }) {
+export default function TravelOrderModule({ user, office, unit, focusRecordId, onFocusHandled }: { user: User; office: string; unit: string | null; focusRecordId?: string; onFocusHandled?: () => void }) {
   const [orders, setOrders] = useState<TravelOrder[]>([]);
   const [preparedByNames, setPreparedByNames] = useState<Record<string, string>>({});
   const [accountName, setAccountName] = useState(user.displayName?.trim() ?? "");
@@ -436,6 +436,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TravelOrder | null>(null);
   const [error, setError] = useState("");
+  const handledFocusIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!db) { setLoading(false); setError("Firebase is not configured."); return; }
@@ -672,6 +673,16 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
       unsubscribeRecipient?.();
     };
   }, [user.uid, unit]);
+
+  useEffect(() => {
+    if (!focusRecordId) { handledFocusIdRef.current = null; return; }
+    if (handledFocusIdRef.current === focusRecordId || loading) return;
+    const order = orders.find((item) => item.id === focusRecordId);
+    if (!order) return;
+    handledFocusIdRef.current = focusRecordId;
+    setPreview(order);
+    onFocusHandled?.();
+  }, [focusRecordId, loading, onFocusHandled, orders]);
 
   async function deleteOrder(order: TravelOrder) {
     const firestore = db;
