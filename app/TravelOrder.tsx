@@ -31,7 +31,8 @@ type TravelOrder = {
   remarks: string;
   status: TravelOrderStatus;
   ownerId: string;
-  ownerUnit?: string;
+  ownerUnit?: string | null;
+  preparedById?: string;
   recipientId?: string;
   recipientIds?: string[];
   splitFromOrderId?: string;
@@ -87,6 +88,7 @@ function normalizeLegacyTravelOrderName(value: string) {
 }
 
 function isAssignedTravelOrderRecipient(order: TravelOrder, userId: string) {
+  if (order.people.length !== 1) return false;
   if (order.legacyRecipientView) {
     return order.legacySourcePeopleCount === 1 && order.legacyRecipientAssignmentMatch === true;
   }
@@ -309,7 +311,7 @@ function TravelOrderList({ orders, ownerId, preparedByNames, fallbackPreparedBy,
         const canApprove = isOwner || (isRecipient && canRecipientApproveTravelOrder(order)) || isNamedLegacyRecipient;
         return <div className="travel-order-row-group" key={order.id}>
         <div className="table-row travel-order-list-row">
-          <strong>{formatTravelDateRange(order.departureDate, order.returnDate) || (order.status === "Pending" ? "Pending approval" : "—")}</strong><span>{order.placeOfTravel || "—"}</span><span className="travel-order-list-purpose">{order.purpose || "—"}</span><span>{preparedByNames[order.ownerId] || (order.ownerId === ownerId ? fallbackPreparedBy : "") || "—"}</span>
+          <strong>{formatTravelDateRange(order.departureDate, order.returnDate) || (order.status === "Pending" ? "Pending approval" : "—")}</strong><span>{order.placeOfTravel || "—"}</span><span className="travel-order-list-purpose">{order.purpose || "—"}</span><span>{preparedByNames[order.preparedById ?? order.ownerId] || ((order.preparedById ?? order.ownerId) === ownerId ? fallbackPreparedBy : "") || "—"}</span>
           {canUpdateStatus ? <label className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="sr-only">Status</span><select aria-label={`Status for ${order.people[0]?.name || "Travel Order"}`} value={order.status} disabled={order.status !== "Pending" || updatingId === order.id || deletingId !== null || copyingId !== null} onChange={(event) => { const nextStatus = event.target.value as TravelOrderStatus; if (nextStatus === "Approved") { if (!canApprove) return; setApprovalOrderId(order.id); setApprovalDate(order.date || localDateValue()); setApprovalNumbers(order.people.map((person) => person.toNumber ?? "")); setApprovalError(""); } else { setApprovalOrderId(null); void onStatusChange(order, nextStatus); } }}>{statuses.map((status) => <option key={status} disabled={status === "Approved" && !canApprove}>{status}</option>)}</select>{updatingId === order.id && <small>Saving...</small>}</label> : <span className={`travel-order-status travel-order-status-${order.status.toLowerCase()}`}><span className="travel-order-status-value">{order.status}</span></span>}
           <span className="travel-order-row-actions">{isOwner && order.status === "Pending" && <button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onEdit(order)}>Edit</button>}<button type="button" className="row-action" disabled={deletingId !== null} onClick={() => onPreview(order)}>View</button><button type="button" className="row-action" disabled={updatingId !== null || deletingId !== null || copyingId !== null || approvalOrderId !== null} onClick={() => onCopy(order)}>{copyingId === order.id ? "Copying..." : "Copy"}</button>{isOwner && order.status === "Pending" && <button type="button" className="delete-button" disabled={updatingId !== null || deletingId !== null || copyingId !== null} onClick={() => onDelete(order)}>{deletingId === order.id ? "Deleting..." : "Delete"}</button>}</span>
         </div>
@@ -498,12 +500,63 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
       } catch { /* use the account display name when profile data is unavailable */ }
       setAccountName(currentAccountName);
       const normalizedAccountName = normalizePersonName(currentAccountName);
-      const splitSourceIds = new Set(recipientSnapshot.docs
+      let splitSourceIds = new Set(recipientSnapshot.docs
         .map((item) => item.data().splitFromOrderId)
         .filter((id): id is string => typeof id === "string" && Boolean(id)));
+      const recipientPersonalization = activeOrdersSnapshot.docs.flatMap((item) => {
+        const data = item.data();
+        if (data.ownerId === user.uid || data.splitFromOrderId || splitSourceIds.has(item.id) || !Array.isArray(data.people)) return [];
+        const people = data.people as TravelOrderPerson[];
+        if (data.recipientId === user.uid && people.length === 1) return [];
+        const listedForAccount = Array.isArray(data.recipientIds) && data.recipientIds.includes(user.uid);
+        let personIndex = people.findIndex((person) => person.userId === user.uid);
+        if (personIndex < 0 && normalizedAccountName) {
+          const nameMatches = people.flatMap((person, index) => !person.userId && normalizePersonName(person.name ?? "") === normalizedAccountName ? [index] : []);
+          if (nameMatches.length === 1) personIndex = nameMatches[0];
+        }
+        if (personIndex < 0 && listedForAccount && people.length === 1) personIndex = 0;
+        if (personIndex < 0) return [];
+        return [{ sourceId: item.id, data, person: people[personIndex], personIndex }];
+      });
+      const existingRecipientRows = new Map(recipientSnapshot.docs.map((item) => [item.id, item.data()]));
+      const personalizedSourceIds = new Set<string>();
+      for (const candidate of recipientPersonalization) {
+        const personalOrderId = `${encodeURIComponent(candidate.sourceId)}_${candidate.personIndex}_${encodeURIComponent(user.uid)}`;
+        const personalOrderRef = doc(firestore, "travelOrders", personalOrderId);
+        const existingRecipientRow = existingRecipientRows.get(personalOrderId);
+        if (existingRecipientRow?.splitFromOrderId === candidate.sourceId) {
+          personalizedSourceIds.add(candidate.sourceId);
+          continue;
+        }
+        const personalRecord = {
+          ...candidate.data,
+          ownerId: user.uid,
+          ownerUnit: unit,
+          preparedById: typeof candidate.data.preparedById === "string" ? candidate.data.preparedById : candidate.data.ownerId,
+          people: [{ ...candidate.person, userId: user.uid }],
+          recipientId: user.uid,
+          recipientIds: [user.uid],
+          splitFromOrderId: candidate.sourceId,
+          status: normalizeWorkflowStatus(candidate.data.status),
+        };
+        try {
+          const batch = writeBatch(firestore);
+          batch.set(personalOrderRef, personalRecord);
+          await batch.commit();
+          personalizedSourceIds.add(candidate.sourceId);
+        } catch {
+          /* Keep the legacy recipient row available if a personal copy cannot be created. */
+        }
+      }
+      if (personalizedSourceIds.size) {
+        [ownerSnapshot, recipientSnapshot, activeOrdersSnapshot] = await loadSnapshots();
+        splitSourceIds = new Set(recipientSnapshot.docs
+          .map((item) => item.data().splitFromOrderId)
+          .filter((id): id is string => typeof id === "string" && Boolean(id)));
+      }
       legacyRecipientRows = activeOrdersSnapshot.docs.flatMap((item) => {
         const data = item.data();
-        if (data.ownerId === user.uid || data.recipientId === user.uid || splitSourceIds.has(item.id) || !Array.isArray(data.people)) return [];
+        if (data.ownerId === user.uid || data.recipientId === user.uid || data.splitFromOrderId || splitSourceIds.has(item.id) || personalizedSourceIds.has(item.id) || !Array.isArray(data.people)) return [];
         const people = data.people as TravelOrderPerson[];
         const listedForAccount = Array.isArray(data.recipientIds) && data.recipientIds.includes(user.uid);
         const person = people.find((entry) => entry.userId === user.uid)
@@ -535,7 +588,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
       visibleRows.forEach((order) => byId.set(order.id, order));
       const rows = [...byId.values()].map((row) => ({ ...row, status: normalizeWorkflowStatus(row.status) }));
       rows.sort((left, right) => ((right.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0) - ((left.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0));
-      const ownerIds = [...new Set([user.uid, ...rows.map((row) => row.ownerId)])];
+      const ownerIds = [...new Set([user.uid, ...rows.map((row) => row.preparedById ?? row.ownerId)])];
       const ownerProfiles = await Promise.all(ownerIds.map(async (ownerId) => {
         try {
           const profile = await getDoc(doc(firestore, "users", ownerId));
@@ -555,7 +608,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
       if (cancelled) return;
       unsubscribeRecipient = onSnapshot(query(collection(firestore, "travelOrders"), where("recipientId", "==", user.uid)), (snapshot) => {
         const recipientRows = snapshot.docs.map((item) => ({ id: item.id, ...item.data(), status: normalizeWorkflowStatus(item.data().status) } as TravelOrder));
-        const missingOwnerIds = [...new Set(recipientRows.map((order) => order.ownerId))]
+        const missingOwnerIds = [...new Set(recipientRows.map((order) => order.preparedById ?? order.ownerId))]
           .filter((ownerId) => !preparedByNameLookup.current.has(ownerId));
         missingOwnerIds.forEach((ownerId) => preparedByNameLookup.current.add(ownerId));
         if (missingOwnerIds.length) {
