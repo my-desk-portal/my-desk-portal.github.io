@@ -515,14 +515,17 @@
 .cleaning-assignment-admin {
   width: 100%;
   min-width: 0;
-  padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+.cleaning-assignment-admin .section-heading h2 {
+  font-size: clamp(1.25rem, 2vw, 1.625rem);
 }
 
 .cleaning-assignment-form {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, .7fr) minmax(0, 1.2fr) minmax(0, 1.15fr);
-  gap: 1rem clamp(.75rem, 1.5vw, 1.25rem);
-  margin-top: clamp(1rem, 2vw, 1.5rem);
+  gap: .85rem 1rem;
+  margin-top: 1rem;
 }
 
 .cleaning-assignment-heading {
@@ -535,6 +538,9 @@
 
 .cleaning-assignment-submit {
   flex: 0 0 auto;
+  min-height: 40px;
+  padding: .6rem .9rem;
+  font-size: .8125rem;
   white-space: nowrap;
 }
 
@@ -542,9 +548,9 @@
   display: grid;
   min-width: 0;
   align-content: start;
-  gap: .4rem;
+  gap: .35rem;
   color: #374a3b;
-  font-size: .84rem;
+  font-size: .75rem;
   font-weight: 700;
 }
 
@@ -552,22 +558,22 @@
 .cleaning-assignment-form select {
   width: 100%;
   min-width: 0;
-  min-height: 42px;
-  padding: .55rem .65rem;
+  min-height: 40px;
+  padding: .5rem .65rem;
   border: 1px solid #d6e0d8;
   border-radius: 8px;
   color: #263a2d;
   background: #fff;
-  font-size: 1rem;
+  font-size: .875rem;
 }
 
 .cleaning-assignment-preview,
 .cleaning-assignment-current {
   display: grid;
   min-width: 0;
-  gap: .25rem;
+  gap: .2rem;
   align-content: start;
-  padding: .75rem .85rem;
+  padding: .65rem .75rem;
   border: 1px solid #e1e8e2;
   border-radius: 9px;
   background: #f8faf8;
@@ -576,17 +582,20 @@
 .cleaning-assignment-preview span,
 .cleaning-assignment-current span {
   color: #6a786d;
-  font-size: .74rem;
+  font-size: .7rem;
 }
 
 .cleaning-assignment-preview strong,
 .cleaning-assignment-current strong {
   color: #263a2d;
-  font-size: .88rem;
+  font-size: .82rem;
+  line-height: 1.4;
 }
 
 .cleaning-assignment-preview small {
   color: #6a786d;
+  font-size: .75rem;
+  line-height: 1.45;
 }
 
 .cleaning-assignment-actions {
@@ -594,29 +603,27 @@
   grid-column: 1 / -1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  gap: 1rem clamp(.75rem, 1.5vw, 1.25rem);
-}
-
-.cleaning-assignment-preview {
-  grid-column: 1 / -1;
+  gap: .75rem;
 }
 
 .cleaning-admin-calendar {
-  margin-top: 1.5rem;
+  margin-top: 1rem;
 }
 
 .cleaning-admin-assignment-list {
   display: grid;
-  gap: .55rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: .5rem;
 }
 
 .cleaning-admin-week {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: .75rem;
+  min-width: 0;
+  gap: .6rem;
   width: 100%;
-  padding: .75rem .9rem;
+  padding: .65rem .75rem;
   border: 1px solid #e1e8e2;
   border-radius: 9px;
   color: #314437;
@@ -634,18 +641,20 @@
   display: grid;
   min-width: 0;
   gap: .2rem;
+  font-size: .875rem;
   font-weight: 700;
 }
 
 .cleaning-admin-week small {
   color: #718075;
-  font-size: .72rem;
+  font-size: .7rem;
   font-weight: 400;
 }
 
 .cleaning-admin-week > strong {
   min-width: 0;
   color: #216d3b;
+  font-size: .85rem;
   overflow-wrap: anywhere;
   text-align: right;
 }
@@ -667,7 +676,8 @@
   }
 
   .cleaning-assignment-submit {
-    align-self: flex-end;
+    align-self: stretch;
+    width: 100%;
   }
 
   .cleaning-task-heading {
