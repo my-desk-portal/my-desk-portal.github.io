@@ -45,7 +45,7 @@ async function queryMyDriveFiles(env, idToken, ownerId) {
   const databaseId = env.FIREBASE_DATABASE_ID || "(default)";
   if (!projectId) throw new Error("Firebase project is not configured on the UploadThing Worker.");
   const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}:runQuery`,
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/documents:runQuery`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${idToken}`, "content-type": "application/json" },
