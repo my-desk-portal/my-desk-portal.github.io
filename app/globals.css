@@ -346,7 +346,7 @@ button.remove-action{align-items:center;background:#fff;border:1px solid #f0bda9
   .permit-list-head{display:none}
   .permit-list-row{gap:12px;grid-template-columns:minmax(0,1fr);padding:17px 0}
   .permit-list-row>[data-label]{grid-column:1;min-width:0;overflow-wrap:anywhere}
-  .special-order-list-row>[data-label]::before,.permit-list-row>[data-label]::before,.travel-order-list-row>[data-label]::before{color:var(--muted);content:attr(data-label);display:block;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.06em;margin-bottom:4px;text-transform:uppercase}
+  .special-order-list-row>[data-label]::before,.nta-list-row>[data-label]::before,.permit-list-row>[data-label]::before,.travel-order-list-row>[data-label]::before{color:var(--muted);content:attr(data-label);display:block;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.06em;margin-bottom:4px;text-transform:uppercase}
   .special-order-list-row .permit-row-actions,.permit-list-row .permit-row-actions{flex-wrap:wrap;gap:14px;justify-content:flex-start;padding-top:3px}
   .special-order-list-row .row-action,.special-order-list-row .delete-button,.permit-list-row .row-action,.permit-list-row .delete-button{font-size:13px;padding:7px 0}
 }
