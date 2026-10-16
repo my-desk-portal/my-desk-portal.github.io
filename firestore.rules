@@ -1428,7 +1428,7 @@ service cloud.firestore {
         && request.resource.data.ownerUnit == signedInUnit()
         && isPersonalTravelOrder(request.resource.data, request.resource.data.get("recipientId", ""));
       allow update: if isVerifiedUser()
-        && resource.data.status == "Pending"
+        && resource.data.get("status", "Pending") in ["Pending", "Processing"]
         && ((resource.data.ownerId == request.auth.uid
           && request.resource.data.ownerId == resource.data.ownerId
           && ownerUnitCanBeUpdated()
