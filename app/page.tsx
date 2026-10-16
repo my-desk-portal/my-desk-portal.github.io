@@ -193,6 +193,17 @@ function formatDate(date: string) {
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" }).format(new Date(`${date}T00:00:00`));
 }
 
+function assignedDocumentSummary(notification: DocumentNotification) {
+  if (notification.activityTitle?.trim()) return notification.activityTitle.trim();
+  switch (notification.documentType) {
+    case "Special Order": return "You have been designated to attend an activity.";
+    case "Notice to Attend": return "You have been invited to attend an activity.";
+    case "Permit Slip": return "A Permit Slip has been assigned to you.";
+    case "Travel Order": return "A Travel Order has been assigned to you.";
+    default: return "An assigned document is available.";
+  }
+}
+
 async function migrateAccountProfileFieldsForSuperAdmin() {
   if (!db) return;
   const snapshot = await getDocs(collection(db, "users"));
@@ -945,8 +956,8 @@ function PermitNotificationCenter({ isAdmin, isSuperAdmin, userId, notifications
         <small>{notification.read ? "Read" : "New · Select to view"}</small>
       </button></li>)}</ul></>}
       {shownDocumentNotifications.some((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher" && notification.documentType !== "Certificate Approval" && notification.documentType !== "Certificate Decision") && <><p className="notification-section-title">Assigned Documents</p><ul>{shownDocumentNotifications.filter((notification) => notification.documentType !== "Leave Application" && notification.documentType !== "Travel Expense Voucher" && notification.documentType !== "Certificate Approval" && notification.documentType !== "Certificate Decision").map((notification) => <li key={notification.id}><button type="button" className={`notification-item calendar-of-activities-notification${notification.read ? " is-read" : ""}`} onClick={() => { if (!notification.read) onReadDocument(notification); }}>
-        <span className="notification-status notification-status-pending">{notification.documentType}</span>
-        {notification.activityTitle && <strong>{notification.activityTitle}</strong>}
+        <span className="notification-status notification-status-pending">{notification.documentType || "Assigned document"}</span>
+        <strong>{assignedDocumentSummary(notification)}</strong>
         {notification.documentType === "Special Order" && <><span className="notification-detail"><span className="notification-detail-label">Date</span><span>{notification.dateFrom === notification.dateTo ? formatDate(notification.dateFrom ?? "") : `${formatDate(notification.dateFrom ?? "")} – ${formatDate(notification.dateTo ?? "")}`}</span></span><span className="notification-detail"><span className="notification-detail-label">Venue</span><span>{notification.venue}</span></span></>}
         {notification.documentType === "Notice to Attend" && notification.schedules?.map((schedule, index) => <span className="calendar-of-activities-notification-activity" key={`${notification.id}-schedule-${index}`}><b>{schedule.dateFrom === schedule.dateTo ? formatDate(schedule.dateFrom) : `${formatDate(schedule.dateFrom)} – ${formatDate(schedule.dateTo)}`}</b><span>{schedule.venue}</span></span>)}
         {notification.documentType === "Permit Slip" && <><span className="notification-detail"><span className="notification-detail-label">Date</span><span>{formatDate(notification.date ?? "")}</span></span><span className="notification-detail"><span className="notification-detail-label">Purpose</span><span>{notification.purpose}</span></span></>}
