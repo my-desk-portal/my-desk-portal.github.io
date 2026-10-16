@@ -40,6 +40,7 @@
 .mydrive-inline-action{transition:none}
 .mydrive-inline-action:focus-visible,.mydrive-sort-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .mydrive-inline-action.is-download{color:var(--ink)}
+.mydrive-inline-action.is-delete{color:#a23d2d}
 .mydrive-empty-state{align-items:center;border-top:1px solid var(--line);color:var(--muted);display:flex;flex-direction:column;font-size:13px;gap:6px;justify-content:center;min-height:180px;padding:24px;text-align:center}
 .mydrive-empty-state strong{color:var(--ink);font-size:15px}
 .mydrive-mobile-meta{display:none}

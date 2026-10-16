@@ -57,6 +57,10 @@ function renameEndpoint() {
   return uploadThingUrl.replace(/\/api\/uploadthing\/?$/, "/api/rename-my-drive-file");
 }
 
+function deleteEndpoint() {
+  return uploadThingUrl.replace(/\/api\/uploadthing\/?$/, "/api/delete-my-drive-file");
+}
+
 export default function MyDrive({ user }: { user: User }) {
   const [files, setFiles] = useState<MyDriveFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +70,7 @@ export default function MyDrive({ user }: { user: User }) {
   const [editingFile, setEditingFile] = useState<MyDriveFile | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [deletingFileId, setDeletingFileId] = useState("");
   const [sortAscending, setSortAscending] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadErrorRef = useRef("");
@@ -201,6 +206,29 @@ export default function MyDrive({ user }: { user: User }) {
     }
   }
 
+  async function deleteFile(file: MyDriveFile) {
+    if (deletingFileId || !window.confirm(`Delete “${file.name}” from myDrive? This cannot be undone.`)) return;
+    setError("");
+    setMessage("");
+    setDeletingFileId(file.id);
+    try {
+      const response = await fetch(deleteEndpoint(), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${await user.getIdToken(true)}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId: file.id, fileKey: file.fileKey }),
+      });
+      if (!response.ok) {
+        const reason = await response.text().catch(() => "");
+        throw new Error(reason || "Could not delete this file.");
+      }
+      setMessage(`Deleted ${file.name}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not delete this file.");
+    } finally {
+      setDeletingFileId("");
+    }
+  }
+
   return <section className="mydrive-section content-section" aria-labelledby="mydrive-title">
     <div className="section-heading mydrive-heading">
       <div><p className="eyebrow">Your files</p><h2 id="mydrive-title">myDrive</h2><p className="muted">Store your files in one place. Each account can keep up to 30 files and 30 MB in total.</p></div>
@@ -248,6 +276,7 @@ export default function MyDrive({ user }: { user: User }) {
               {editingFile?.id !== file.id && <div className="mydrive-file-actions">
                 <button type="button" className="mydrive-inline-action" onClick={() => beginRename(file)}>Rename</button>
                 <a className="mydrive-inline-action is-download" href={file.fileURL} download={file.name}>Download</a>
+                <button type="button" className="mydrive-inline-action is-delete" onClick={() => void deleteFile(file)} disabled={Boolean(deletingFileId)}>{deletingFileId === file.id ? "Deleting..." : "Delete"}</button>
               </div>}
             </div>;
           })}

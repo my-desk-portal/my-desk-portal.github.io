@@ -1778,7 +1778,7 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 160;
-      allow delete: if false;
+      allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
     match /accomplishmentReports/{reportId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;

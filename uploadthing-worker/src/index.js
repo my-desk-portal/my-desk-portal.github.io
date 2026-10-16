@@ -117,6 +117,17 @@ async function updateMyDriveFileName(env, idToken, documentId, name) {
   if (!response.ok) throw new Error("The renamed file could not be saved to your myDrive.");
 }
 
+async function deleteMyDriveFileRecord(env, idToken, documentId) {
+  const projectId = env.FIREBASE_PROJECT_ID;
+  const databaseId = env.FIREBASE_DATABASE_ID || "(default)";
+  const path = ["myDriveFiles", documentId].map(encodeURIComponent).join("/");
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/documents/${path}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${idToken}` } },
+  );
+  if (!response.ok && response.status !== 404) throw new Error("The deleted file could not be removed from your myDrive list.");
+}
+
 function firestoreValue(value) {
   if (Object.hasOwn(value, "stringValue")) return value.stringValue;
   if (Object.hasOwn(value, "booleanValue")) return value.booleanValue;
@@ -278,6 +289,38 @@ async function renameMyDriveFile(request, env) {
   return new Response(null, { status: 204 });
 }
 
+async function deleteMyDriveFile(request, env) {
+  const idToken = firebaseIdToken(request);
+  const user = await verifiedFirebaseUser(idToken, env.FIREBASE_API_KEY);
+  if (!user) return new Response("A verified account is required to delete myDrive files.", { status: 401 });
+  const { fileId, fileKey } = await request.json().catch(() => ({}));
+  if (typeof fileId !== "string" || !/^[\w-]{1,80}$/.test(fileId)
+    || typeof fileKey !== "string" || !/^[\w.-]{1,200}$/.test(fileKey)) {
+    return new Response("Select a valid myDrive file.", { status: 400 });
+  }
+
+  const file = await getFirestoreDocument(env, idToken, "myDriveFiles", fileId);
+  if (!file || file.ownerId !== user.localId || file.fileKey !== fileKey) {
+    return new Response("That file is not available in your myDrive.", { status: 404 });
+  }
+
+  try {
+    const result = await new UTApi({ token: env.UPLOADTHING_TOKEN }).deleteFiles(fileKey);
+    if (!result.success) return new Response("UploadThing could not delete this file.", { status: 502 });
+  } catch (error) {
+    console.error("Could not delete the myDrive UploadThing file", error);
+    return new Response("UploadThing could not delete this file. Try again.", { status: 502 });
+  }
+
+  try {
+    await deleteMyDriveFileRecord(env, idToken, fileId);
+  } catch (error) {
+    console.error("Could not remove the deleted myDrive file record", error);
+    return new Response("The file was removed from storage, but its myDrive entry could not be removed. Retry Delete to finish.", { status: 502 });
+  }
+  return new Response(null, { status: 204 });
+}
+
 async function deletePreviousProfilePhoto(request, env) {
   const idToken = firebaseIdToken(request);
   const user = await verifiedFirebaseUser(idToken, env.FIREBASE_API_KEY);
@@ -354,18 +397,20 @@ export default {
     const isProfilePhotoDelete = url.pathname === "/api/delete-photo";
     const isCleaningTaskDelete = url.pathname === "/api/delete-cleaning-task-image";
     const isMyDriveRename = url.pathname === "/api/rename-my-drive-file";
+    const isMyDriveDelete = url.pathname === "/api/delete-my-drive-file";
 
-    if (!["/api/uploadthing", "/api/delete-photo", "/api/delete-cleaning-task-image", "/api/rename-my-drive-file"].includes(url.pathname)) {
+    if (!["/api/uploadthing", "/api/delete-photo", "/api/delete-cleaning-task-image", "/api/rename-my-drive-file", "/api/delete-my-drive-file"].includes(url.pathname)) {
       return new Response("Not found", { status: 404 });
     }
     if (request.method === "OPTIONS") return addCors(new Response(null, { status: 204 }), request);
 
     try {
       let response;
-      if (isProfilePhotoDelete || isCleaningTaskDelete || isMyDriveRename) {
+      if (isProfilePhotoDelete || isCleaningTaskDelete || isMyDriveRename || isMyDriveDelete) {
         if (request.method !== "POST") response = new Response("Method not allowed", { status: 405 });
         else if (isProfilePhotoDelete) response = await deletePreviousProfilePhoto(request, env);
         else if (isCleaningTaskDelete) response = await deletePreviousCleaningTaskImage(request, env);
+        else if (isMyDriveDelete) response = await deleteMyDriveFile(request, env);
         else response = await renameMyDriveFile(request, env);
       } else if (request.method !== "GET" && request.method !== "POST") {
         response = new Response("Method not allowed", { status: 405 });
