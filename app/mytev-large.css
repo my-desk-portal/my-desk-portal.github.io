@@ -278,8 +278,14 @@
 .mytev-ors-signature>span:nth-child(2)>strong{align-self:stretch;box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding-bottom:1.5mm}
 .mytev-ors-signature>span:nth-child(4)>i{border-bottom:0}
 .mytev-ors-signature>span>strong{font-weight:700;text-transform:uppercase}
-.mytev-ors-status{display:flex;flex-direction:column;min-height:0}
-.mytev-ors-status table{flex:1;font-family:"Times New Roman",serif}
+.mytev-ors-status{display:grid;grid-template-rows:28mm minmax(0,1fr);min-height:0}
+.mytev-ors-status table{font-family:"Times New Roman",serif;height:100%;min-height:0}
+.mytev-ors-status-header thead tr:nth-child(1){height:5mm}
+.mytev-ors-status-header thead tr:nth-child(2){height:6mm}
+.mytev-ors-status-header thead tr:nth-child(3){height:4mm}
+.mytev-ors-status-header thead tr:nth-child(4){height:7mm}
+.mytev-ors-status-header thead tr:nth-child(5){height:6mm}
+.mytev-ors-status-blank td{border-top:0;height:100%}
 .mytev-ors-status th,.mytev-ors-status td{border-width:.3mm}
 .mytev-ors-status-title th{border-top:0;padding:.5mm}
 .mytev-ors-status col:nth-child(1){width:4.5%}

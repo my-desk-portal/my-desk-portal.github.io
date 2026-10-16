@@ -233,13 +233,14 @@ function MyTevOrsPage({ record, rates }: { record: MyTevRecord; rates: TevRegion
         <div className="mytev-ors-certified"><b>B</b><p><strong>Certified:</strong> Allotment available and obligated for the purpose/adjustment necessary as indicated above.</p><div className="mytev-ors-signature"><span><b>Signature</b><em>:</em><i /></span><span><b>Printed Name</b><em>:</em><strong>{tevOrsBudgetSignatory.name.toLocaleUpperCase("en-PH")}</strong></span><span><b>Position</b><em>:</em><i><em>{budgetTitle}</em>, {budgetSection}</i></span><span><b>Date</b><em>:</em><i /></span></div></div>
       </div>
       <div className="mytev-ors-status">
-        <table><colgroup><col /><col /><col /><col /><col /><col /><col /><col /></colgroup><thead>
+        <table className="mytev-ors-status-header"><colgroup><col /><col /><col /><col /><col /><col /><col /><col /></colgroup><thead>
           <tr className="mytev-ors-status-title"><th>C</th><th colSpan={7}>STATUS OF OBLIGATION</th></tr>
           <tr className="mytev-ors-status-groups"><th className="mytev-ors-status-date-spacer" /><th colSpan={2}>Reference</th><th colSpan={5}>Amount</th></tr>
           <tr><th className="mytev-ors-status-date" rowSpan={3}>Date</th><th rowSpan={3}>Particulars</th><th className="mytev-ors-reference-number" rowSpan={3}>ORS/JEV/Check/ADA/TRA No.</th><th rowSpan={2}>Obligation</th><th rowSpan={2}>Payable</th><th className="mytev-ors-payment-heading" rowSpan={2}>Payment</th><th colSpan={2}>Balance</th></tr>
           <tr><th className="mytev-ors-balance-heading mytev-ors-balance-not-yet">Not Yet Due</th><th className="mytev-ors-balance-heading">Due and Demandable</th></tr>
           <tr><th>(a)</th><th>(b)</th><th>(c)</th><th>(a-b)</th><th>(b-c)</th></tr>
-        </thead><tbody><tr>{Array.from({ length: 8 }, (_, cellIndex) => <td key={`ors-status-${cellIndex}`} />)}</tr></tbody></table>
+        </thead></table>
+        <table className="mytev-ors-status-blank" aria-hidden="true"><colgroup><col /><col /><col /><col /><col /><col /><col /><col /></colgroup><tbody><tr>{Array.from({ length: 8 }, (_, cellIndex) => <td key={`ors-status-${cellIndex}`} />)}</tr></tbody></table>
       </div>
     </div>
   </article></div>;
