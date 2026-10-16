@@ -1751,6 +1751,35 @@ service cloud.firestore {
         && isValidMyTevRecord(request.resource.data);
       allow delete: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
     }
+    match /myDriveFiles/{fileId} {
+      allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerifiedUser()
+        && fileId.size() == 36
+        && request.resource.data.keys().hasAll(["ownerId", "name", "mimeType", "size", "fileURL", "fileKey", "uploadedAt"])
+        && request.resource.data.keys().hasOnly(["ownerId", "name", "mimeType", "size", "fileURL", "fileKey", "uploadedAt"])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 255
+        && request.resource.data.mimeType is string
+        && request.resource.data.mimeType.size() <= 200
+        && request.resource.data.size is int
+        && request.resource.data.size >= 0
+        && request.resource.data.size <= 31457280
+        && request.resource.data.fileURL is string
+        && request.resource.data.fileURL.size() <= 500
+        && request.resource.data.fileKey is string
+        && request.resource.data.fileKey.size() > 0
+        && request.resource.data.fileKey.size() <= 200
+        && request.resource.data.uploadedAt is timestamp;
+      allow update: if isVerifiedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name"])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 160;
+      allow delete: if false;
+    }
     match /accomplishmentReports/{reportId} {
       allow read: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
       allow create: if isVerifiedUser()

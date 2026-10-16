@@ -50,6 +50,10 @@ The Superadmin assigns one project to each Monday–Friday week from **Admin Pan
 
 Permit numbers increment independently by unit and year in the format `AMIA-2026-0001` or `AGRISTAT-2026-0001`. The number is assigned in a Firestore transaction so simultaneous submissions do not reuse a number.
 
+## myDrive
+
+Each signed-in account has an account-scoped file list in myDrive with a limit of 30 files and 30 MB total. Files of any type are uploaded to UploadThing; account-owned metadata is stored in Firestore. The UploadThing Worker checks the per-account quota and handles file renaming. Deploy the Firestore rules and Worker after updating this feature.
+
 ## Host on Vercel
 
 From this folder, run:

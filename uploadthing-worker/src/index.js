@@ -40,6 +40,83 @@ async function getFirestoreDocument(env, idToken, collectionName, documentId) {
   return Object.fromEntries(Object.entries(document.fields ?? {}).map(([key, value]) => [key, firestoreValue(value)]));
 }
 
+async function queryMyDriveFiles(env, idToken, ownerId) {
+  const projectId = env.FIREBASE_PROJECT_ID;
+  const databaseId = env.FIREBASE_DATABASE_ID || "(default)";
+  if (!projectId) throw new Error("Firebase project is not configured on the UploadThing Worker.");
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}:runQuery`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${idToken}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: "myDriveFiles" }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: "ownerId" },
+              op: "EQUAL",
+              value: { stringValue: ownerId },
+            },
+          },
+          limit: 31,
+        },
+      }),
+    },
+  );
+  if (!response.ok) throw new Error("Your myDrive storage limit could not be checked.");
+  const documents = await response.json();
+  return documents.filter((item) => item.document).map((item) => ({
+    id: item.document.name.split("/").pop(),
+    ...Object.fromEntries(Object.entries(item.document.fields ?? {}).map(([key, value]) => [key, firestoreValue(value)])),
+  }));
+}
+
+function firestoreFields(fields) {
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => {
+    if (typeof value === "string") return [key, { stringValue: value }];
+    if (typeof value === "number" && Number.isInteger(value)) return [key, { integerValue: String(value) }];
+    if (value instanceof Date) return [key, { timestampValue: value.toISOString() }];
+    return [key, { nullValue: null }];
+  }));
+}
+
+async function createMyDriveFileRecord(env, idToken, documentId, fields) {
+  const projectId = env.FIREBASE_PROJECT_ID;
+  const databaseId = env.FIREBASE_DATABASE_ID || "(default)";
+  const query = new URLSearchParams({ documentId });
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/documents/myDriveFiles?${query}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${idToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ fields: firestoreFields(fields) }),
+    },
+  );
+  if (response.status === 409) {
+    const existing = await getFirestoreDocument(env, idToken, "myDriveFiles", documentId);
+    if (existing?.ownerId === fields.ownerId && existing?.fileKey === fields.fileKey) return;
+  }
+  if (!response.ok && response.status !== 409) throw new Error("The uploaded file could not be saved to your myDrive.");
+  if (response.status === 409) throw new Error("The uploaded file could not be saved to your myDrive.");
+}
+
+async function updateMyDriveFileName(env, idToken, documentId, name) {
+  const projectId = env.FIREBASE_PROJECT_ID;
+  const databaseId = env.FIREBASE_DATABASE_ID || "(default)";
+  const query = new URLSearchParams({ "updateMask.fieldPaths": "name" });
+  const path = ["myDriveFiles", documentId].map(encodeURIComponent).join("/");
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/documents/${path}?${query}`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${idToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ fields: { name: { stringValue: name } } }),
+    },
+  );
+  if (!response.ok) throw new Error("The renamed file could not be saved to your myDrive.");
+}
+
 function firestoreValue(value) {
   if (Object.hasOwn(value, "stringValue")) return value.stringValue;
   if (Object.hasOwn(value, "booleanValue")) return value.booleanValue;
@@ -130,7 +207,75 @@ function createUploadRouter(env) {
         return { userId: user.localId, unit, weekStart };
       })
       .onUploadComplete(async ({ file }) => ({ imageURL: file.ufsUrl, fileKey: file.key })),
+
+    myDriveFile: upload({
+      blob: { maxFileSize: "30MB", maxFileCount: 1, contentDisposition: "attachment" },
+    })
+      .middleware(async ({ req, files }) => {
+        const idToken = firebaseIdToken(req);
+        const user = await verifiedFirebaseUser(idToken, env.FIREBASE_API_KEY);
+        if (!user) throw new UploadThingError("A verified account is required to upload to myDrive.");
+        if (files.length !== 1 || !Number.isFinite(files[0].size) || files[0].size < 0 || files[0].size > 30 * 1024 * 1024) {
+          throw new UploadThingError("Choose a file that is 30 MB or smaller.");
+        }
+
+        const existingFiles = await queryMyDriveFiles(env, idToken, user.localId);
+        const existingBytes = existingFiles.reduce((total, item) => total + (Number.isFinite(item.size) ? item.size : 0), 0);
+        if (existingFiles.length >= 30) throw new UploadThingError("myDrive can store up to 30 files per account.");
+        if (existingBytes + files[0].size > 30 * 1024 * 1024) {
+          throw new UploadThingError("This file exceeds the remaining 30 MB of myDrive storage.");
+        }
+        return { userId: user.localId, idToken, recordId: crypto.randomUUID() };
+      })
+      .onUploadComplete(async ({ file, metadata }) => {
+        const fields = {
+          ownerId: metadata.userId,
+          name: file.name,
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+          fileURL: file.ufsUrl,
+          fileKey: file.key,
+          uploadedAt: new Date(),
+        };
+        try {
+          await createMyDriveFileRecord(env, metadata.idToken, metadata.recordId, fields);
+        } catch (error) {
+          await new UTApi({ token: env.UPLOADTHING_TOKEN }).deleteFiles(file.key).catch(() => {});
+          throw new UploadThingError(error instanceof Error ? error.message : "The uploaded file could not be saved to your myDrive.");
+        }
+        return { fileId: metadata.recordId, name: file.name, size: file.size };
+      }),
   };
+}
+
+async function renameMyDriveFile(request, env) {
+  const idToken = firebaseIdToken(request);
+  const user = await verifiedFirebaseUser(idToken, env.FIREBASE_API_KEY);
+  if (!user) return new Response("A verified account is required to rename files.", { status: 401 });
+  const { fileId, fileKey, newName } = await request.json().catch(() => ({}));
+  const name = typeof newName === "string" ? newName.trim() : "";
+  if (typeof fileId !== "string" || !/^[\w-]{1,80}$/.test(fileId)
+    || typeof fileKey !== "string" || !/^[\w.-]{1,200}$/.test(fileKey)
+    || !name || name.length > 160 || /[\\/\u0000-\u001f]/.test(name)) {
+    return new Response("Enter a valid file name.", { status: 400 });
+  }
+
+  const file = await getFirestoreDocument(env, idToken, "myDriveFiles", fileId);
+  if (!file || file.ownerId !== user.localId || file.fileKey !== fileKey) {
+    return new Response("That file is not available in your myDrive.", { status: 404 });
+  }
+  if (file.name === name) return new Response(null, { status: 204 });
+
+  const api = new UTApi({ token: env.UPLOADTHING_TOKEN });
+  const result = await api.renameFiles({ fileKey, newName: name });
+  if (!result.success) return new Response("UploadThing could not rename this file.", { status: 502 });
+  try {
+    await updateMyDriveFileName(env, idToken, fileId, name);
+  } catch (error) {
+    await api.renameFiles({ fileKey, newName: file.name }).catch(() => {});
+    throw error;
+  }
+  return new Response(null, { status: 204 });
 }
 
 async function deletePreviousProfilePhoto(request, env) {
@@ -208,18 +353,20 @@ export default {
     const url = new URL(request.url);
     const isProfilePhotoDelete = url.pathname === "/api/delete-photo";
     const isCleaningTaskDelete = url.pathname === "/api/delete-cleaning-task-image";
+    const isMyDriveRename = url.pathname === "/api/rename-my-drive-file";
 
-    if (!["/api/uploadthing", "/api/delete-photo", "/api/delete-cleaning-task-image"].includes(url.pathname)) {
+    if (!["/api/uploadthing", "/api/delete-photo", "/api/delete-cleaning-task-image", "/api/rename-my-drive-file"].includes(url.pathname)) {
       return new Response("Not found", { status: 404 });
     }
     if (request.method === "OPTIONS") return addCors(new Response(null, { status: 204 }), request);
 
     try {
       let response;
-      if (isProfilePhotoDelete || isCleaningTaskDelete) {
+      if (isProfilePhotoDelete || isCleaningTaskDelete || isMyDriveRename) {
         if (request.method !== "POST") response = new Response("Method not allowed", { status: 405 });
         else if (isProfilePhotoDelete) response = await deletePreviousProfilePhoto(request, env);
-        else response = await deletePreviousCleaningTaskImage(request, env);
+        else if (isCleaningTaskDelete) response = await deletePreviousCleaningTaskImage(request, env);
+        else response = await renameMyDriveFile(request, env);
       } else if (request.method !== "GET" && request.method !== "POST") {
         response = new Response("Method not allowed", { status: 405 });
       } else {
