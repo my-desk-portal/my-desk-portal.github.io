@@ -95,3 +95,4 @@
   .calendar-of-activities-paper:last-child{page-break-after:auto}
   .calendar-of-activities-paper,.calendar-of-activities-paper *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 }
+.calendar-of-activities-signatories .name-search-field{color:var(--ink);font-weight:700;gap:7px}.calendar-of-activities-signatories .name-search-select-search{border-radius:0;font-size:13px;font-weight:400;min-height:42px;padding:9px 11px}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { db } from "@/lib/firebase";
+import NameSearchSelect from "./NameSearchSelect";
 import { accountProfileSelection, accountTevDivision } from "@/lib/account-profile";
 import { isApprovedAdminAccount } from "@/lib/personnel";
 import { isSuperadminRole } from "@/lib/user-roles";
@@ -517,10 +518,10 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
         {selectedPersonnelEntries.length > 0 && <div className="mytev-personnel-list">{selectedPersonnelEntries.map((entry, index) => {
           const selectedPerson = personnel.find((person) => person.userId === entry.userId);
           return <div className="mytev-personnel-entry" key={entry.key}>
-          <label>Add a Personnel for this TEV<select aria-label={`Personnel for this TEV ${index + 1}`} value={entry.userId} onChange={(event) => updateSelectedPersonnel(index, event.target.value)} disabled={saving}>
+          <div className="name-search-field"><span>Add a Personnel for this TEV</span><NameSearchSelect aria-label={`Personnel for this TEV ${index + 1}`} value={entry.userId} onChange={(event) => updateSelectedPersonnel(index, event.target.value)} disabled={saving}>
             <option value="">Select a personnel</option>
             {personnel.filter((person) => person.userId === entry.userId || !selectedPersonnelEntries.some((selectedEntry, selectedIndex) => selectedIndex !== index && selectedEntry.userId === person.userId)).map((person) => <option key={person.userId} value={person.userId} disabled={!person.profileComplete}>{person.profile.name}, {person.profile.position || "Position not set"} - {person.profile.unit || "Unit not set"}{person.profileComplete ? "" : " - Complete Profile first"}</option>)}
-          </select></label>
+          </NameSearchSelect></div>
           <button type="button" className="mytev-remove-personnel remove-action" aria-label={`Remove personnel ${index + 1}`} disabled={saving} onClick={() => removePersonnelSlot(index)}>Remove</button>
           {entry.userId && <div className="mytev-personnel-references"><TravelReferenceEditor
             references={entry.travelReferences}
