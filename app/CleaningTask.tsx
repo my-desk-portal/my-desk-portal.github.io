@@ -1,0 +1,391 @@
+"use client";
+
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import type { User } from "firebase/auth";
+import { collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { Timestamp } from "firebase/firestore";
+import { generateReactHelpers } from "@uploadthing/react";
+import { db } from "@/lib/firebase";
+import { accountDesignation } from "@/lib/account-profile";
+import type { AccountRole } from "@/lib/user-roles";
+import {
+  cleaningTaskCalendarWeeks,
+  cleaningTaskUnits,
+  cleaningWeekTimestamps,
+  currentCleaningWeekStart,
+  displayCleaningDate,
+  displayCleaningDateTime,
+  isCleaningTaskUnit,
+  manilaDateKey,
+  shiftCleaningMonth,
+  type CleaningTaskAssignment,
+  type CleaningTaskImage,
+  type CleaningTaskUnit,
+} from "@/lib/cleaning-task";
+import "./cleaning-task.css";
+
+const uploadThingUrl = process.env.NEXT_PUBLIC_UPLOADTHING_URL || "/api/uploadthing";
+const uploadThingConfigured = Boolean(process.env.NEXT_PUBLIC_UPLOADTHING_URL);
+const maxCleaningImageBytes = 32 * 1024 * 1024;
+const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const { useUploadThing } = generateReactHelpers<any>({ url: uploadThingUrl });
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getBrowserLocation() {
+  return new Promise<GeolocationCoordinates>((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("This browser does not provide location access."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve(coords),
+      (error) => reject(new Error(error.code === error.PERMISSION_DENIED
+        ? "Allow location access to attach your Barangay and City to the cleaning photo."
+        : "Your current location could not be determined. Try again.")),
+      { enableHighAccuracy: false, maximumAge: 0, timeout: 15000 },
+    );
+  });
+}
+
+async function resolveBarangayCity(latitude: number, longitude: number) {
+  const url = new URL("https://api.bigdatacloud.net/data/reverse-geocode-client");
+  url.search = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude), localityLanguage: "en" }).toString();
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Your location could not be formatted. Try again in a moment.");
+  const result = await response.json() as {
+    locality?: string;
+    city?: string;
+    localityInfo?: { administrative?: Array<{ name?: string; description?: string; adminLevel?: number }> };
+  };
+  const barangayBoundary = result.localityInfo?.administrative?.find((entry) => entry.adminLevel === 10
+    || /\bbarangay\b/i.test(`${entry.name ?? ""} ${entry.description ?? ""}`));
+  const locality = barangayBoundary?.name?.trim() || result.locality?.trim() || "";
+  const city = result.city?.trim() ?? "";
+  if (!city) throw new Error("Your location could not be matched to a Barangay and City. Try again from a nearby area.");
+  const barangay = locality && locality.toLowerCase() !== city.toLowerCase()
+    ? (/^barangay\b/i.test(locality) ? locality : `Barangay ${locality}`)
+    : "Barangay not listed";
+  return `${barangay}, ${city}`;
+}
+
+function isOngoing(assignment: CleaningTaskAssignment, now: Date) {
+  const start = assignment.startAt?.toDate?.().getTime();
+  const end = assignment.endAt?.toDate?.().getTime();
+  return typeof start === "number" && typeof end === "number" && now.getTime() >= start && now.getTime() < end;
+}
+
+function isUpcoming(assignment: CleaningTaskAssignment, now: Date) {
+  return Boolean(assignment.startAt?.toDate?.() && now.getTime() < assignment.startAt.toDate().getTime());
+}
+
+function taskStatus(assignment: CleaningTaskAssignment, now: Date) {
+  if (isOngoing(assignment, now)) return "Ongoing";
+  if (isUpcoming(assignment, now)) return "Up next";
+  return "Completed";
+}
+
+export function canAccessCleaningTaskNavigation(role: AccountRole, unit: string, designation: string) {
+  return (role === "regular" && isCleaningTaskUnit(unit))
+    || (role === "admin" && accountDesignation(designation) === "AGRISTAT/DRRM/AMIA Project Leader");
+}
+
+export function canViewCleaningTaskLanding(role: AccountRole, unit: string) {
+  return role === "admin" || role === "superadmin" || (role === "regular" && isCleaningTaskUnit(unit));
+}
+
+export function CleaningTaskBoard({ user, role, unit, name, canUpload = false, mode = "landing" }: {
+  user: User;
+  role: AccountRole;
+  unit: string;
+  name: string;
+  canUpload?: boolean;
+  mode?: "landing" | "workspace";
+}) {
+  const [assignments, setAssignments] = useState<CleaningTaskAssignment[]>([]);
+  const [images, setImages] = useState<CleaningTaskImage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [month, setMonth] = useState(() => manilaDateKey().slice(0, 7));
+  const [now, setNow] = useState(() => new Date());
+  const { startUpload } = useUploadThing("cleaningTaskImage", {
+    headers: async () => ({ Authorization: `Bearer ${await user.getIdToken()}` }),
+    onUploadError: (uploadError) => setError(uploadError.message || "The Cleaning Task image could not be uploaded."),
+  });
+
+  useEffect(() => {
+    if (!db) {
+      setError("Cleaning Task storage is unavailable.");
+      setLoading(false);
+      return;
+    }
+    const stopAssignments = onSnapshot(query(collection(db, "cleaningTaskAssignments"), orderBy("startAt", "desc"), limit(100)), (snapshot) => {
+      setAssignments(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as CleaningTaskAssignment)));
+      setLoading(false);
+    }, (cause) => {
+      setError(errorMessage(cause, "Could not load cleaning assignments."));
+      setLoading(false);
+    });
+    const stopImages = onSnapshot(query(collection(db, "cleaningTaskImages"), orderBy("uploadedAt", "desc"), limit(10)), (snapshot) => {
+      setImages(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as CleaningTaskImage)));
+    }, (cause) => setError(errorMessage(cause, "Could not load cleaning photos.")));
+    return () => { stopAssignments(); stopImages(); };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const currentWeekStart = currentCleaningWeekStart(now);
+  const currentAssignment = assignments.find((assignment) => assignment.weekStart === currentWeekStart) ?? null;
+  const ownUnitImage = images.find((image) => image.id === unit) ?? null;
+  const selectedWeeks = useMemo(() => cleaningTaskCalendarWeeks(month), [month]);
+  function missedAssignment(image: CleaningTaskImage) {
+    const latestDueAssignment = assignments
+      .filter((assignment) => assignment.unit === image.unit
+        && assignment.weekStart > image.submittedWeekStart
+        && (assignment.startAt?.toDate?.().getTime() ?? Number.POSITIVE_INFINITY) <= now.getTime())
+      .sort((first, second) => second.weekStart.localeCompare(first.weekStart))[0];
+    const deadline = latestDueAssignment?.endAt?.toDate?.().getTime();
+    return Boolean(latestDueAssignment && typeof deadline === "number" && now.getTime() >= deadline);
+  }
+
+  async function handleImageSelection(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    setError("");
+    setSuccess("");
+    if (!canUpload || role === "superadmin") {
+      setError("This account cannot upload Cleaning Task images.");
+      return;
+    }
+    if (!isCleaningTaskUnit(unit)) {
+      setError("Your profile must have AGRISTAT, AMIA, or DRRM as its Unit / Program / Project.");
+      return;
+    }
+    if (!currentAssignment || currentAssignment.unit !== unit || !isOngoing(currentAssignment, now)) {
+      setError("Your Unit / Program / Project is not assigned for the current work week.");
+      return;
+    }
+    if (!allowedImageTypes.has(file.type)) {
+      setError("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > maxCleaningImageBytes) {
+      setError("Cleaning Task images must be 32 MB or smaller.");
+      return;
+    }
+    if (!uploadThingConfigured) {
+      setError("Cleaning Task image uploads are not configured yet.");
+      return;
+    }
+    setBusy(true);
+    const existing = ownUnitImage;
+    try {
+      if (existing?.previousFileKey) {
+        const cleanedPendingFile = await fetch(uploadThingUrl.replace(/\/api\/uploadthing\/?$/, "/api/delete-cleaning-task-image"), {
+          method: "POST",
+          headers: { Authorization: `Bearer ${await user.getIdToken()}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ unit, fileKey: existing.previousFileKey }),
+        });
+        if (!cleanedPendingFile.ok) throw new Error("The prior photo cleanup is still pending. Try the replacement again in a moment.");
+        if (!db) throw new Error("Cleaning Task storage is unavailable.");
+        await updateDoc(doc(db, "cleaningTaskImages", unit), { previousFileKey: "", previousFileOwnerId: "" });
+      }
+      const coordinates = await getBrowserLocation();
+      const location = await resolveBarangayCity(coordinates.latitude, coordinates.longitude);
+      const uploadedFiles = await startUpload([file]);
+      const uploaded = uploadedFiles?.[0] as {
+        key?: string;
+        ufsUrl?: string;
+        url?: string;
+        serverData?: { imageURL?: string; fileKey?: string };
+      } | undefined;
+      const imageURL = uploaded?.serverData?.imageURL ?? uploaded?.ufsUrl ?? uploaded?.url;
+      const fileKey = uploaded?.serverData?.fileKey ?? uploaded?.key;
+      if (!uploadedFiles || !imageURL || !fileKey) throw new Error("The photo uploaded, but its storage link was not returned.");
+      if (!db) throw new Error("Cleaning Task storage is unavailable.");
+
+      const imageData = {
+        unit,
+        imageURL,
+        fileKey,
+        previousFileKey: existing?.fileKey ?? "",
+        previousFileOwnerId: existing?.uploaderId ?? "",
+        uploaderId: user.uid,
+        uploaderName: name.trim() || user.displayName?.trim() || "My Desk user",
+        submittedWeekStart: currentWeekStart,
+        location,
+        uploadedAt: serverTimestamp(),
+      };
+      const imageReference = doc(db, "cleaningTaskImages", unit);
+      if (existing) await setDoc(imageReference, imageData, { merge: true });
+      else await setDoc(imageReference, imageData);
+
+      let oldPhotoRemoved = !existing?.fileKey;
+      if (existing?.fileKey) {
+        try {
+          const cleaned = await fetch(uploadThingUrl.replace(/\/api\/uploadthing\/?$/, "/api/delete-cleaning-task-image"), {
+            method: "POST",
+            headers: { Authorization: `Bearer ${await user.getIdToken()}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ unit, fileKey: existing.fileKey }),
+          });
+          if (cleaned.ok) {
+            await updateDoc(imageReference, { previousFileKey: "", previousFileOwnerId: "" });
+            oldPhotoRemoved = true;
+          }
+        } catch {
+          // Keep the prior key on the record so a future replacement can retry its cleanup.
+        }
+      }
+      setSuccess(oldPhotoRemoved
+        ? "Your Cleaning Task photo is now posted; the previous photo has been removed."
+        : "Your Cleaning Task photo is posted. The previous photo cleanup will retry after a future replacement.");
+    } catch (cause) {
+      setError(errorMessage(cause, "Could not save your Cleaning Task image."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (mode === "landing" && !canViewCleaningTaskLanding(role, unit)) return null;
+
+  return <section className={`cleaning-task-board${mode === "workspace" ? " is-workspace" : " is-landing"}`}>
+    <header className="cleaning-task-heading">
+      <div><p className="eyebrow">Weekly office upkeep</p><h2>{mode === "workspace" ? "Cleaning Task" : "Cleaning Task Updates"}</h2>
+        <p className="muted">{mode === "workspace" ? "Post the current week’s photo when your Unit / Program / Project is assigned." : "Latest photos and the AGRISTAT, AMIA, and DRRM weekly cleaning schedule."}</p></div>
+    </header>
+    {error && <p className="cleaning-task-message is-error" role="alert">{error}</p>}
+    {success && <p className="cleaning-task-message is-success" role="status">{success}</p>}
+    <div className="cleaning-task-layout">
+      <section className="cleaning-task-photos" aria-label="Latest cleaning task photos">
+        {loading ? <p className="muted">Loading Cleaning Task posts...</p> : images.length === 0 ? <div className="cleaning-task-empty"><strong>No photos posted yet</strong><span>The first assigned team photo will appear here.</span></div> : images.map((image) => <article className="cleaning-task-photo" key={image.id}>
+          <div className="cleaning-task-photo-meta"><strong>Uploaded by {image.uploaderName} - {image.unit}</strong><span>{displayCleaningDateTime(image.uploadedAt)} | {image.location}</span></div>
+          <img src={image.imageURL} alt={`${image.unit} Cleaning Task uploaded by ${image.uploaderName}`} loading="lazy" />
+          {missedAssignment(image) && <div className="cleaning-task-outdated" role="status"><span aria-hidden="true">⚠</span> MOV is outdated!</div>}
+        </article>)}
+        {mode === "workspace" && canUpload && <div className="cleaning-task-upload-box">
+          <div><strong>{ownUnitImage ? "Replace this Unit / Program / Project photo" : "Upload this week’s photo"}</strong><span>{currentAssignment?.unit === unit && isOngoing(currentAssignment, now) ? "Your unit is assigned this week (Monday to Friday)." : "Upload becomes available when your unit is assigned for the current work week."}</span></div>
+          <label className={`cleaning-task-upload-button${busy ? " is-busy" : ""}`}><span>{busy ? "Saving photo..." : ownUnitImage ? "Replace photo" : "Upload photo"}</span><input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload a Cleaning Task image" onChange={(event) => void handleImageSelection(event)} disabled={busy || !currentAssignment || currentAssignment.unit !== unit || !isOngoing(currentAssignment, now)} /></label>
+          <small>JPEG, PNG, or WebP. Up to 32 MB. Location sharing sends your live coordinates and request IP to BigDataCloud for lookup; My Desk saves only the formatted Barangay, City.</small>
+        </div>}
+      </section>
+      <section className="cleaning-task-calendar" aria-label="Cleaning Task assignment calendar">
+        <header className="cleaning-calendar-header">
+          <button type="button" className="cleaning-calendar-nav is-previous" aria-label="Previous month" onClick={() => setMonth((value) => shiftCleaningMonth(value, -1))}>‹</button>
+          <h3>{new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric", timeZone: "Asia/Manila" }).format(new Date(`${month}-15T12:00:00+08:00`))}</h3>
+          <div className="cleaning-calendar-controls"><button type="button" className="cleaning-calendar-nav" aria-label="Next month" onClick={() => setMonth((value) => shiftCleaningMonth(value, 1))}>›</button><button type="button" className="cleaning-calendar-today" onClick={() => setMonth(manilaDateKey().slice(0, 7))}>Today</button></div>
+        </header>
+        <div className="cleaning-calendar-grid cleaning-calendar-weekdays" aria-hidden="true">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div>
+        <div className="cleaning-calendar-month">
+          {selectedWeeks.map((week) => {
+            const assignment = assignments.find((item) => item.weekStart === week.weekStart);
+            const status = assignment ? taskStatus(assignment, now) : "";
+            const friday = new Date(`${week.weekStart}T00:00:00Z`);
+            friday.setUTCDate(friday.getUTCDate() + 4);
+            const finalWeekday = friday.toISOString().slice(0, 10);
+            const visibleAssignmentDays = week.days.map((day, index) => ({ ...day, index }))
+              .filter((day) => day.inMonth && day.date >= week.weekStart && day.date <= finalWeekday);
+            const assignmentStartColumn = visibleAssignmentDays[0]?.index;
+            const assignmentEndColumn = visibleAssignmentDays[visibleAssignmentDays.length - 1]?.index;
+            return <div className="cleaning-calendar-week" key={week.weekStart}>
+              <div className="cleaning-calendar-grid cleaning-calendar-days">{week.days.map((day) => <div className={`cleaning-calendar-day${day.inMonth ? "" : " is-outside"}${day.date === manilaDateKey(now) ? " is-today" : ""}`} key={day.date}><span>{Number(day.date.slice(-2))}</span></div>)}</div>
+              {assignment && assignmentStartColumn !== undefined && assignmentEndColumn !== undefined && <div className={`cleaning-calendar-assignment is-${status.toLowerCase().replaceAll(" ", "-")}`} style={{ gridColumn: `${assignmentStartColumn + 1} / ${assignmentEndColumn + 2}` }} title={`${assignment.unit} weekly cleaning task - ${status}`}><span>Office Cleaning Assignment - <strong>{assignment.unit}</strong></span></div>}
+            </div>;
+          })}
+        </div>
+      </section>
+    </div>
+  </section>;
+}
+
+export function CleaningTaskAssignmentAdmin({ user }: { user: User }) {
+  const [assignments, setAssignments] = useState<CleaningTaskAssignment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [month, setMonth] = useState(() => manilaDateKey().slice(0, 7));
+  const [year, setYear] = useState(() => manilaDateKey().slice(0, 4));
+  const [weekStart, setWeekStart] = useState("");
+  const [unit, setUnit] = useState<CleaningTaskUnit>("AGRISTAT");
+  const weeks = useMemo(() => cleaningTaskCalendarWeeks(month), [month]);
+
+  useEffect(() => {
+    setWeekStart((current) => weeks.some((week) => week.weekStart === current) ? current : weeks[0]?.weekStart ?? "");
+  }, [weeks]);
+
+  useEffect(() => {
+    const savedAssignment = assignments.find((assignment) => assignment.weekStart === weekStart);
+    if (savedAssignment) setUnit(savedAssignment.unit);
+  }, [assignments, weekStart]);
+
+  useEffect(() => {
+    if (!db) {
+      setError("Cleaning Task storage is unavailable.");
+      setLoading(false);
+      return;
+    }
+    return onSnapshot(query(collection(db, "cleaningTaskAssignments"), orderBy("startAt", "desc"), limit(100)), (snapshot) => {
+      setAssignments(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as CleaningTaskAssignment)));
+      setLoading(false);
+    }, (cause) => {
+      setError(errorMessage(cause, "Could not load Cleaning Task assignments."));
+      setLoading(false);
+    });
+  }, []);
+
+  const selectedWeek = weeks.find((week) => week.weekStart === weekStart);
+  const currentAssignment = assignments.find((assignment) => assignment.weekStart === weekStart);
+
+  async function saveAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!db || !selectedWeek) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const { startAt, endAt } = cleaningWeekTimestamps(selectedWeek.weekStart);
+      await setDoc(doc(db, "cleaningTaskAssignments", selectedWeek.weekStart), {
+        weekStart: selectedWeek.weekStart,
+        month,
+        weekNumber: selectedWeek.weekNumber,
+        unit,
+        startAt: Timestamp.fromDate(startAt),
+        endAt: Timestamp.fromDate(endAt),
+        assignedBy: user.uid,
+        assignedAt: serverTimestamp(),
+      });
+      setMessage(`Week ${selectedWeek.weekNumber} is assigned to ${unit}.`);
+    } catch (cause) {
+      setError(errorMessage(cause, "Could not save the Cleaning Task assignment."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <section className="cleaning-assignment-admin content-section">
+    <div className="section-heading"><div><p className="eyebrow">Superadmin schedule</p><h2>Cleaning Task Assignment</h2><p className="muted">Assign one AGRISTAT, AMIA, or DRRM team to each Monday–Friday work week.</p></div></div>
+    {error && <p className="cleaning-task-message is-error" role="alert">{error}</p>}
+    {message && <p className="cleaning-task-message is-success" role="status">{message}</p>}
+    <form className="cleaning-assignment-form" onSubmit={(event) => void saveAssignment(event)}>
+      <label>Month<select value={month.slice(5, 7)} onChange={(event) => { setMonth(`${year}-${event.target.value}`); setMessage(""); }} required>{Array.from({ length: 12 }, (_, index) => { const value = String(index + 1).padStart(2, "0"); const label = new Intl.DateTimeFormat("en-PH", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, index, 1))); return <option value={value} key={value}>{label}</option>; })}</select></label>
+      <label>Year<input type="number" value={year} min="2020" max="2100" aria-label="Year" onChange={(event) => { const nextYear = event.target.value; setYear(nextYear); if (/^\d{4}$/.test(nextYear)) setMonth(`${nextYear}-${month.slice(5, 7) || "01"}`); }} required /></label>
+      <label>Week<select value={weekStart} onChange={(event) => setWeekStart(event.target.value)} required>{weeks.map((week) => <option value={week.weekStart} key={week.weekStart}>Week {week.weekNumber} · {week.weekStart}</option>)}</select></label>
+      <label>Cleaning Assignment for<select value={unit} onChange={(event) => setUnit(event.target.value as CleaningTaskUnit)}>{cleaningTaskUnits.map((taskUnit) => <option value={taskUnit} key={taskUnit}>{taskUnit}</option>)}</select></label>
+      <div className="cleaning-assignment-preview"><span>Selected week</span><strong>{selectedWeek ? `Week ${selectedWeek.weekNumber} · ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`))} to ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(new Date(new Date(`${selectedWeek.weekStart}T00:00:00+08:00`).getTime() + 4 * 24 * 60 * 60 * 1000))}` : "Choose a month and week"}</strong><small>Monday to Friday; weekends are not part of the assignment window.</small></div>
+      {currentAssignment && <div className="cleaning-assignment-current"><span>Current assignment</span><strong>{currentAssignment.unit} · Week {currentAssignment.weekNumber}</strong></div>}
+      <button className="primary-button" type="submit" disabled={saving || !selectedWeek}>{saving ? "Saving assignment..." : currentAssignment ? "Update assignment" : "Assign unit"}</button>
+    </form>
+    <div className="cleaning-admin-calendar"><h3>{month}</h3>{loading ? <p className="muted">Loading weekly assignments...</p> : <div className="cleaning-admin-assignment-list">{weeks.map((week) => {
+      const assignment = assignments.find((item) => item.weekStart === week.weekStart);
+      return <button type="button" className={`cleaning-admin-week${week.weekStart === weekStart ? " is-selected" : ""}`} key={week.weekStart} onClick={() => { setWeekStart(week.weekStart); if (assignment) setUnit(assignment.unit); }}><span>Week {week.weekNumber}<small>{week.weekStart}</small></span><strong>{assignment?.unit ?? "Not assigned"}</strong></button>;
+    })}</div>}</div>
+  </section>;
+}

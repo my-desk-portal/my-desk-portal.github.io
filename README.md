@@ -44,6 +44,10 @@ Use a rotated UploadThing token for `UPLOADTHING_TOKEN`. Set `FIREBASE_API_KEY` 
 
 Set `NEXT_PUBLIC_UPLOADTHING_URL` in the site's `.env.local` and hosting build settings to the Worker endpoint, for example `https://ps-taguibo-uploadthing.<your-workers-subdomain>.workers.dev/api/uploadthing`. Build and republish the static site after setting it. Profile photos accept JPEG, PNG, or WebP files up to 4 MB.
 
+Cleaning Task photos use the same Worker and UploadThing account. The Worker accepts JPEG, PNG, and WebP images up to 32 MB, checks the current Firebase profile and weekly assignment, and replaces the saved image for each project while deleting its previous UploadThing file. After the user grants browser location access, the browser calls BigDataCloud's client-side reverse-geocoding API to format the location as Barangay, City; only that formatted location is stored in Firestore. BigDataCloud says it receives the live coordinates and request IP for the lookup and aggregates the pairings anonymously to improve its geolocation data.
+
+The Superadmin assigns one project to each Monday–Friday week from **Admin Panel → Cleaning Task Assignment**. Eligible Regular accounts in AGRISTAT, AMIA, and DRRM, plus an Admin whose designation is `AGRISTAT/DRRM/AMIA Project Leader`, can open Cleaning Task and upload when their profile unit is assigned for the current week. Admin and Superadmin accounts can view the landing-page posts. Deploy the Firestore rules and Worker after updating this feature; no Firebase Storage bucket or Function is used for Cleaning Task images.
+
 Permit numbers increment independently by unit and year in the format `AMIA-2026-0001` or `AGRISTAT-2026-0001`. The number is assigned in a Firestore transaction so simultaneous submissions do not reuse a number.
 
 ## Host on Vercel

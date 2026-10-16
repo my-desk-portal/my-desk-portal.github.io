@@ -101,6 +101,61 @@ service cloud.firestore {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
       return exists(userPath) ? profileAssignment(get(userPath).data) : null;
     }
+    function isCleaningTaskUnit(unit) {
+      return unit in ["AGRISTAT", "AMIA", "DRRM"];
+    }
+    function canReadCleaningTasks() {
+      let userPath = currentUserPath();
+      return isVerifiedUser() && exists(userPath)
+        && get(userPath).data.get("accountStatus", "Approved") == "Approved"
+        && (get(userPath).data.get("accountRole", "") in ["admin", "superadmin"]
+          || (get(userPath).data.get("accountRole", "") in ["regular", "user"] && signedInUnit() in ["AGRISTAT", "AMIA", "DRRM"]));
+    }
+    function canUploadCleaningTask() {
+      let userPath = currentUserPath();
+      return isVerifiedUser() && exists(userPath)
+        && get(userPath).data.get("accountStatus", "Approved") == "Approved"
+        && ((get(userPath).data.get("accountRole", "") in ["regular", "user"] && signedInUnit() in ["AGRISTAT", "AMIA", "DRRM"])
+          || (get(userPath).data.get("accountRole", "") == "admin"
+            && get(userPath).data.get("designation", "") == "AGRISTAT/DRRM/AMIA Project Leader"));
+    }
+    function validCleaningTaskAssignment(data, weekStart) {
+      return data.keys().hasAll(["weekStart", "month", "weekNumber", "unit", "startAt", "endAt", "assignedBy", "assignedAt"])
+        && data.keys().hasOnly(["weekStart", "month", "weekNumber", "unit", "startAt", "endAt", "assignedBy", "assignedAt"])
+        && weekStart.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && data.weekStart == weekStart
+        && data.month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
+        && data.weekNumber is int && data.weekNumber >= 1 && data.weekNumber <= 6
+        && isCleaningTaskUnit(data.unit)
+        && data.startAt is timestamp && data.endAt is timestamp && data.startAt < data.endAt
+        && data.assignedBy == request.auth.uid
+        && data.assignedAt == request.time;
+    }
+    function isCurrentCleaningTaskAssignment(weekStart, unit) {
+      let assignmentPath = /databases/$(database)/documents/cleaningTaskAssignments/$(weekStart);
+      return exists(assignmentPath)
+        && get(assignmentPath).data.get("weekStart", "") == weekStart
+        && get(assignmentPath).data.get("unit", "") == unit
+        && get(assignmentPath).data.get("startAt", request.time) <= request.time
+        && request.time < get(assignmentPath).data.get("endAt", request.time);
+    }
+    function validCleaningTaskImage(data, unit) {
+      return data.keys().hasAll(["unit", "imageURL", "fileKey", "previousFileKey", "previousFileOwnerId", "uploaderId", "uploaderName", "submittedWeekStart", "location", "uploadedAt"])
+        && data.keys().hasOnly(["unit", "imageURL", "fileKey", "previousFileKey", "previousFileOwnerId", "uploaderId", "uploaderName", "submittedWeekStart", "location", "uploadedAt"])
+        && isCleaningTaskUnit(unit)
+        && data.unit == unit
+        && data.imageURL is string && data.imageURL.size() <= 2048
+        && data.fileKey is string && data.fileKey.matches("^[A-Za-z0-9_.-]{1,128}$")
+        && (data.imageURL == "https://utfs.io/f/" + data.fileKey
+          || data.imageURL.matches("^https://[A-Za-z0-9-]+\\.ufs\\.sh/f/" + data.fileKey + "$"))
+        && data.previousFileKey is string && data.previousFileKey.size() <= 128
+        && data.previousFileOwnerId is string && data.previousFileOwnerId.size() <= 128
+        && data.uploaderId is string && data.uploaderId.size() > 0 && data.uploaderId.size() <= 128
+        && data.uploaderName is string && data.uploaderName.size() > 0 && data.uploaderName.size() <= 120
+        && data.submittedWeekStart is string && data.submittedWeekStart.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+        && data.location is string && data.location.size() > 0 && data.location.size() <= 180
+        && data.uploadedAt is timestamp && data.uploadedAt == request.time;
+    }
     function signedInDivision() {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
       return exists(userPath) ? profileDivision(get(userPath).data) : null;
@@ -655,6 +710,36 @@ service cloud.firestore {
       allow delete: if isSuperAdmin()
         && request.auth.uid != userId
         && resource.data.get("isRootSuperAdmin", false) != true;
+    }
+    match /cleaningTaskAssignments/{weekStart} {
+      allow read: if canReadCleaningTasks();
+      allow create, update: if isSuperAdmin()
+        && validCleaningTaskAssignment(request.resource.data, weekStart);
+      allow delete: if isSuperAdmin();
+    }
+    match /cleaningTaskImages/{unit} {
+      allow read: if canReadCleaningTasks();
+      allow create: if canUploadCleaningTask()
+        && validCleaningTaskImage(request.resource.data, unit)
+        && request.resource.data.uploaderId == request.auth.uid
+        && request.resource.data.previousFileKey == ""
+        && request.resource.data.previousFileOwnerId == ""
+        && signedInUnit() == unit
+        && isCurrentCleaningTaskAssignment(request.resource.data.submittedWeekStart, unit);
+      allow update: if (canUploadCleaningTask()
+          && resource.data.unit == unit
+          && validCleaningTaskImage(request.resource.data, unit)
+          && request.resource.data.uploaderId == request.auth.uid
+          && request.resource.data.previousFileKey == resource.data.fileKey
+          && request.resource.data.previousFileOwnerId == resource.data.uploaderId
+          && signedInUnit() == unit
+          && isCurrentCleaningTaskAssignment(request.resource.data.submittedWeekStart, unit))
+        || (canUploadCleaningTask()
+          && resource.data.uploaderId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["previousFileKey", "previousFileOwnerId"])
+          && request.resource.data.previousFileKey == ""
+          && request.resource.data.previousFileOwnerId == "");
+      allow delete: if false;
     }
     match /chats/{chatId} {
       allow read: if isVerifiedUser() && request.auth.uid in resource.data.members;
