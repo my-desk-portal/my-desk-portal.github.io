@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import type { User } from "firebase/auth";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { generateReactHelpers } from "@uploadthing/react";
 import { db } from "@/lib/firebase";
+import DeleteConfirmation from "./DeleteConfirmation";
 import "./mydrive.css";
 
 const uploadThingUrl = process.env.NEXT_PUBLIC_UPLOADTHING_URL || "/api/uploadthing";
@@ -71,7 +72,7 @@ export default function MyDrive({ user }: { user: User }) {
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
   const [deletingFileId, setDeletingFileId] = useState("");
-  const [sortAscending, setSortAscending] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<MyDriveFile | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadErrorRef = useRef("");
   const { startUpload } = useUploadThing("myDriveFile", {
@@ -97,10 +98,6 @@ export default function MyDrive({ user }: { user: User }) {
     });
   }, [user.uid]);
 
-  const sortedFiles = useMemo(() => [...files].sort((left, right) => {
-    const order = left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
-    return sortAscending ? order : -order;
-  }), [files, sortAscending]);
   const usedBytes = files.reduce((total, file) => total + (Number.isFinite(file.size) ? file.size : 0), 0);
   const canUpload = files.length < myDriveMaxFiles && usedBytes < myDriveMaxBytes;
 
@@ -206,8 +203,15 @@ export default function MyDrive({ user }: { user: User }) {
     }
   }
 
-  async function deleteFile(file: MyDriveFile) {
-    if (deletingFileId || !window.confirm(`Delete “${file.name}” from myDrive? This cannot be undone.`)) return;
+  function requestDelete(file: MyDriveFile) {
+    setError("");
+    setMessage("");
+    setPendingDelete(file);
+  }
+
+  async function deleteFile() {
+    if (!pendingDelete || deletingFileId) return;
+    const file = pendingDelete;
     setError("");
     setMessage("");
     setDeletingFileId(file.id);
@@ -222,8 +226,10 @@ export default function MyDrive({ user }: { user: User }) {
         throw new Error(reason || "Could not delete this file.");
       }
       setMessage(`Deleted ${file.name}.`);
+      setPendingDelete(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not delete this file.");
+      setPendingDelete(null);
     } finally {
       setDeletingFileId("");
     }
@@ -250,16 +256,14 @@ export default function MyDrive({ user }: { user: User }) {
     <div className="mydrive-list" aria-label="Your files">
       <div className="mydrive-list-heading">
         <span aria-hidden="true" />
-        <button type="button" className="mydrive-sort-button" onClick={() => setSortAscending((ascending) => !ascending)} aria-label={`Sort by name ${sortAscending ? "descending" : "ascending"}`} aria-pressed={!sortAscending}>
-          Name <span aria-hidden="true">{sortAscending ? <>&uarr;</> : <>&darr;</>}</span>
-        </button>
+        <span className="mydrive-name-heading">Name</span>
         <span className="mydrive-date-heading">Date added</span>
         <span className="mydrive-size-heading">Size</span>
         <span className="mydrive-actions-heading">Actions</span>
       </div>
       {loading ? <div className="mydrive-empty-state">Loading your files...</div>
-        : sortedFiles.length === 0 ? <div className="mydrive-empty-state"><strong>No files yet</strong><span>Upload a file to see it here.</span></div>
-          : sortedFiles.map((file) => {
+        : files.length === 0 ? <div className="mydrive-empty-state"><strong>No files yet</strong><span>Upload a file to see it here.</span></div>
+          : files.map((file) => {
             const icon = fileIcon(file.name, file.mimeType ?? "");
             return <div className={`mydrive-file-row${editingFile?.id === file.id ? " is-editing" : ""}`} key={file.id}>
               <div className={`mydrive-file-icon is-${icon.kind}`} aria-hidden="true">{icon.label}</div>
@@ -276,10 +280,18 @@ export default function MyDrive({ user }: { user: User }) {
               {editingFile?.id !== file.id && <div className="mydrive-file-actions">
                 <button type="button" className="mydrive-inline-action" onClick={() => beginRename(file)}>Rename</button>
                 <a className="mydrive-inline-action is-download" href={file.fileURL} download={file.name}>Download</a>
-                <button type="button" className="mydrive-inline-action is-delete" onClick={() => void deleteFile(file)} disabled={Boolean(deletingFileId)}>{deletingFileId === file.id ? "Deleting..." : "Delete"}</button>
+                <button type="button" className="mydrive-inline-action is-delete" onClick={() => requestDelete(file)} disabled={Boolean(deletingFileId)}>Delete</button>
               </div>}
             </div>;
           })}
     </div>
+    <DeleteConfirmation
+      open={Boolean(pendingDelete)}
+      title="Delete this file?"
+      description={pendingDelete ? `“${pendingDelete.name}” will be permanently removed from myDrive. This action cannot be undone.` : "This file will be permanently removed from myDrive. This action cannot be undone."}
+      busy={Boolean(pendingDelete && deletingFileId === pendingDelete.id)}
+      onCancel={() => setPendingDelete(null)}
+      onConfirm={() => void deleteFile()}
+    />
   </section>;
 }
