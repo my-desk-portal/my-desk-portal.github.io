@@ -42,7 +42,7 @@
 
 body { isolation: isolate; }
 
-body > :not(.system-background) {
+body > :not(.system-background):not(.delete-confirmation-backdrop) {
   position: relative;
   z-index: 1;
 }
