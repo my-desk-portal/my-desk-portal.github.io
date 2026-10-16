@@ -104,13 +104,16 @@ async function mergeCleaningPhotos(files: File[]) {
   const columns = 2;
   const cellWidth = 1200;
   const cellHeight = 900;
-  const targetRatio = cellWidth / cellHeight;
+  const inset = 24;
+  const photoWidth = cellWidth - inset * 2;
+  const photoHeight = cellHeight - inset * 2;
+  const targetRatio = photoWidth / photoHeight;
   const canvas = document.createElement("canvas");
   canvas.width = columns * cellWidth;
   canvas.height = 2 * cellHeight;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Your browser could not prepare the four-photo collage.");
-  context.fillStyle = "#fff";
+  context.fillStyle = "#f8faf8";
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
@@ -131,7 +134,7 @@ async function mergeCleaningPhotos(files: File[]) {
       }
       const cellX = (index % columns) * cellWidth;
       const cellY = Math.floor(index / columns) * cellHeight;
-      context.drawImage(photo.image, sourceX, sourceY, sourceWidth, sourceHeight, cellX, cellY, cellWidth, cellHeight);
+      context.drawImage(photo.image, sourceX, sourceY, sourceWidth, sourceHeight, cellX + inset, cellY + inset, photoWidth, photoHeight);
     } finally {
       photo.cleanup();
     }
