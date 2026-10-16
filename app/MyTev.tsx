@@ -518,7 +518,7 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
         {selectedPersonnelEntries.length > 0 && <div className="mytev-personnel-list">{selectedPersonnelEntries.map((entry, index) => {
           const selectedPerson = personnel.find((person) => person.userId === entry.userId);
           return <div className="mytev-personnel-entry" key={entry.key}>
-          <div className="name-search-field"><span>Add a Personnel for this TEV</span><NameSearchSelect aria-label={`Personnel for this TEV ${index + 1}`} value={entry.userId} onChange={(event) => updateSelectedPersonnel(index, event.target.value)} disabled={saving}>
+          <div className="name-search-field"><span>Add a Personnel for this TEV</span><NameSearchSelect aria-label={`Personnel for this TEV ${index + 1}`} value={entry.userId} onChange={(userId) => updateSelectedPersonnel(index, userId)} disabled={saving}>
             <option value="">Select a personnel</option>
             {personnel.filter((person) => person.userId === entry.userId || !selectedPersonnelEntries.some((selectedEntry, selectedIndex) => selectedIndex !== index && selectedEntry.userId === person.userId)).map((person) => <option key={person.userId} value={person.userId} disabled={!person.profileComplete}>{person.profile.name}, {person.profile.position || "Position not set"} - {person.profile.unit || "Unit not set"}{person.profileComplete ? "" : " - Complete Profile first"}</option>)}
           </NameSearchSelect></div>
