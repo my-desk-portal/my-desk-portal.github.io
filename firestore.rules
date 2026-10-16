@@ -1547,6 +1547,18 @@ service cloud.firestore {
               && recordData.createdById is string
               && recordData.sourceRecordId is string));
       }
+      function isValidSharedMyTevProfile(recordData, ownerData) {
+        let assignment = profileAssignment(ownerData);
+        return recordData.profile.name == ownerData.name
+          && recordData.profile.address == ownerData.address
+          && recordData.profile.taxIdentificationNo == ownerData.taxIdentificationNo
+          && recordData.profile.position == ownerData.position
+          && (recordData.profile.unit == assignment
+            || recordData.profile.unit == profileDivision(ownerData)
+            || (assignment == "NUPAP" && recordData.profile.unit == "NUPA Program")
+            || (assignment == "HVCDP Program" && recordData.profile.unit == "HVCD Program")
+            || (assignment == "Halal Project" && recordData.profile.unit == "Halal Projects"));
+      }
       function isAuthorizedSharedMyTevCopy(recordData) {
         let sourcePath = /databases/$(database)/documents/myTevRecords/$(recordData.sourceRecordId);
         let ownerPath = /databases/$(database)/documents/users/$(recordData.ownerId);
@@ -1559,13 +1571,7 @@ service cloud.firestore {
           && getAfter(sourcePath).data.ownerId == request.auth.uid
           && getAfter(sourcePath).data.sharedWith is list
           && recordData.ownerId in getAfter(sourcePath).data.sharedWith
-          && profileAssignment(get(ownerPath).data) is string
-          && profileAssignment(get(ownerPath).data).size() > 0
-          && recordData.profile.name == get(ownerPath).data.name
-          && recordData.profile.address == get(ownerPath).data.address
-          && recordData.profile.taxIdentificationNo == get(ownerPath).data.taxIdentificationNo
-          && recordData.profile.position == get(ownerPath).data.position
-          && recordData.profile.unit == profileAssignment(get(ownerPath).data)
+          && isValidSharedMyTevProfile(recordData, get(ownerPath).data)
           && recordData.month == getAfter(sourcePath).data.month
           && recordData.officialStation == getAfter(sourcePath).data.officialStation
           && recordData.evidenceOfTravel == getAfter(sourcePath).data.evidenceOfTravel

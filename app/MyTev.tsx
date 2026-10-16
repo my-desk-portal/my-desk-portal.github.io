@@ -46,7 +46,7 @@ import "./mytev-mobile.css";
 const maxTravelReferences = 8;
 const maxItineraries = 8;
 const maxTevPersonnel = 18;
-type TevPersonnel = { userId: string; profile: TevProfile; office: string; profileComplete: boolean; adminAccount: boolean };
+type TevPersonnel = { userId: string; profile: TevProfile; recordProfile: TevProfile; office: string; profileComplete: boolean; adminAccount: boolean };
 type TevPersonnelDraft = { key: string; userId: string; travelReferences: TevTravelReference[] };
 const tevEvidenceOptions = [
   { label: "Approved Itinerary of Travel", pattern: /\bapproved itinerary of travel\b/i },
@@ -473,7 +473,7 @@ function MyTevForm({ profile, profileDivision, ownerId, initialRecord, personnel
           batch.set(personnelRecord, {
             ...recordData,
             ownerId: person.userId,
-            profile: person.profile,
+            profile: person.recordProfile,
             travelReferences: entry.travelReferences.map((travelReference) => ({ ...travelReference, travelOrderNo: travelReference.travelOrderNo.trim() })),
             createdById: ownerId,
             sourceRecordId: reference.id,
@@ -723,6 +723,13 @@ export default function MyTevModule({ user }: { user: User }) {
           position: typeof accountData.position === "string" ? accountData.position.trim() : "",
           unit: personnelProfile.unit || personnelProfile.division,
         };
+        const recordProfile: TevProfile = {
+          name: typeof accountData.name === "string" ? accountData.name : "",
+          address: typeof accountData.address === "string" ? accountData.address : "",
+          taxIdentificationNo: typeof accountData.taxIdentificationNo === "string" ? accountData.taxIdentificationNo : "",
+          position: typeof accountData.position === "string" ? accountData.position : "",
+          unit: accountProfile.unit,
+        };
         const office = personnelProfile.office;
         if (!accountProfile.name || (!accountProfile.unit && !adminAccount)) return [];
         if (!personnelMatchesAccountScope(office, accountProfile.unit, currentOffice, accountUnit, {
@@ -733,14 +740,20 @@ export default function MyTevModule({ user }: { user: User }) {
           candidateDivision: personnelProfile.division,
         })) return [];
         const profileComplete = Boolean(office && accountProfile.address && accountProfile.taxIdentificationNo && accountProfile.position);
-        return [{ userId: account.id, profile: accountProfile, office, profileComplete, adminAccount }];
+        return [{ userId: account.id, profile: accountProfile, recordProfile, office, profileComplete, adminAccount }];
       }).sort((first, second) => first.office.localeCompare(second.office) || first.profile.name.localeCompare(second.profile.name));
       setPersonnel(allUnitPersonnel);
       const loaded = recordsSnapshot.docs.map((item) => {
         const record = { id: item.id, ...item.data() } as MyTevRecord;
         return {
           ...record,
-          profile: { ...record.profile, taxIdentificationNo: formatTaxIdentificationNo(record.profile.taxIdentificationNo) },
+          profile: {
+            ...record.profile,
+            name: record.profile.name.trim(),
+            address: record.profile.address.trim(),
+            taxIdentificationNo: formatTaxIdentificationNo(record.profile.taxIdentificationNo),
+            position: record.profile.position.trim(),
+          },
         };
       });
       loaded.sort((first, second) => timestampMillis(second.createdAt) - timestampMillis(first.createdAt));
