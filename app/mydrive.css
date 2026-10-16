@@ -36,7 +36,8 @@
 .mydrive-file-date,.mydrive-file-size{color:var(--muted);font-size:12px;min-width:0}
 .mydrive-file-actions{align-items:center;display:flex;flex-wrap:wrap;gap:14px;justify-content:flex-end;min-width:0}
 .mydrive-inline-action{background:transparent;border:0;color:var(--accent-dark);font-size:12px;font-weight:600;padding:6px 0;text-decoration:none;white-space:nowrap}
-.mydrive-inline-action:hover{text-decoration:underline}
+.mydrive-inline-action,.mydrive-inline-action:hover,.mydrive-inline-action:active{background:transparent;box-shadow:none;filter:none;text-decoration:none;transform:none}
+.mydrive-inline-action{transition:none}
 .mydrive-inline-action:focus-visible,.mydrive-sort-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .mydrive-inline-action.is-download{color:var(--ink)}
 .mydrive-empty-state{align-items:center;border-top:1px solid var(--line);color:var(--muted);display:flex;flex-direction:column;font-size:13px;gap:6px;justify-content:center;min-height:180px;padding:24px;text-align:center}
