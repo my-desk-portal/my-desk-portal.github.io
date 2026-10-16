@@ -33,6 +33,7 @@ type TravelOrder = {
   ownerId: string;
   ownerUnit?: string | null;
   preparedById?: string;
+  recipientOwnerSourceId?: string;
   recipientId?: string;
   recipientIds?: string[];
   splitFromOrderId?: string;
@@ -501,13 +502,19 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
       setAccountName(currentAccountName);
       const normalizedAccountName = normalizePersonName(currentAccountName);
       let splitSourceIds = new Set(recipientSnapshot.docs
-        .map((item) => item.data().splitFromOrderId)
+        .flatMap((item) => [item.data().splitFromOrderId, item.data().recipientOwnerSourceId])
         .filter((id): id is string => typeof id === "string" && Boolean(id)));
+      const ownedRecipientSourceIds = new Set(ownerSnapshot.docs.flatMap((item) => {
+        const data = item.data();
+        const sourceId = typeof data.recipientOwnerSourceId === "string" ? data.recipientOwnerSourceId
+          : data.ownerId === user.uid && typeof data.splitFromOrderId === "string" ? data.splitFromOrderId
+          : "";
+        return sourceId ? [sourceId] : [];
+      }));
       const recipientPersonalization = activeOrdersSnapshot.docs.flatMap((item) => {
         const data = item.data();
-        if (data.ownerId === user.uid || data.splitFromOrderId || splitSourceIds.has(item.id) || !Array.isArray(data.people)) return [];
+        if (data.ownerId === user.uid || (!data.splitFromOrderId && splitSourceIds.has(item.id)) || !Array.isArray(data.people)) return [];
         const people = data.people as TravelOrderPerson[];
-        if (data.recipientId === user.uid && people.length === 1) return [];
         const listedForAccount = Array.isArray(data.recipientIds) && data.recipientIds.includes(user.uid);
         let personIndex = people.findIndex((person) => person.userId === user.uid);
         if (personIndex < 0 && normalizedAccountName) {
@@ -516,16 +523,24 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
         }
         if (personIndex < 0 && listedForAccount && people.length === 1) personIndex = 0;
         if (personIndex < 0) return [];
-        return [{ sourceId: item.id, data, person: people[personIndex], personIndex }];
+        const rootSourceId = typeof data.splitFromOrderId === "string" ? data.splitFromOrderId : item.id;
+        if (ownedRecipientSourceIds.has(rootSourceId)) return [];
+        return [{ sourceId: item.id, rootSourceId, data, person: people[personIndex], personIndex }];
       });
-      const existingRecipientRows = new Map(recipientSnapshot.docs.map((item) => [item.id, item.data()]));
+      const existingRecipientRows = new Map([...ownerSnapshot.docs, ...recipientSnapshot.docs].map((item) => [item.id, item.data()]));
       const personalizedSourceIds = new Set<string>();
       for (const candidate of recipientPersonalization) {
-        const personalOrderId = `${encodeURIComponent(candidate.sourceId)}_${candidate.personIndex}_${encodeURIComponent(user.uid)}`;
+        if (ownedRecipientSourceIds.has(candidate.rootSourceId)) {
+          personalizedSourceIds.add(candidate.sourceId);
+          continue;
+        }
+        const personalOrderId = `${encodeURIComponent(candidate.rootSourceId)}_recipient_owner_${encodeURIComponent(user.uid)}`;
         const personalOrderRef = doc(firestore, "travelOrders", personalOrderId);
         const existingRecipientRow = existingRecipientRows.get(personalOrderId);
-        if (existingRecipientRow?.splitFromOrderId === candidate.sourceId) {
+        if (existingRecipientRow?.ownerId === user.uid
+          && (existingRecipientRow?.recipientOwnerSourceId === candidate.rootSourceId || existingRecipientRow?.splitFromOrderId === candidate.sourceId)) {
           personalizedSourceIds.add(candidate.sourceId);
+          ownedRecipientSourceIds.add(candidate.rootSourceId);
           continue;
         }
         const personalRecord = {
@@ -537,6 +552,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
           recipientId: user.uid,
           recipientIds: [user.uid],
           splitFromOrderId: candidate.sourceId,
+          recipientOwnerSourceId: candidate.rootSourceId,
           status: normalizeWorkflowStatus(candidate.data.status),
         };
         try {
@@ -544,14 +560,17 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
           batch.set(personalOrderRef, personalRecord);
           await batch.commit();
           personalizedSourceIds.add(candidate.sourceId);
-        } catch {
+          ownedRecipientSourceIds.add(candidate.rootSourceId);
+        } catch (cause) {
           /* Keep the legacy recipient row available if a personal copy cannot be created. */
+          const code = (cause as { code?: string }).code;
+          setError(code ? `Could not create your personal Travel Order (${code}).` : "Could not create your personal Travel Order.");
         }
       }
       if (personalizedSourceIds.size) {
         [ownerSnapshot, recipientSnapshot, activeOrdersSnapshot] = await loadSnapshots();
         splitSourceIds = new Set(recipientSnapshot.docs
-          .map((item) => item.data().splitFromOrderId)
+          .flatMap((item) => [item.data().splitFromOrderId, item.data().recipientOwnerSourceId])
           .filter((id): id is string => typeof id === "string" && Boolean(id)));
       }
       legacyRecipientRows = activeOrdersSnapshot.docs.flatMap((item) => {
@@ -582,7 +601,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
         ...recipientSnapshot.docs.map((item) => ({ id: item.id, ...item.data() } as TravelOrder)),
         ...legacyRecipientRows,
       ];
-      const completedSplitSources = new Set(loadedRows.map((order) => order.splitFromOrderId).filter((id): id is string => Boolean(id)));
+      const completedSplitSources = new Set(loadedRows.flatMap((order) => [order.splitFromOrderId, order.recipientOwnerSourceId]).filter((id): id is string => Boolean(id)));
       const visibleRows = loadedRows.filter((order) => !(completedSplitSources.has(order.id) && (order.people.length !== 1 || !order.recipientId)));
       const byId = new Map<string, TravelOrder>();
       visibleRows.forEach((order) => byId.set(order.id, order));
@@ -627,7 +646,7 @@ export default function TravelOrderModule({ user, office, unit }: { user: User; 
           const byId = new Map<string, TravelOrder>();
           [...ownerRows, ...recipientRows, ...legacyRecipientRows].forEach((order) => byId.set(order.id, order));
           const allRows = [...byId.values()];
-          const splitSources = new Set(allRows.map((order) => order.splitFromOrderId).filter((id): id is string => Boolean(id)));
+          const splitSources = new Set(allRows.flatMap((order) => [order.splitFromOrderId, order.recipientOwnerSourceId]).filter((id): id is string => Boolean(id)));
           const visibleRows = allRows.filter((order) => !(splitSources.has(order.id) && (order.people.length !== 1 || !order.recipientId)));
           return visibleRows.sort((left, right) => ((right.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0) - ((left.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0));
         });
