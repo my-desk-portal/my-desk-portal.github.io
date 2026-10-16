@@ -41,6 +41,13 @@ export function filterPersonnelForAccount(entries: PersonnelEntry[], office: str
   }));
 }
 
+export function filterPersonnelForDivision(entries: PersonnelEntry[], office: string, division: string) {
+  const selectedOffice = office.trim();
+  const selectedDivision = division.trim();
+  if (!selectedOffice || !selectedDivision) return [];
+  return entries.filter((person) => person.office === selectedOffice && person.division === selectedDivision);
+}
+
 const personnelCacheDurationMs = 60_000;
 const cachedPersonnel = new Map<string, { entries: PersonnelEntry[]; expiresAt: number }>();
 const personnelRequests = new Map<string, Promise<PersonnelEntry[]>>();
