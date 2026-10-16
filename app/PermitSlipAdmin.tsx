@@ -22,6 +22,7 @@ export type AdminPermit = {
   permitNos?: string[];
   date: string;
   names: string[];
+  personIds?: string[];
   name?: string;
   personUnits?: string[];
   unit?: string;
@@ -290,6 +291,7 @@ export default function PermitSlipAdmin({ user, mode, focusNotificationKey, canM
             permitNo: latestPermitNo,
             approvedPermitNo,
             name: names[personIndex] ?? permit.names[personIndex] ?? "",
+            ...(typeof data.personIds?.[personIndex] === "string" ? { userId: data.personIds[personIndex] as string } : {}),
             date: latestDate,
             purpose: typeof data.purpose === "string" ? data.purpose : permit.purpose,
             unit: units[personIndex] ?? data.unit ?? permit.personUnits?.[personIndex] ?? permit.unit ?? "",

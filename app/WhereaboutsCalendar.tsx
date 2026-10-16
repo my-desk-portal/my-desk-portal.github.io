@@ -17,7 +17,7 @@ type CalendarTravelOrder = {
   ownerId?: string;
   ownerUnit?: string;
   status: string;
-  people: { name: string; position?: string; salary?: string; toNumber?: string }[];
+  people: { name: string; userId?: string; position?: string; salary?: string; toNumber?: string }[];
   departureDate: string;
   returnDate: string;
   purpose: string;
@@ -30,6 +30,7 @@ type ApprovedPermitSlip = {
   status: string;
   permitNo: string;
   approvedPermitNo?: string;
+  userId?: string;
   name: string;
   date: string;
   purpose: string;
@@ -78,6 +79,7 @@ type SelectedCalendarEntry = {
   type: "Travel Order" | "Permit Slip" | "Leave Application";
   statuses: string[];
   names: string[];
+  personKeys: string[];
   date: string;
   sortDate: string;
   sortEndDate: string;
@@ -265,10 +267,11 @@ async function publishExistingApprovedPermits(firestore: Firestore) {
       const existingEntry = existingCalendarEntries.get(calendarId);
       if (decision?.status !== "Approved" || !permit.date || !name
         || (existingEntry && existingEntry.approvedPermitNo === decision.approvedPermitNo
-          && existingEntry.ownerId === permit.ownerId)) return;
+          && existingEntry.ownerId === permit.ownerId
+          && existingEntry.userId === permit.personIds?.[index])) return;
       missingEntries.push({
         id: calendarId,
-        data: { permitId: permit.id, statusKey, status: "Approved", permitNo, ...(decision.approvedPermitNo ? { approvedPermitNo: decision.approvedPermitNo } : {}), name, date: permit.date, purpose: permit.purpose ?? "", unit: permit.personUnits?.[index] ?? permit.unit ?? "", ...(permit.ownerId ? { ownerId: permit.ownerId } : {}) },
+        data: { permitId: permit.id, statusKey, status: "Approved", permitNo, ...(decision.approvedPermitNo ? { approvedPermitNo: decision.approvedPermitNo } : {}), ...(permit.personIds?.[index] ? { userId: permit.personIds[index] } : {}), name, date: permit.date, purpose: permit.purpose ?? "", unit: permit.personUnits?.[index] ?? permit.unit ?? "", ...(permit.ownerId ? { ownerId: permit.ownerId } : {}) },
       });
     });
   });
@@ -280,6 +283,47 @@ async function publishExistingApprovedPermits(firestore: Firestore) {
 
 function dateKey(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function normalizePersonnelName(value: string) {
+  const trimmed = value.normalize("NFKC").trim().replace(/\s+/g, " ");
+  const comma = trimmed.indexOf(",");
+  const ordered = comma >= 0
+    ? `${trimmed.slice(comma + 1)} ${trimmed.slice(0, comma)}`
+    : trimmed;
+  return ordered.toLocaleLowerCase()
+    .replace(/[.'’`]/g, "")
+    .replace(/[-‐‑‒–—]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function personnelNameParts(value: string) {
+  const parts = normalizePersonnelName(value).split(" ").filter(Boolean);
+  return { first: parts[0] ?? "", last: parts[parts.length - 1] ?? "" };
+}
+
+function personnelIdentityKey(name: string, userId: string | undefined, accounts: ReadonlyMap<string, { name: string }>) {
+  const normalizedName = normalizePersonnelName(name);
+  if (!normalizedName || normalizedName === "not specified") return "";
+
+  const knownAccountName = userId ? accounts.get(userId)?.name : undefined;
+  if (knownAccountName) return `name:${normalizePersonnelName(knownAccountName)}`;
+  if (userId) return `id:${userId}`;
+
+  const parts = personnelNameParts(name);
+  if (parts.first && parts.last) {
+    const matchingAccounts = [...accounts.values()].filter((account) => {
+      const accountParts = personnelNameParts(account.name);
+      return accountParts.first === parts.first && accountParts.last === parts.last;
+    });
+    if (matchingAccounts.length === 1) return `name:${normalizePersonnelName(matchingAccounts[0].name)}`;
+  }
+  return `name:${normalizedName}`;
+}
+
+function countUniquePersonnel(names: string[]) {
+  return new Set(names.map(normalizePersonnelName).filter(Boolean)).size;
 }
 
 function formatCalendarDate(value: string, options: Intl.DateTimeFormatOptions = { month: "long", day: "numeric", year: "numeric" }) {
@@ -367,7 +411,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
         });
       });
       setAccountScopes(scopes);
-      setTotalPersonnelCount(snapshot.docs.length);
+      setTotalPersonnelCount(countUniquePersonnel([...scopes.values()].map((person) => person.name)));
     }).catch(() => {
       if (active) setTotalPersonnelCount(null);
     }).finally(() => {
@@ -527,9 +571,14 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
   }
 
   function peopleOnDate(key: string) {
-    return ordersOnDate(key).reduce((total, order) => total + Math.max(order.people?.length ?? 0, 1), 0)
-      + calendarPermitSlips.filter((permit) => permit.date === key).length
-      + calendarLeaveApplications.filter((leave) => leave.inclusiveDateFrom <= key && leave.inclusiveDateTo >= key).length;
+    const people = [
+      ...ordersOnDate(key).flatMap((order) => order.people ?? []),
+      ...calendarPermitSlips.filter((permit) => permit.date === key),
+      ...calendarLeaveApplications.filter((leave) => leave.inclusiveDateFrom <= key && leave.inclusiveDateTo >= key)
+        .map((leave) => ({ name: leaveApplicantName(leave), userId: leave.ownerId })),
+    ];
+    const uniqueCount = new Set(people.map((person) => personnelIdentityKey(person.name, person.userId, accountScopes)).filter(Boolean)).size;
+    return selectedPersonnelTotal === null ? uniqueCount : Math.min(uniqueCount, selectedPersonnelTotal);
   }
 
   function hasPendingItemOnDate(key: string) {
@@ -570,6 +619,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
         purpose: order.purpose || "—",
         destination: order.placeOfTravel || "—",
         unit: order.chargeTo || "",
+        personKey: personnelIdentityKey(person.name || "Not specified", person.userId, accountScopes),
       }));
     }),
     ...selectedPermitSlips.map((permit) => ({
@@ -584,6 +634,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
       purpose: permit.purpose || "—",
       destination: "",
       unit: permit.unit || "",
+      personKey: personnelIdentityKey(permit.name, permit.userId, accountScopes),
     })),
     ...calendarLeaveApplications.filter((leave) => leave.inclusiveDateFrom <= selectedDate && leave.inclusiveDateTo >= selectedDate).map((leave) => ({
       id: `leave-${leave.id}`,
@@ -597,6 +648,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
       purpose: leaveApplicationPurpose(leave),
       destination: "",
       unit: leave.office || "",
+      personKey: personnelIdentityKey(leaveApplicantName(leave) || "Not specified", leave.ownerId, accountScopes),
     })),
   ];
   const selectedPeopleByDetails = new Map<string, SelectedCalendarEntry>();
@@ -606,6 +658,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
       type: person.type as SelectedCalendarEntry["type"],
       statuses: [person.status],
       names: [`${person.name}${person.number ? ` (${person.number})` : ""}`],
+      personKeys: [person.personKey || `display:${normalizePersonnelName(person.name)}`],
       date: person.date,
       sortDate: person.sortDate,
       sortEndDate: person.sortEndDate,
@@ -616,7 +669,10 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
     const key = entry.type === "Leave Application" ? entry.id : JSON.stringify([entry.type, entry.date, entry.purpose, entry.destination, entry.unit]);
     const existing = selectedPeopleByDetails.get(key);
     if (existing) {
-      existing.names.push(...entry.names);
+      if (!entry.personKeys.length || !entry.personKeys.some((personKey) => existing.personKeys.includes(personKey))) {
+        existing.names.push(...entry.names);
+        existing.personKeys.push(...entry.personKeys);
+      }
       existing.statuses = [...new Set([...existing.statuses, ...entry.statuses])];
     } else {
       selectedPeopleByDetails.set(key, entry);
@@ -626,7 +682,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
     left.sortDate.localeCompare(right.sortDate)
     || left.sortEndDate.localeCompare(right.sortEndDate)
     || left.type.localeCompare(right.type));
-  const personnelNotInOfficeCount = new Set(selectedPeopleEntries.map((person) => person.name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase())).size;
+  const rawPersonnelNotInOfficeCount = new Set(selectedPeopleEntries.map((person) => person.personKey).filter(Boolean)).size;
   const [selectedYear, selectedMonth, selectedDay] = selectedDate.split("-").map(Number);
   const selectedDateWeekday = new Date(selectedYear, selectedMonth - 1, selectedDay).getDay();
   const zeroPersonnelMessage = selectedDateWeekday === 6
@@ -688,8 +744,11 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
   const visibleAnnualOrders = annualOrders.slice(currentTravelPage * 10, currentTravelPage * 10 + 10);
   const visibleAnnualLeaveApplications = annualLeaveApplications.slice(currentLeavePage * 10, currentLeavePage * 10 + 10);
   const selectedPersonnelTotal = (divisionFilter !== "All" || unitFilter !== "All")
-    ? [...accountScopes.values()].filter((person) => recordMatchesSelectedScope(person.office, person.division, person.unit)).length
+    ? countUniquePersonnel([...accountScopes.values()].filter((person) => recordMatchesSelectedScope(person.office, person.division, person.unit)).map((person) => person.name))
     : totalPersonnelCount;
+  const personnelNotInOfficeCount = selectedPersonnelTotal === null
+    ? rawPersonnelNotInOfficeCount
+    : Math.min(rawPersonnelNotInOfficeCount, selectedPersonnelTotal);
   return <section className="content-section whereabouts-calendar-section">
     <div className="section-heading whereabouts-heading"><div><p className="eyebrow">Travel, Leave, and Permit Records</p><h2>Whereabouts Calendar</h2><p className="muted">Select a shaded date to view pending or approved Travel Orders and Leave Applications, plus approved Permit Slips.</p></div></div>
     <div className="whereabouts-calendar-filters" aria-label="Filter whereabouts calendar">
@@ -711,7 +770,7 @@ export default function WhereaboutsCalendarModule({ user, accountRole, office, d
           const statusClass = hasPending ? (hasApproved ? "whereabouts-day-mixed-status" : "whereabouts-day-pending") : hasApproved ? "whereabouts-day-approved" : "";
           const classes = ["whereabouts-day", statusClass, selected ? "whereabouts-day-selected" : ""].filter(Boolean).join(" ");
           const weekendNumberClass = index % 7 === 0 ? "whereabouts-day-number-sunday" : index % 7 === 6 ? "whereabouts-day-number-saturday" : "";
-          const label = `${formatCalendarDate(key, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${peopleCount ? `, ${peopleCount} ${peopleCount === 1 ? "person or calendar record" : "people or calendar records"}` : ", no Travel Orders, Permit Slips, or Leave Applications"}${hasPending ? ", includes a Pending Travel Order or Leave Application" : ""}`;
+          const label = `${formatCalendarDate(key, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}${peopleCount ? `, ${peopleCount} ${peopleCount === 1 ? "person" : "people"} out of office` : ", no personnel out of office"}${hasPending ? ", includes a Pending Travel Order or Leave Application" : ""}`;
           return <button type="button" className={classes} aria-label={label} aria-pressed={selected} key={key} onClick={() => { setSelectedDate(key); setSelectedPeoplePage(0); }}><span className={`whereabouts-day-number ${weekendNumberClass}`}>{day}</span>{peopleCount > 0 && <span className="whereabouts-day-count">{peopleCount}</span>}</button>;
         })}
       </div>
