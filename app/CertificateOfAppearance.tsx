@@ -916,6 +916,12 @@ function CertificatePaper({ record, person }: { record: CertificateRecord; perso
   const signatory = appearanceCertificateSignatory(record, record.signatoryName, record.designation);
   return <article className="coa-certificate-card">
     <img className="coa-letterhead" src={blankCertificateAsset} alt="" />
+    <div className="coa-letterhead-header">
+      <span>Republic of the Philippines</span>
+      <strong>DEPARTMENT OF AGRICULTURE</strong>
+      <span>Regional Field Office 13</span>
+      <span>Capitol Site, Butuan City 8600</span>
+    </div>
     <h1 className="coa-title">CERTIFICATE OF APPEARANCE</h1>
     <div className="coa-copy">
       <p>This is to certify that <strong className="coa-name">{person.name}</strong> of the <strong className="coa-office">{person.office ?? record.office}</strong> has attended the <strong><em>“{record.eventTitle}”</em></strong> held in <strong>{record.destination}</strong> on <strong>{eventDateRange(record.eventDateFrom ?? record.eventDate, record.eventDateTo ?? record.eventDateFrom ?? record.eventDate)}</strong>.</p>
