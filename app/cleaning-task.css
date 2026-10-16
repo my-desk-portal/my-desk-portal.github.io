@@ -147,7 +147,7 @@
   overflow: hidden;
   border-radius: 9px;
   color: #fff;
-  background: #216d3b;
+  background: var(--accent);
   font-weight: 700;
   cursor: pointer;
 }
