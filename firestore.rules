@@ -1110,13 +1110,17 @@ service cloud.firestore {
       allow read: if isVerifiedUser();
       allow create, update: if isPermitAdmin()
         && request.resource.data.keys().hasAll(["permitId", "statusKey", "status", "permitNo", "name", "date", "purpose", "unit"])
-        && request.resource.data.keys().hasOnly(["permitId", "statusKey", "status", "permitNo", "approvedPermitNo", "name", "date", "purpose", "unit", "ownerId"])
+        && request.resource.data.keys().hasOnly(["permitId", "statusKey", "status", "permitNo", "approvedPermitNo", "name", "date", "purpose", "unit", "ownerId", "userId"])
         && request.resource.data.permitId is string
         && request.resource.data.statusKey is string
         && request.resource.data.status == "Approved"
         && (!request.resource.data.keys().hasAny(["ownerId"])
           || (request.resource.data.ownerId is string
             && request.resource.data.ownerId == getAfter(/databases/$(database)/documents/permits/$(request.resource.data.permitId)).data.ownerId))
+        && (!request.resource.data.keys().hasAny(["userId"])
+          || (request.resource.data.userId is string
+            && getAfter(/databases/$(database)/documents/permits/$(request.resource.data.permitId)).data.get("personIds", []) is list
+            && request.resource.data.userId in getAfter(/databases/$(database)/documents/permits/$(request.resource.data.permitId)).data.get("personIds", [])))
         && (!request.resource.data.keys().hasAny(["approvedPermitNo"])
           || (request.resource.data.approvedPermitNo is string
             && request.resource.data.approvedPermitNo.matches("^[0-9]{4}-[0-9]{4,}$")))
